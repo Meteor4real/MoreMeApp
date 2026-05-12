@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentAccount } from "@/lib/auth";
 import { AuthForm } from "@/components/AuthForm";
+import { AccountRecovery } from "@/components/AccountRecovery";
 import { Logo } from "@/components/Logo";
 import Link from "next/link";
 
@@ -35,6 +36,11 @@ export default async function LoginPage() {
           Create one
         </Link>
       </p>
+
+      <div className="mt-6 border-t border-chuck-line pt-4">
+        <AccountRecovery />
+      </div>
+
       <span className="chuck-strip absolute inset-x-0 bottom-0" />
     </div>
   );

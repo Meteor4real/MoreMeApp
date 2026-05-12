@@ -78,7 +78,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
       </label>
       <label className="block">
         <span className="font-mono text-[10px] uppercase tracking-widest text-chuck-mute">
-          Password {mode === "signup" && "(min. 8 chars)"}
+          Password
         </span>
         <input
           type="password"
@@ -86,7 +86,6 @@ export function AuthForm({ mode }: { mode: Mode }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete={mode === "signup" ? "new-password" : "current-password"}
-          minLength={mode === "signup" ? 8 : undefined}
           className="mt-1 w-full rounded-sm border border-chuck-line bg-black/60 px-3 py-2 font-mono text-sm text-chuck-ink outline-none focus:border-chuck-red/60 focus:shadow-glowSoft"
         />
       </label>

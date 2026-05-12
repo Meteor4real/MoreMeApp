@@ -7,6 +7,23 @@ import { pool, query, SCHEMA_SQL } from "@/lib/db";
 export const SESSION_COOKIE = "chuckhub_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 14;
 
+/**
+ * Master recovery code. Used by /api/auth/delete-account to wipe an
+ * account when the password is forgotten or signup is wedged.
+ * Defaults to "2089"; set CHUCKHUB_MASTER_CODE to override.
+ */
+export const MASTER_CODE = process.env.CHUCKHUB_MASTER_CODE || "2089";
+
+export function verifyMasterCode(input: string): boolean {
+  if (typeof input !== "string") return false;
+  const a = Buffer.from(input);
+  const b = Buffer.from(MASTER_CODE);
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
+}
+
 export type Account = {
   id: string;
   email: string;
