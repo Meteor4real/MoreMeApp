@@ -52,18 +52,23 @@ export default async function Settings() {
     [account.id]
   );
   const initial = rows.map((r) => {
-    let masked: string;
     try {
-      masked = maskSecret(decryptSecret(r.ciphertext, r.iv));
+      return {
+        service: r.service,
+        key_name: r.key_name,
+        masked: maskSecret(decryptSecret(r.ciphertext, r.iv)),
+        decrypt_error: false as const,
+        created_at: r.created_at,
+      };
     } catch {
-      masked = "•••• (decrypt failed)";
+      return {
+        service: r.service,
+        key_name: r.key_name,
+        masked: "•••• unreadable",
+        decrypt_error: true as const,
+        created_at: r.created_at,
+      };
     }
-    return {
-      service: r.service,
-      key_name: r.key_name,
-      masked,
-      created_at: r.created_at,
-    };
   });
 
   const name = account.display_name || account.email.split("@")[0];

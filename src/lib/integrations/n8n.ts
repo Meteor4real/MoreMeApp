@@ -1,4 +1,5 @@
 import { getServiceToken } from "@/lib/tokens";
+import { timedFetch } from "@/lib/integrations/fetch";
 
 export type N8nWorkflow = {
   id: string;
@@ -34,10 +35,10 @@ export async function getN8nOverview(accountId: string): Promise<N8nOverview | n
   type ExResp = { data: N8nExecution[] };
 
   const [wf, ex] = await Promise.all([
-    fetch(`${baseUrl}/api/v1/workflows?limit=10`, { headers, cache: "no-store" })
+    timedFetch(`${baseUrl}/api/v1/workflows?limit=10`, { headers, cache: "no-store" })
       .then((r) => (r.ok ? (r.json() as Promise<WfResp>) : { data: [] }))
       .catch(() => ({ data: [] })),
-    fetch(`${baseUrl}/api/v1/executions?limit=10`, { headers, cache: "no-store" })
+    timedFetch(`${baseUrl}/api/v1/executions?limit=10`, { headers, cache: "no-store" })
       .then((r) => (r.ok ? (r.json() as Promise<ExResp>) : { data: [] }))
       .catch(() => ({ data: [] })),
   ]);

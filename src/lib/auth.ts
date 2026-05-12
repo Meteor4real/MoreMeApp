@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 import { pool, query, SCHEMA_SQL } from "@/lib/db";
@@ -29,7 +30,14 @@ function secret(): Uint8Array {
 let schemaReady: Promise<void> | null = null;
 export function ensureSchema(): Promise<void> {
   if (!schemaReady) {
-    schemaReady = pool.query(SCHEMA_SQL).then(() => undefined);
+    schemaReady = pool
+      .query(SCHEMA_SQL)
+      .then(() => undefined)
+      .catch((e) => {
+        // Don't cache a rejected promise — the next caller should retry.
+        schemaReady = null;
+        throw e;
+      });
   }
   return schemaReady;
 }
@@ -130,10 +138,13 @@ export async function getCurrentAccount(): Promise<Account | null> {
   return findAccountById(id);
 }
 
-export async function requireAccount(): Promise<Account> {
+/**
+ * For use in server components / pages. If there's no valid session,
+ * triggers a Next.js redirect to /login (which throws a NEXT_REDIRECT
+ * error caught by the framework — do not catch it).
+ */
+export async function requireAccount(redirectTo: string = "/login"): Promise<Account> {
   const account = await getCurrentAccount();
-  if (!account) throw new AuthError("unauthorized");
+  if (!account) redirect(redirectTo);
   return account;
 }
-
-export class AuthError extends Error {}

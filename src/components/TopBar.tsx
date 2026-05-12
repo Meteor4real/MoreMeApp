@@ -47,18 +47,17 @@ export function TopBar({ account }: { account: Account }) {
         const res = await fetch("/api/health", { cache: "no-store" });
         if (!res.ok) return;
         const j = (await res.json()) as {
-          checks?: { postgres?: { ok: boolean }; env?: { detail?: string } };
+          checks?: Record<string, { ok?: boolean }>;
         };
         if (cancelled) return;
-        const envDetail = j.checks?.env?.detail || "";
-        const hasEnv = (k: string) => envDetail.includes(`${k}:set`);
+        const ok = (k: string) => !!j.checks?.[k]?.ok;
         setStatus([
-          { label: "Postgres", ok: !!j.checks?.postgres?.ok },
-          { label: "GitHub", ok: hasEnv("GITHUB_TOKEN") },
-          { label: "Vercel", ok: hasEnv("VERCEL_TOKEN") },
-          { label: "Cloudflare", ok: hasEnv("CLOUDFLARE_API_TOKEN") },
-          { label: "n8n", ok: hasEnv("N8N_API_KEY") },
-          { label: "Supabase", ok: hasEnv("SUPABASE_ACCESS_TOKEN") },
+          { label: "Postgres", ok: ok("postgres") },
+          { label: "GitHub", ok: ok("GITHUB_TOKEN") },
+          { label: "Vercel", ok: ok("VERCEL_TOKEN") },
+          { label: "Cloudflare", ok: ok("CLOUDFLARE_API_TOKEN") },
+          { label: "n8n", ok: ok("N8N_API_KEY") },
+          { label: "Supabase", ok: ok("SUPABASE_ACCESS_TOKEN") },
         ]);
       } catch {
         /* ignore */

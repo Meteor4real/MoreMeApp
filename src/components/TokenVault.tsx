@@ -15,6 +15,7 @@ type StoredToken = {
   service: string;
   key_name: string;
   masked: string;
+  decrypt_error?: boolean;
   created_at: string;
 };
 
@@ -120,7 +121,15 @@ export function TokenVault({
               {s.required && !present && (
                 <span className="chuck-chip-live">required</span>
               )}
-              {present && (
+              {present && present.decrypt_error && (
+                <span
+                  className="chuck-chip-live"
+                  title="Vault key changed since this token was saved. Paste a new value to re-encrypt."
+                >
+                  unreadable
+                </span>
+              )}
+              {present && !present.decrypt_error && (
                 <span className="chuck-chip text-emerald-300 border-emerald-400/30">
                   saved
                 </span>

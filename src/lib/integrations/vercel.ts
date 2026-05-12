@@ -1,4 +1,5 @@
 import { getServiceToken } from "@/lib/tokens";
+import { timedFetch } from "@/lib/integrations/fetch";
 
 const API = "https://api.vercel.com";
 
@@ -6,7 +7,7 @@ async function vc<T>(token: string, path: string): Promise<T> {
   const teamSuffix = process.env.VERCEL_TEAM_ID
     ? (path.includes("?") ? "&" : "?") + `teamId=${process.env.VERCEL_TEAM_ID}`
     : "";
-  const res = await fetch(`${API}${path}${teamSuffix}`, {
+  const res = await timedFetch(`${API}${path}${teamSuffix}`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });

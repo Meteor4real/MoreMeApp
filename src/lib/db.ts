@@ -5,6 +5,22 @@ declare global {
   var __chuckhub_pg__: Pool | undefined;
 }
 
+function shouldUseSsl(conn: string): boolean {
+  if (/sslmode=disable/i.test(conn)) return false;
+  if (/sslmode=(require|verify-ca|verify-full|prefer)/i.test(conn)) return true;
+  // Heuristic: any non-localhost managed Postgres needs SSL.
+  try {
+    const u = new URL(conn);
+    const host = u.hostname;
+    if (host === "localhost" || host === "127.0.0.1" || host.endsWith(".local")) {
+      return false;
+    }
+    return true;
+  } catch {
+    return process.env.NODE_ENV === "production";
+  }
+}
+
 function makePool() {
   const conn = process.env.POSTGRES_URL;
   if (!conn) {
@@ -15,9 +31,9 @@ function makePool() {
   return new Pool({
     connectionString: conn,
     max: 5,
-    ssl: conn.includes("sslmode=require") || conn.includes("supabase.co")
-      ? { rejectUnauthorized: false }
-      : undefined,
+    connectionTimeoutMillis: 8_000,
+    idleTimeoutMillis: 30_000,
+    ssl: shouldUseSsl(conn) ? { rejectUnauthorized: false } : undefined,
   });
 }
 
@@ -30,6 +46,11 @@ export async function query<T = unknown>(text: string, params: unknown[] = []) {
 }
 
 export const SCHEMA_SQL = /* sql */ `
+-- gen_random_uuid() ships natively in Postgres 13+, but some hosted
+-- instances still expose it via pgcrypto. CREATE IF NOT EXISTS is a no-op
+-- on PG 13+ but fixes deployments where the extension isn't loaded.
+create extension if not exists pgcrypto;
+
 create table if not exists chuckhub_accounts (
   id uuid primary key default gen_random_uuid(),
   email text unique not null,

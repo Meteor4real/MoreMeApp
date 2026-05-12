@@ -1,10 +1,11 @@
 import { getServiceToken } from "@/lib/tokens";
+import { timedFetch } from "@/lib/integrations/fetch";
 
 const API = "https://www.googleapis.com/youtube/v3";
 
 async function yt<T>(key: string, path: string): Promise<T> {
   const url = `${API}${path}${path.includes("?") ? "&" : "?"}key=${encodeURIComponent(key)}`;
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await timedFetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(`youtube ${path} ${res.status}`);
   return res.json() as Promise<T>;
 }

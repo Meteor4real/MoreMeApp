@@ -1,4 +1,5 @@
 import { getServiceToken } from "@/lib/tokens";
+import { timedFetch } from "@/lib/integrations/fetch";
 
 const API = "https://api.tailscale.com/api/v2";
 
@@ -30,7 +31,7 @@ export async function getTailscaleOverview(
     }>;
   };
 
-  const res = await fetch(
+  const res = await timedFetch(
     `${API}/tailnet/${encodeURIComponent(tailnet)}/devices`,
     {
       headers: { Authorization: `Bearer ${token}` },

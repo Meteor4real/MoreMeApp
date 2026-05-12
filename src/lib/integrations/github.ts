@@ -1,9 +1,10 @@
 import { getServiceToken } from "@/lib/tokens";
+import { timedFetch } from "@/lib/integrations/fetch";
 
 const API = "https://api.github.com";
 
 async function gh<T>(token: string, path: string): Promise<T> {
-  const res = await fetch(`${API}${path}`, {
+  const res = await timedFetch(`${API}${path}`, {
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",

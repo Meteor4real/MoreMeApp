@@ -1,13 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, LogIn, UserPlus } from "lucide-react";
 
 type Mode = "login" | "signup";
 
+function safeNext(next: string | null | undefined): string {
+  if (!next || typeof next !== "string") return "/";
+  // Only allow same-origin absolute paths to avoid open-redirect.
+  if (!next.startsWith("/") || next.startsWith("//")) return "/";
+  return next;
+}
+
 export function AuthForm({ mode }: { mode: Mode }) {
   const router = useRouter();
+  const params = useSearchParams();
+  const next = safeNext(params.get("next"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -28,7 +37,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
         const j = await res.json().catch(() => ({}));
         throw new Error(j.error || `request failed (${res.status})`);
       }
-      router.push("/");
+      router.push(next);
       router.refresh();
     } catch (err) {
       setError((err as Error).message);
