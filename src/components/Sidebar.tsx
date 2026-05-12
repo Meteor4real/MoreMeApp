@@ -79,22 +79,18 @@ export function Sidebar() {
         </ul>
       </nav>
 
-      {/* Footer — coffee count :) */}
       <div className="border-t border-chuck-line p-4">
-        <div className="chuck-panel-hot p-3">
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-chuck-mute">
-              Coffee
-            </span>
-            <span className="chuck-glow-text font-mono text-sm">∞</span>
+        <Link
+          href="/settings"
+          className="block rounded-sm border border-chuck-line bg-black/40 p-3 transition hover:border-chuck-red/60"
+        >
+          <div className="font-mono text-[10px] uppercase tracking-widest text-chuck-mute">
+            Service tokens
           </div>
-          <div className="mt-2 h-1 overflow-hidden rounded-full bg-black">
-            <div className="chuck-strip h-full w-[88%]" />
+          <div className="mt-1 font-mono text-xs text-chuck-ink">
+            Connect integrations →
           </div>
-          <p className="mt-2 font-mono text-[10px] leading-tight text-chuck-mute">
-            because coffee, and because hacker.
-          </p>
-        </div>
+        </Link>
       </div>
     </aside>
   );

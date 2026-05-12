@@ -76,4 +76,15 @@ create table if not exists chuckhub_alerts (
 );
 
 create index if not exists chuckhub_alerts_created_at_idx on chuckhub_alerts (created_at desc);
+
+create table if not exists chuckhub_activity (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid references chuckhub_accounts(id) on delete cascade,
+  kind text not null,
+  message text not null,
+  metadata jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists chuckhub_activity_account_created_idx
+  on chuckhub_activity (account_id, created_at desc);
 `;

@@ -1,181 +1,136 @@
 import { PageHeader } from "@/components/PageHeader";
-import { Panel, Stat } from "@/components/Panel";
-import { Server, Container, HardDrive, Camera, Shield, Cpu } from "lucide-react";
+import { Panel } from "@/components/Panel";
+import { NotConfigured } from "@/components/EmptyState";
+import { requireAccount } from "@/lib/auth";
+import { hasServiceToken } from "@/lib/tokens";
+import { ExternalLink } from "lucide-react";
 
-const VMS = [
-  { id: 101, name: "pve-router", node: "node-01", cpu: 12, ram: 28, status: "running" },
-  { id: 102, name: "n8n-prod", node: "node-01", cpu: 34, ram: 52, status: "running" },
-  { id: 103, name: "supabase-mirror", node: "node-02", cpu: 18, ram: 41, status: "running" },
-  { id: 204, name: "kali-lab", node: "node-02", cpu: 4, ram: 12, status: "running" },
-  { id: 205, name: "gns3-server", node: "node-02", cpu: 22, ram: 38, status: "running" },
-  { id: 301, name: "frigate", node: "node-03", cpu: 56, ram: 68, status: "running" },
-  { id: 302, name: "pi-hole", node: "node-03", cpu: 3, ram: 8, status: "running" },
-  { id: 303, name: "media-stack", node: "node-03", cpu: 14, ram: 22, status: "running" },
+export const dynamic = "force-dynamic";
+
+type LocalService = {
+  title: string;
+  description: string;
+  envKey: string;
+  baseUrlEnv: string;
+};
+
+const SERVICES: LocalService[] = [
+  {
+    title: "Proxmox",
+    description:
+      "VM/LXC inventory pulled from the Proxmox API once a token is saved.",
+    envKey: "PROXMOX_TOKEN_SECRET",
+    baseUrlEnv: "PROXMOX_BASE_URL",
+  },
+  {
+    title: "Portainer / Docker",
+    description: "Containers and stacks across nodes via the Portainer API.",
+    envKey: "PORTAINER_API_KEY",
+    baseUrlEnv: "PORTAINER_BASE_URL",
+  },
+  {
+    title: "Frigate NVR",
+    description: "Camera list, recent detections, and live snapshots.",
+    envKey: "FRIGATE_BASE_URL",
+    baseUrlEnv: "FRIGATE_BASE_URL",
+  },
+  {
+    title: "Pi-hole",
+    description: "DNS queries, blocked count, blocklist size via v6 API.",
+    envKey: "PIHOLE_PASSWORD",
+    baseUrlEnv: "PIHOLE_BASE_URL",
+  },
+  {
+    title: "ZimaCube",
+    description: "Disk usage and health probed over SSH.",
+    envKey: "ZIMA_SSH_HOST",
+    baseUrlEnv: "ZIMA_SSH_HOST",
+  },
 ];
 
-export default function Homelab() {
+export default async function Homelab() {
+  const account = await requireAccount();
+  const services = await Promise.all(
+    SERVICES.map(async (s) => ({
+      ...s,
+      tokenSaved: await hasServiceToken(account.id, s.envKey),
+      baseUrl: process.env[s.baseUrlEnv] ?? null,
+    }))
+  );
+
+  const connectedCount = services.filter((s) => s.tokenSaved).length;
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="// homelab"
         title="Infrastructure"
-        description="Proxmox · Docker · ZimaCube · Frigate · Pi-hole. The rack speaks fluent fan-noise."
+        description="Local services live on your network — ChuckHub needs an internet-reachable URL (Twingate / Tailscale Funnel / Cloudflare Tunnel) plus a token to pull real data."
       />
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-6">
-        <Stat label="Proxmox VMs" value="14" hint="3 nodes" glow />
-        <Stat label="LXC" value="8" />
-        <Stat label="Containers" value="42" hint="38 ↑ · 4 ⏸" glow />
-        <Stat label="NAS used" value="42 TB" hint="of 96 TB" />
-        <Stat label="Cameras" value="6" hint="Frigate" />
-        <Stat label="DNS blocked" value="12.4k" hint="today · Pi-hole" glow />
-      </div>
+      <section className="chuck-panel-hot p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-chuck-pink">
+              // status
+            </div>
+            <p className="font-mono text-xs text-chuck-mute">
+              {connectedCount === 0
+                ? "No homelab integrations configured yet. Save tokens in Settings and set the matching base-URL env vars to bring panels online."
+                : `${connectedCount} of ${services.length} homelab integrations have a token saved.`}
+            </p>
+          </div>
+        </div>
+      </section>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <Panel
-          title="Proxmox Cluster"
-          subtitle="3 nodes · qm/lxc"
-          status="ok"
-          className="xl:col-span-2"
-        >
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-chuck-line/60 text-[10px] uppercase tracking-widest text-chuck-mute">
-                <th className="py-2 font-mono font-normal">VMID</th>
-                <th className="py-2 font-mono font-normal">Name</th>
-                <th className="py-2 font-mono font-normal">Node</th>
-                <th className="py-2 font-mono font-normal">CPU</th>
-                <th className="py-2 font-mono font-normal">RAM</th>
-                <th className="py-2 font-mono font-normal">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {VMS.map((v) => (
-                <tr
-                  key={v.id}
-                  className="border-b border-chuck-line/30 font-mono text-xs hover:bg-black/30"
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {services.map((s) => (
+          <Panel
+            key={s.title}
+            title={s.title}
+            subtitle={
+              s.tokenSaved && s.baseUrl
+                ? s.baseUrl
+                : s.tokenSaved
+                ? `set ${s.baseUrlEnv}`
+                : "not connected"
+            }
+            status={s.tokenSaved && s.baseUrl ? "ok" : "idle"}
+          >
+            {!s.tokenSaved ? (
+              <NotConfigured
+                service={s.title}
+                envKey={s.envKey}
+                description={s.description}
+              />
+            ) : !s.baseUrl ? (
+              <p className="font-mono text-xs text-chuck-mute">
+                Token saved. Set the{" "}
+                <span className="text-chuck-ink">{s.baseUrlEnv}</span> env var so
+                ChuckHub knows where to reach this service.
+              </p>
+            ) : (
+              <div className="space-y-2 font-mono text-xs">
+                <p className="text-chuck-mute">{s.description}</p>
+                <p className="text-chuck-mute">
+                  Live data fetcher for this service isn&apos;t wired yet —
+                  contributions welcome. Use the deep-link below to open the
+                  native UI in the meantime.
+                </p>
+                <a
+                  href={s.baseUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="chuck-btn"
                 >
-                  <td className="py-2.5 text-chuck-mute">{v.id}</td>
-                  <td className="py-2.5">
-                    <span className="flex items-center gap-2">
-                      <Server className="h-3.5 w-3.5 text-chuck-pink" />
-                      {v.name}
-                    </span>
-                  </td>
-                  <td className="py-2.5 text-chuck-mute">{v.node}</td>
-                  <td className="py-2.5">
-                    <BarCell value={v.cpu} />
-                  </td>
-                  <td className="py-2.5">
-                    <BarCell value={v.ram} />
-                  </td>
-                  <td className="py-2.5">
-                    <span className="chuck-chip-live">{v.status}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Panel>
-
-        <div className="space-y-4">
-          <Panel title="ZimaCube Pro" subtitle="ZimaOS · 6×16TB" status="ok">
-            <div className="flex items-center gap-3">
-              <HardDrive className="h-8 w-8 text-chuck-pink" />
-              <div className="flex-1">
-                <div className="font-mono text-xs text-chuck-mute">
-                  42 TB / 96 TB
-                </div>
-                <div className="mt-1 h-2 overflow-hidden rounded-full bg-black">
-                  <div
-                    className="chuck-strip h-full"
-                    style={{ width: "44%" }}
-                  />
-                </div>
-                <div className="mt-2 font-mono text-[10px] text-chuck-mute">
-                  RAIDZ2 · all disks healthy
-                </div>
+                  <ExternalLink className="h-3.5 w-3.5 text-chuck-pink" />
+                  Open {s.title}
+                </a>
               </div>
-            </div>
+            )}
           </Panel>
-
-          <Panel title="Frigate NVR" subtitle="6 cams · AI detection" status="live" hot>
-            <div className="grid grid-cols-3 gap-2">
-              {["front", "drive", "garage", "porch", "back", "studio"].map((c) => (
-                <div
-                  key={c}
-                  className="relative aspect-video overflow-hidden rounded-sm border border-chuck-line bg-black"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-br from-chuck-red/20 via-transparent to-chuck-orange/10" />
-                  <Camera className="absolute left-1 top-1 h-3 w-3 text-chuck-pink animate-pulseGlow" />
-                  <div className="absolute bottom-1 right-1 font-mono text-[9px] uppercase text-chuck-mute">
-                    {c}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Panel>
-
-          <Panel title="Pi-hole" subtitle="DNS sinkhole" status="ok">
-            <ul className="space-y-1 font-mono text-xs">
-              <li className="flex justify-between">
-                <span>Queries today</span>
-                <span className="chuck-glow-text">98,231</span>
-              </li>
-              <li className="flex justify-between">
-                <span>Blocked</span>
-                <span>12,430 (12.6%)</span>
-              </li>
-              <li className="flex justify-between">
-                <span>Blocklist</span>
-                <span className="text-chuck-mute">138,452 entries</span>
-              </li>
-            </ul>
-          </Panel>
-        </div>
+        ))}
       </div>
-
-      <Panel title="Docker / Portainer" subtitle="42 containers across nodes" status="ok">
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-6">
-          {[
-            "traefik", "portainer", "n8n", "supabase", "homepage", "frigate",
-            "pihole", "uptime-kuma", "watchtower", "vaultwarden", "code-server",
-            "grafana", "prometheus", "loki", "speedtest", "qbittorrent",
-            "sonarr", "radarr", "ollama", "open-webui", "homeassistant",
-            "esphome", "zigbee2mqtt", "mosquitto",
-          ].map((c) => (
-            <div
-              key={c}
-              className="flex items-center gap-2 rounded-sm border border-chuck-line/60 bg-black/30 px-2 py-1.5"
-            >
-              <Container className="h-3 w-3 text-chuck-pink" />
-              <span className="font-mono text-[11px]">{c}</span>
-              <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            </div>
-          ))}
-        </div>
-      </Panel>
-    </div>
-  );
-}
-
-function BarCell({ value }: { value: number }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-black">
-        <div
-          className="h-full"
-          style={{
-            width: `${value}%`,
-            background:
-              value > 70
-                ? "linear-gradient(90deg,#ff2d4a,#ff7a2d)"
-                : "linear-gradient(90deg,#5577ff,#ff5577)",
-            boxShadow: value > 70 ? "0 0 8px rgba(255,51,85,0.7)" : undefined,
-          }}
-        />
-      </div>
-      <span className="w-8 text-right text-chuck-mute">{value}%</span>
     </div>
   );
 }

@@ -1,107 +1,223 @@
 import { PageHeader } from "@/components/PageHeader";
 import { Panel, Stat } from "@/components/Panel";
-import { Cloud, Network, Lock, ArrowRightLeft } from "lucide-react";
+import { NotConfigured, IntegrationError } from "@/components/EmptyState";
+import { requireAccount } from "@/lib/auth";
+import { hasServiceToken } from "@/lib/tokens";
+import { getCloudflareOverview } from "@/lib/integrations/cloudflare";
+import { getTailscaleOverview } from "@/lib/integrations/tailscale";
+import { Cloud } from "lucide-react";
 
-export default function Networking() {
+export const dynamic = "force-dynamic";
+
+export default async function Networking() {
+  const account = await requireAccount();
+
+  const hasCf = await hasServiceToken(account.id, "CLOUDFLARE_API_TOKEN");
+  const hasTs = await hasServiceToken(account.id, "TAILSCALE_API_KEY");
+  const hasTw = await hasServiceToken(account.id, "TWINGATE_API_KEY");
+
+  let cf = null,
+    cfErr: string | null = null;
+  if (hasCf) {
+    try {
+      cf = await getCloudflareOverview(account.id);
+    } catch (e) {
+      cfErr = (e as Error).message;
+    }
+  }
+
+  let ts = null,
+    tsErr: string | null = null;
+  if (hasTs) {
+    try {
+      ts = await getTailscaleOverview(account.id);
+    } catch (e) {
+      tsErr = (e as Error).message;
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="// edge & overlay"
         title="Networking"
-        description="Twingate · Tailscale · Cloudflare · Traefik. Zero-trust tunnels and reverse proxies."
+        description="Live Cloudflare zones/tunnels and Tailscale devices via official APIs. Twingate UI wraps their dashboard."
       />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Stat label="Twingate peers" value="11 / 11" glow />
-        <Stat label="Tailscale" value="23" hint="devices online" />
-        <Stat label="CF tunnels" value="7" hint="all healthy" glow />
-        <Stat label="Traefik routers" value="34" />
+        <Stat
+          label="CF zones"
+          value={cf ? cf.zones.length : "—"}
+          hint={cf ? "all accounts" : "not connected"}
+          glow={!!cf}
+        />
+        <Stat
+          label="CF tunnels"
+          value={cf ? cf.tunnels.length : "—"}
+          hint={
+            cf
+              ? process.env.CLOUDFLARE_ACCOUNT_ID
+                ? "via account"
+                : "set CLOUDFLARE_ACCOUNT_ID"
+              : "not connected"
+          }
+        />
+        <Stat
+          label="Tailscale devices"
+          value={ts ? ts.devices.length : "—"}
+          hint={
+            ts ? `${ts.devices.filter((d) => d.online).length} online` : "not connected"
+          }
+          glow={!!ts}
+        />
+        <Stat
+          label="Twingate"
+          value={hasTw ? "connected" : "—"}
+          hint={hasTw ? "open admin →" : "not connected"}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Panel title="Twingate" subtitle="zero-trust · sponsor" status="ok" hot>
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-sm border border-chuck-red/40 bg-black shadow-glowSoft">
-              <Lock className="h-5 w-5 text-chuck-pink" />
-            </div>
-            <div className="flex-1">
-              <p className="font-mono text-xs text-chuck-mute">
-                Remote network access without VPN headaches. 4 resources mapped:
-              </p>
-              <ul className="mt-2 space-y-1 font-mono text-xs">
-                <li className="flex justify-between"><span>homelab.internal</span><span className="chuck-glow-text">↑</span></li>
-                <li className="flex justify-between"><span>nas.internal</span><span className="chuck-glow-text">↑</span></li>
-                <li className="flex justify-between"><span>kali-lab.internal</span><span className="chuck-glow-text">↑</span></li>
-                <li className="flex justify-between"><span>frigate.internal</span><span className="chuck-glow-text">↑</span></li>
-              </ul>
-            </div>
-          </div>
-        </Panel>
-
-        <Panel title="Tailscale" subtitle="mesh · funnel" status="ok">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-chuck-line/60 text-[10px] uppercase tracking-widest text-chuck-mute">
-                <th className="py-2 font-mono font-normal">Device</th>
-                <th className="py-2 font-mono font-normal">IP</th>
-                <th className="py-2 font-mono font-normal">OS</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                ["studio-mac", "100.64.0.2", "darwin"],
-                ["vps-01", "100.64.0.3", "linux"],
-                ["vps-02", "100.64.0.4", "linux"],
-                ["zimacube", "100.64.0.5", "zimaos"],
-                ["pixel-9", "100.64.0.7", "android"],
-                ["iphone", "100.64.0.8", "ios"],
-              ].map(([d, ip, os]) => (
-                <tr key={d} className="border-b border-chuck-line/30 font-mono text-xs">
-                  <td className="py-2">{d}</td>
-                  <td className="py-2 text-chuck-mute">{ip}</td>
-                  <td className="py-2 text-chuck-mute">{os}</td>
-                </tr>
+        <Panel
+          title="Cloudflare — Zones"
+          subtitle={cf ? `${cf.zones.length} visible` : "not connected"}
+          status={cf ? "ok" : "idle"}
+        >
+          {!hasCf ? (
+            <NotConfigured
+              service="Cloudflare"
+              envKey="CLOUDFLARE_API_TOKEN"
+            />
+          ) : cfErr ? (
+            <IntegrationError service="Cloudflare" error={cfErr} />
+          ) : !cf || cf.zones.length === 0 ? (
+            <p className="font-mono text-xs text-chuck-mute">
+              No zones returned for this token.
+            </p>
+          ) : (
+            <ul className="space-y-2 font-mono text-xs">
+              {cf.zones.map((z) => (
+                <li
+                  key={z.id}
+                  className="flex items-center justify-between rounded-sm border border-chuck-line/60 bg-black/30 px-3 py-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <Cloud className="h-3.5 w-3.5 text-chuck-pink" />
+                    <span>{z.name}</span>
+                  </div>
+                  <span className="text-chuck-mute">{z.plan.name}</span>
+                  <span
+                    className={
+                      z.status === "active"
+                        ? "chuck-chip text-emerald-300 border-emerald-400/40"
+                        : "chuck-chip"
+                    }
+                  >
+                    {z.status}
+                  </span>
+                </li>
               ))}
-            </tbody>
-          </table>
+            </ul>
+          )}
         </Panel>
 
-        <Panel title="Cloudflare" subtitle="DNS · tunnels · zones" status="ok">
-          <ul className="space-y-2 font-mono text-xs">
-            {[
-              ["networkchuck.dev", "92 records", "Tunnel ↑"],
-              ["chuckhub.app", "12 records", "Tunnel ↑"],
-              ["chuck.coffee", "4 records", "Tunnel ↑"],
-            ].map(([zone, recs, tun]) => (
-              <li key={zone as string} className="flex items-center justify-between rounded-sm border border-chuck-line/60 bg-black/30 px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <Cloud className="h-3.5 w-3.5 text-chuck-pink" />
-                  <span>{zone}</span>
-                </div>
-                <span className="text-chuck-mute">{recs}</span>
-                <span className="chuck-chip-live">{tun}</span>
-              </li>
-            ))}
-          </ul>
+        <Panel
+          title="Cloudflare — Tunnels"
+          subtitle={cf ? `${cf.tunnels.length} found` : "not connected"}
+          status={cf && cf.tunnels.length > 0 ? "ok" : "idle"}
+        >
+          {!hasCf ? (
+            <NotConfigured
+              service="Cloudflare"
+              envKey="CLOUDFLARE_API_TOKEN"
+            />
+          ) : !process.env.CLOUDFLARE_ACCOUNT_ID ? (
+            <p className="font-mono text-xs text-chuck-mute">
+              Set <span className="text-chuck-ink">CLOUDFLARE_ACCOUNT_ID</span>{" "}
+              env var to fetch tunnels.
+            </p>
+          ) : !cf || cf.tunnels.length === 0 ? (
+            <p className="font-mono text-xs text-chuck-mute">No tunnels.</p>
+          ) : (
+            <ul className="space-y-2 font-mono text-xs">
+              {cf.tunnels.map((t) => (
+                <li
+                  key={t.id}
+                  className="flex items-center justify-between rounded-sm border border-chuck-line/60 bg-black/30 px-3 py-2"
+                >
+                  <span>{t.name}</span>
+                  <span
+                    className={
+                      t.status === "healthy"
+                        ? "chuck-chip text-emerald-300 border-emerald-400/40"
+                        : "chuck-chip"
+                    }
+                  >
+                    {t.status}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </Panel>
 
-        <Panel title="Traefik" subtitle="reverse proxy · 34 routers" status="ok">
-          <div className="space-y-1.5 font-mono text-xs">
-            {[
-              "n8n.chuck.dev → n8n-prod:5678",
-              "portainer.chuck.dev → portainer:9000",
-              "supabase.chuck.dev → supabase-mirror:8000",
-              "frigate.chuck.dev → frigate:5000",
-              "code.chuck.dev → code-server:8443",
-              "hub.chuck.dev → chuckhub:3000",
-            ].map((r) => (
-              <div key={r} className="flex items-center gap-2 rounded-sm border border-chuck-line/60 bg-black/30 px-3 py-1.5">
-                <ArrowRightLeft className="h-3 w-3 text-chuck-pink" />
-                <span>{r}</span>
-                <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              </div>
-            ))}
-          </div>
+        <Panel
+          title="Tailscale"
+          subtitle={ts ? `tailnet: ${ts.tailnet}` : "not connected"}
+          status={ts ? "ok" : "idle"}
+          className="lg:col-span-2"
+        >
+          {!hasTs ? (
+            <NotConfigured
+              service="Tailscale"
+              envKey="TAILSCALE_API_KEY"
+              description="Set TAILSCALE_API_KEY (vault) and TAILSCALE_TAILNET (env)."
+            />
+          ) : tsErr ? (
+            <IntegrationError service="Tailscale" error={tsErr} />
+          ) : !ts || ts.devices.length === 0 ? (
+            <p className="font-mono text-xs text-chuck-mute">No devices.</p>
+          ) : (
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-chuck-line/60 text-[10px] uppercase tracking-widest text-chuck-mute">
+                  <th className="py-2 font-mono font-normal">Device</th>
+                  <th className="py-2 font-mono font-normal">OS</th>
+                  <th className="py-2 font-mono font-normal">IP</th>
+                  <th className="py-2 font-mono font-normal">Last seen</th>
+                  <th className="py-2 font-mono font-normal">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ts.devices.map((d) => (
+                  <tr
+                    key={d.id}
+                    className="border-b border-chuck-line/30 font-mono text-xs"
+                  >
+                    <td className="py-2">{d.hostname}</td>
+                    <td className="py-2 text-chuck-mute">{d.os}</td>
+                    <td className="py-2 text-chuck-mute">
+                      {d.addresses[0] ?? "—"}
+                    </td>
+                    <td className="py-2 text-chuck-mute">
+                      {new Date(d.lastSeen).toLocaleString()}
+                    </td>
+                    <td className="py-2">
+                      <span
+                        className={
+                          d.online
+                            ? "chuck-chip text-emerald-300 border-emerald-400/40"
+                            : "chuck-chip"
+                        }
+                      >
+                        {d.online ? "online" : "offline"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </Panel>
       </div>
     </div>

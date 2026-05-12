@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { ensureSchema, getCurrentAccount } from "@/lib/auth";
 import { decryptSecret, encryptSecret, maskSecret } from "@/lib/crypto";
+import { logActivity } from "@/lib/activity";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +76,7 @@ export async function POST(req: NextRequest) {
      do update set ciphertext = excluded.ciphertext, iv = excluded.iv, created_at = now()`,
     [account.id, service, keyName, enc.ciphertext, enc.iv]
   );
+  await logActivity(account.id, "token.saved", `Saved ${service} token (${keyName})`);
 
   return NextResponse.json({
     ok: true,
@@ -95,5 +97,6 @@ export async function DELETE(req: NextRequest) {
     `delete from chuckhub_service_tokens where account_id = $1 and key_name = $2`,
     [account.id, keyName]
   );
+  await logActivity(account.id, "token.deleted", `Removed token (${keyName})`);
   return NextResponse.json({ ok: true });
 }

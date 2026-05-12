@@ -1,76 +1,144 @@
+import Image from "next/image";
 import { PageHeader } from "@/components/PageHeader";
 import { Panel, Stat } from "@/components/Panel";
-import { Youtube, GraduationCap, MessageCircle, ThumbsUp, Eye } from "lucide-react";
+import { NotConfigured, IntegrationError } from "@/components/EmptyState";
+import { requireAccount } from "@/lib/auth";
+import { hasServiceToken } from "@/lib/tokens";
+import { getYouTubeOverview } from "@/lib/integrations/youtube";
+import { ExternalLink, Youtube } from "lucide-react";
 
-export default function Content() {
+export const dynamic = "force-dynamic";
+
+function relTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const d = Math.floor(diff / 86_400_000);
+  if (d < 1) return "today";
+  if (d === 1) return "yesterday";
+  if (d < 30) return `${d}d ago`;
+  if (d < 365) return `${Math.floor(d / 30)}mo ago`;
+  return `${Math.floor(d / 365)}y ago`;
+}
+
+export default async function Content() {
+  const account = await requireAccount();
+
+  const hasKey = await hasServiceToken(account.id, "YOUTUBE_API_KEY");
+  const channelId = process.env.YOUTUBE_CHANNEL_ID;
+
+  let yt = null,
+    ytError: string | null = null;
+  if (hasKey && channelId) {
+    try {
+      yt = await getYouTubeOverview(account.id);
+    } catch (e) {
+      ytError = (e as Error).message;
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="// content stack"
-        title="Content & Academy"
-        description="YouTube performance, Academy enrollments, social pulse — all in one place."
+        eyebrow="// content"
+        title="Content Stack"
+        description="Live YouTube channel data via the Data API v3. Add YOUTUBE_API_KEY and YOUTUBE_CHANNEL_ID to populate."
       />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Stat label="Subscribers" value="3.9M" hint="+12k this week" glow />
-        <Stat label="Views (7d)" value="2.1M" hint="across 4 videos" />
-        <Stat label="Academy active" value="14,302" hint="paid seats" glow />
-        <Stat label="Comments (7d)" value="8,142" />
+        <Stat
+          label="Subscribers"
+          value={yt ? Number(yt.channel.subscriberCount).toLocaleString() : "—"}
+          hint={yt ? yt.channel.title : "YouTube not connected"}
+          glow={!!yt}
+        />
+        <Stat
+          label="Total views"
+          value={yt ? Number(yt.channel.viewCount).toLocaleString() : "—"}
+        />
+        <Stat
+          label="Videos published"
+          value={yt ? Number(yt.channel.videoCount).toLocaleString() : "—"}
+          glow={!!yt}
+        />
+        <Stat
+          label="Recent fetched"
+          value={yt ? yt.recent.length : "—"}
+          hint="uploads playlist"
+        />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Panel title="YouTube — Latest Videos" subtitle="last 4 uploads" status="ok" hot>
-          <ul className="space-y-3">
-            {[
-              ["I built an AI sysadmin (and it works)", "412k", "28k", "1.2k"],
-              ["Hack the NETWORK (legally!)", "289k", "19k", "842"],
-              ["Proxmox is BACK — and it's incredible", "654k", "44k", "2.1k"],
-              ["Self-host EVERYTHING (2026 stack)", "722k", "51k", "3.4k"],
-            ].map(([title, views, likes, comments]) => (
+      <Panel
+        title="YouTube — recent uploads"
+        subtitle={yt ? yt.channel.title : "not connected"}
+        status={yt ? "ok" : "idle"}
+        hot={!!yt}
+      >
+        {!hasKey ? (
+          <NotConfigured
+            service="YouTube"
+            envKey="YOUTUBE_API_KEY"
+            description="Create a YouTube Data API v3 key at console.cloud.google.com, save it here, and set the YOUTUBE_CHANNEL_ID env var."
+          />
+        ) : !channelId ? (
+          <NotConfigured
+            service="YouTube"
+            envKey="YOUTUBE_CHANNEL_ID"
+            description="YOUTUBE_API_KEY is saved, but YOUTUBE_CHANNEL_ID env var is missing — set it in Vercel."
+          />
+        ) : ytError ? (
+          <IntegrationError service="YouTube" error={ytError} />
+        ) : !yt || yt.recent.length === 0 ? (
+          <p className="font-mono text-xs text-chuck-mute">
+            No uploads returned.
+          </p>
+        ) : (
+          <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {yt.recent.map((v) => (
               <li
-                key={title as string}
-                className="flex items-center gap-3 rounded-sm border border-chuck-line/60 bg-black/30 p-3"
+                key={v.id}
+                className="flex items-start gap-3 rounded-sm border border-chuck-line/60 bg-black/30 p-3"
               >
-                <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded-sm border border-chuck-red/40 bg-gradient-to-br from-chuck-red/20 to-chuck-orange/10">
-                  <Youtube className="h-5 w-5 text-chuck-pink" />
-                </div>
+                <a
+                  href={v.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="relative h-16 w-28 shrink-0 overflow-hidden rounded-sm border border-chuck-line"
+                >
+                  <Image
+                    src={v.thumbnail}
+                    alt=""
+                    fill
+                    sizes="112px"
+                    className="object-cover"
+                    unoptimized
+                  />
+                </a>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-mono text-xs text-chuck-ink">{title}</div>
-                  <div className="mt-1 flex gap-3 font-mono text-[10px] text-chuck-mute">
-                    <span className="flex items-center gap-1"><Eye className="h-3 w-3" />{views}</span>
-                    <span className="flex items-center gap-1"><ThumbsUp className="h-3 w-3" />{likes}</span>
-                    <span className="flex items-center gap-1"><MessageCircle className="h-3 w-3" />{comments}</span>
+                  <a
+                    href={v.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="line-clamp-2 font-mono text-xs text-chuck-ink hover:text-chuck-pink"
+                  >
+                    {v.title}
+                  </a>
+                  <div className="mt-1 flex items-center gap-2 font-mono text-[10px] text-chuck-mute">
+                    <Youtube className="h-3 w-3" />
+                    {relTime(v.publishedAt)}
+                    <a
+                      href={v.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="ml-auto inline-flex items-center gap-1 hover:text-chuck-pink"
+                    >
+                      Open <ExternalLink className="h-3 w-3" />
+                    </a>
                   </div>
                 </div>
               </li>
             ))}
           </ul>
-        </Panel>
-
-        <Panel title="NetworkChuck Academy" subtitle="LMS · 14k active learners" status="ok">
-          <ul className="space-y-2 font-mono text-xs">
-            {[
-              ["Linux for Hackers", 4128, "+82"],
-              ["Python for Network Engineers", 3214, "+44"],
-              ["Self-Hosting Mastery", 2980, "+71"],
-              ["Cisco CCNA Path", 2104, "+19"],
-              ["AI for SysAdmins", 1876, "+128"],
-            ].map(([course, learners, delta]) => (
-              <li
-                key={course as string}
-                className="flex items-center justify-between rounded-sm border border-chuck-line/60 bg-black/30 px-3 py-2"
-              >
-                <span className="flex items-center gap-2">
-                  <GraduationCap className="h-3.5 w-3.5 text-chuck-pink" />
-                  {course}
-                </span>
-                <span className="text-chuck-mute">{learners.toLocaleString()} learners</span>
-                <span className="chuck-glow-text">{delta}</span>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      </div>
+        )}
+      </Panel>
     </div>
   );
 }

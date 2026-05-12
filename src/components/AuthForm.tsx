@@ -47,7 +47,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
             type="text"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="chuck"
+            placeholder="your display name"
             autoComplete="nickname"
             className="mt-1 w-full rounded-sm border border-chuck-line bg-black/60 px-3 py-2 font-mono text-sm text-chuck-ink outline-none focus:border-chuck-red/60 focus:shadow-glowSoft"
           />
@@ -63,7 +63,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           autoComplete="email"
-          placeholder="chuck@chuck.dev"
+          placeholder="you@example.com"
           className="mt-1 w-full rounded-sm border border-chuck-line bg-black/60 px-3 py-2 font-mono text-sm text-chuck-ink outline-none focus:border-chuck-red/60 focus:shadow-glowSoft"
         />
       </label>

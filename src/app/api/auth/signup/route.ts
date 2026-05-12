@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAccount, findAccountByEmail, setSessionCookie } from "@/lib/auth";
+import { logActivity } from "@/lib/activity";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest) {
       displayName: body.displayName,
     });
     await setSessionCookie(account.id);
+    await logActivity(account.id, "account.created", `Account created for ${account.email}`);
     return NextResponse.json({ account });
   } catch (e) {
     return NextResponse.json(

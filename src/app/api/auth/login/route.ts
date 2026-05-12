@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { findAccountByEmail, setSessionCookie, verifyPassword } from "@/lib/auth";
+import { logActivity } from "@/lib/activity";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ export async function POST(req: NextRequest) {
   }
 
   await setSessionCookie(account.id);
+  await logActivity(account.id, "session.login", "Signed in");
   return NextResponse.json({
     account: {
       id: account.id,

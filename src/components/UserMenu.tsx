@@ -52,8 +52,8 @@ export function UserMenu({ account }: { account: Account }) {
         </div>
         <div className="hidden flex-col leading-none md:flex">
           <span className="font-mono text-[11px] text-chuck-ink">{name}</span>
-          <span className="font-mono text-[9px] uppercase tracking-widest text-chuck-mute">
-            root@hub
+          <span className="truncate font-mono text-[9px] uppercase tracking-widest text-chuck-mute">
+            {account.email}
           </span>
         </div>
         <ChevronDown className="hidden h-3.5 w-3.5 text-chuck-mute md:block" />
