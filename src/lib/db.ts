@@ -35,8 +35,11 @@ create table if not exists chuckhub_accounts (
   email text unique not null,
   display_name text,
   avatar_url text,
+  password_hash text,
   created_at timestamptz not null default now()
 );
+-- backfill for older deployments that pre-date password_hash
+alter table chuckhub_accounts add column if not exists password_hash text;
 
 create table if not exists chuckhub_sessions (
   id uuid primary key default gen_random_uuid(),

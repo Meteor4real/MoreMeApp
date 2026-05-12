@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV } from "@/lib/nav";
-import { Coffee } from "lucide-react";
+import { Logo } from "@/components/Logo";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -21,10 +21,8 @@ export function Sidebar() {
         href="/"
         className="group flex items-center gap-3 border-b border-chuck-line px-5 py-4"
       >
-        <div className="relative">
-          <div className="flex h-9 w-9 items-center justify-center rounded-sm border border-chuck-red/60 bg-black shadow-glow">
-            <Coffee className="h-5 w-5 text-chuck-red animate-pulseGlow" strokeWidth={2.5} />
-          </div>
+        <div className="relative animate-pulseGlow">
+          <Logo size={36} className="rounded-sm shadow-glow" />
         </div>
         <div className="flex flex-col leading-none">
           <span className="font-display text-base font-bold tracking-tight">

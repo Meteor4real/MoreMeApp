@@ -18,10 +18,31 @@ glowing-red control panel.
 - `/content` — YouTube + NetworkChuck Academy
 - `/settings` — API token vault, layout preferences
 
+## Auth
+
+ChuckHub ships with built-in Postgres-backed auth — no third party required.
+
+- `POST /api/auth/signup` — email + password (bcrypt, cost 12)
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET  /api/auth/me`
+
+Sessions are JWTs (HS256, signed with `CHUCKHUB_SECRET`) stored in an
+httpOnly cookie. Every route except `/login` and `/signup` is gated by
+middleware (`middleware.ts`) and by the dashboard layout server check.
+
+## Token vault
+
+`/settings` lets you persist API tokens encrypted at rest in Postgres using
+AES-256-GCM (key derived from `CHUCKHUB_SECRET` via scrypt). Listed tokens
+display only a masked preview; the plaintext never leaves the server after
+write.
+
 ## API surface
 
-- `GET /api/health` — connectivity + env probe
+- `GET  /api/health` — connectivity + env probe (fed into the top-bar status pills)
 - `POST /api/init` — apply Postgres schema (accounts, sessions, tokens, layout, alerts)
+- `GET  /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens?keyName=…`
 
 ## Stack
 
@@ -43,9 +64,11 @@ Open http://localhost:3000.
 
 ## Required env vars
 
-Already configured per setup:
+Required:
 
-- `POSTGRES_URL`
+- `POSTGRES_URL` — already configured per setup
+- `CHUCKHUB_SECRET` — random 32+ char string (`openssl rand -hex 32`). Signs
+  session JWTs and derives the AES key for the token vault.
 
 Add these in Vercel → Project → Environment Variables as you wire each service.
 None are required to render the UI — panels show representative data until
