@@ -24,25 +24,28 @@ export async function GET() {
          from chuckhub_service_tokens where account_id = $1`,
       [account.id]
     );
-    const tokens = rows.map((r) => {
-      try {
-        return {
-          service: r.service,
-          key_name: r.key_name,
-          masked: maskSecret(decryptSecret(r.ciphertext, r.iv)),
-          decrypt_error: false as const,
-          created_at: r.created_at,
-        };
-      } catch {
-        return {
-          service: r.service,
-          key_name: r.key_name,
-          masked: "•••• unreadable",
-          decrypt_error: true as const,
-          created_at: r.created_at,
-        };
-      }
-    });
+    const tokens = await Promise.all(
+      rows.map(async (r) => {
+        try {
+          const plain = await decryptSecret(r.ciphertext, r.iv);
+          return {
+            service: r.service,
+            key_name: r.key_name,
+            masked: maskSecret(plain),
+            decrypt_error: false as const,
+            created_at: r.created_at,
+          };
+        } catch {
+          return {
+            service: r.service,
+            key_name: r.key_name,
+            masked: "•••• unreadable",
+            decrypt_error: true as const,
+            created_at: r.created_at,
+          };
+        }
+      })
+    );
     return NextResponse.json({ tokens });
   } catch (e) {
     console.error("GET /api/tokens failed:", e);
@@ -76,9 +79,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "token too long" }, { status: 400 });
     }
 
-    let enc: ReturnType<typeof encryptSecret>;
+    let enc: { ciphertext: string; iv: string };
     try {
-      enc = encryptSecret(value);
+      enc = await encryptSecret(value);
     } catch (e) {
       return NextResponse.json({ error: (e as Error).message }, { status: 500 });
     }

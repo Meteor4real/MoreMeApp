@@ -108,4 +108,12 @@ create table if not exists chuckhub_activity (
 );
 create index if not exists chuckhub_activity_account_created_idx
   on chuckhub_activity (account_id, created_at desc);
+
+-- Persistent application metadata, including an auto-generated signing
+-- secret used when CHUCKHUB_SECRET env var is not provided.
+create table if not exists chuckhub_meta (
+  key text primary key,
+  value text not null,
+  created_at timestamptz not null default now()
+);
 `;

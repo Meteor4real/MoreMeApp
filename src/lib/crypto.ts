@@ -1,20 +1,14 @@
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "crypto";
+import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+import { loadCipherKey } from "@/lib/secret";
 
 const ALGO = "aes-256-gcm";
 
-function key(): Buffer {
-  const secret = process.env.CHUCKHUB_SECRET || process.env.AUTH_SECRET;
-  if (!secret || secret.length < 16) {
-    throw new Error(
-      "CHUCKHUB_SECRET (or AUTH_SECRET) must be set to a string of at least 16 chars."
-    );
-  }
-  return scryptSync(secret, "chuckhub-salt-v1", 32);
-}
-
-export function encryptSecret(plain: string): { ciphertext: string; iv: string } {
+export async function encryptSecret(
+  plain: string
+): Promise<{ ciphertext: string; iv: string }> {
+  const key = await loadCipherKey();
   const iv = randomBytes(12);
-  const cipher = createCipheriv(ALGO, key(), iv);
+  const cipher = createCipheriv(ALGO, key, iv);
   const enc = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return {
@@ -23,12 +17,16 @@ export function encryptSecret(plain: string): { ciphertext: string; iv: string }
   };
 }
 
-export function decryptSecret(ciphertext: string, ivB64: string): string {
+export async function decryptSecret(
+  ciphertext: string,
+  ivB64: string
+): Promise<string> {
+  const key = await loadCipherKey();
   const data = Buffer.from(ciphertext, "base64");
   const iv = Buffer.from(ivB64, "base64");
   const tag = data.subarray(data.length - 16);
   const enc = data.subarray(0, data.length - 16);
-  const decipher = createDecipheriv(ALGO, key(), iv);
+  const decipher = createDecipheriv(ALGO, key, iv);
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(enc), decipher.final()]).toString("utf8");
 }

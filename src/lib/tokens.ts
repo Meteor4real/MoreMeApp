@@ -24,7 +24,7 @@ export async function getServiceToken(
   const r = rows[0];
   if (!r) return null;
   try {
-    return decryptSecret(r.ciphertext, r.iv);
+    return await decryptSecret(r.ciphertext, r.iv);
   } catch {
     return null;
   }

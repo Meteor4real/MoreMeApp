@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 import { pool, query, SCHEMA_SQL } from "@/lib/db";
+import { loadSigningKey } from "@/lib/secret";
 
 export const SESSION_COOKIE = "chuckhub_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 14;
@@ -34,14 +35,10 @@ export type Account = {
 
 type AccountRow = Account & { password_hash: string | null };
 
-function secret(): Uint8Array {
-  const s = process.env.CHUCKHUB_SECRET || process.env.AUTH_SECRET;
-  if (!s || s.length < 16) {
-    throw new Error(
-      "CHUCKHUB_SECRET (or AUTH_SECRET) must be set to a string of at least 16 chars."
-    );
-  }
-  return new TextEncoder().encode(s);
+// Secret resolution moved to @/lib/secret which adds a Postgres fallback
+// when no env var is set. Kept the same return type for call sites below.
+async function secret(): Promise<Uint8Array> {
+  return loadSigningKey();
 }
 
 let schemaReady: Promise<void> | null = null;
@@ -113,16 +110,18 @@ function stripHash(row: AccountRow): Account {
 }
 
 export async function signSessionToken(accountId: string): Promise<string> {
+  const key = await secret();
   return new SignJWT({ sub: accountId })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
-    .sign(secret());
+    .sign(key);
 }
 
 export async function verifySessionToken(token: string): Promise<string | null> {
   try {
-    const { payload } = await jwtVerify(token, secret());
+    const key = await secret();
+    const { payload } = await jwtVerify(token, key);
     return typeof payload.sub === "string" ? payload.sub : null;
   } catch {
     return null;

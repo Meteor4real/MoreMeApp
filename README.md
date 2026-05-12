@@ -67,8 +67,15 @@ Open http://localhost:3000.
 Required:
 
 - `POSTGRES_URL` — already configured per setup
+
+Optional:
+
 - `CHUCKHUB_SECRET` — random 32+ char string (`openssl rand -hex 32`). Signs
-  session JWTs and derives the AES key for the token vault.
+  session JWTs and derives the AES key for the token vault. If unset,
+  ChuckHub auto-generates a value on first run and persists it in
+  `chuckhub_meta.session_secret`.
+- `CHUCKHUB_MASTER_CODE` — overrides the default account-recovery master
+  code (`2089`) used by the "Locked out?" form on `/login`.
 
 Add these in Vercel → Project → Environment Variables as you wire each service.
 None are required to render the UI — panels show representative data until
