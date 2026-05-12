@@ -5,6 +5,10 @@ type Props = {
 };
 
 export function Logo({ size = 36, className, glow = true }: Props) {
+  // Match the painted rx=12 corner on the inner <rect>; the CSS border-radius
+  // is what shadow-glow follows, so this keeps the halo aligned with the
+  // visible rounded-square outline of the logo at any size.
+  const radius = (size * 12) / 64;
   return (
     <svg
       width={size}
@@ -13,6 +17,7 @@ export function Logo({ size = 36, className, glow = true }: Props) {
       role="img"
       aria-label="ChuckHub logo"
       className={className}
+      style={{ borderRadius: radius }}
     >
       <defs>
         <linearGradient id="chk-g" x1="0" y1="0" x2="1" y2="1">

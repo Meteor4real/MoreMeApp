@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { KeyRound, Loader2, Save, Trash2, Check } from "lucide-react";
+import { HelpPopover } from "@/components/HelpPopover";
 
 type Service = {
   key: string;
@@ -165,6 +166,7 @@ export function TokenVault({
                   <Trash2 className="h-3.5 w-3.5 text-chuck-pink" />
                 </button>
               )}
+              <HelpPopover envKey={s.key} />
             </div>
           );
         })}
