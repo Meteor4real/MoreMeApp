@@ -40,10 +40,17 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (e) {
+    const message = (e as Error).message || "login failed";
+    if (/EMAXCONNSESSION|max clients reached/i.test(message)) {
+      return NextResponse.json(
+        {
+          error:
+            "Database connection pool exhausted. Switch your POSTGRES_URL to the Supabase transaction-mode pooler (port 6543) — see README.",
+        },
+        { status: 503 }
+      );
+    }
     console.error("login failed:", e);
-    return NextResponse.json(
-      { error: (e as Error).message || "login failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

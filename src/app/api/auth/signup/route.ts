@@ -69,6 +69,15 @@ export async function POST(req: NextRequest) {
     if (/duplicate key|unique/i.test(message)) {
       return NextResponse.json({ error: "account already exists" }, { status: 409 });
     }
+    if (/EMAXCONNSESSION|max clients reached/i.test(message)) {
+      return NextResponse.json(
+        {
+          error:
+            "Database connection pool exhausted. Switch your POSTGRES_URL to the Supabase transaction-mode pooler (port 6543) — see README.",
+        },
+        { status: 503 }
+      );
+    }
     console.error("signup failed:", e);
     return NextResponse.json({ error: message }, { status: 500 });
   }

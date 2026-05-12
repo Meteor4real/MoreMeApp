@@ -66,7 +66,13 @@ Open http://localhost:3000.
 
 Required:
 
-- `POSTGRES_URL` — already configured per setup
+- `POSTGRES_URL` — **prefer the transaction-mode pooler URL** when using
+  Supabase. The session-mode pooler (port `5432` on `*.pooler.supabase.com`)
+  is capped at 15 simultaneous clients and will throw `EMAXCONNSESSION`
+  under serverless load. The transaction-mode pooler runs on port `6543`
+  and scales fine. ChuckHub will warn in logs if it detects session mode.
+  If your Vercel Supabase integration set `POSTGRES_PRISMA_URL`, ChuckHub
+  automatically prefers that.
 
 Optional:
 
