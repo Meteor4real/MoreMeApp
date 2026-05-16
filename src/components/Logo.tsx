@@ -3,10 +3,8 @@ type Props = {
   className?: string;
   glow?: boolean;
   /**
-   * "icon"     — just the silhouette inside a rounded-square panel. Use this
-   *              wherever the asset has to be square (favicons, sidebar chip).
-   * "withText" — silhouette stacked on top of "HUB". Used for the hero on
-   *              Overview and the auth pages where the brand reads as a wordmark.
+   * "icon"     — silhouette inside a rounded-square panel (favicons, sidebar chip).
+   * "withText" — silhouette stacked on top of HUB wordmark.
    */
   variant?: "icon" | "withText";
 };
@@ -18,15 +16,14 @@ export function Logo({
   variant = "icon",
 }: Props) {
   if (variant === "withText") {
-    // Vertical wordmark: silhouette on top, HUB underneath.
-    const aspect = 100 / 130; // viewBox below
+    const aspect = 100 / 138;
     const w = size;
     const h = Math.round(size / aspect);
     return (
       <svg
         width={w}
         height={h}
-        viewBox="0 0 100 130"
+        viewBox="0 0 100 138"
         role="img"
         aria-label="ChuckHub logo"
         className={className}
@@ -35,12 +32,12 @@ export function Logo({
         <Character />
         <text
           x="50"
-          y="122"
+          y="128"
           textAnchor="middle"
           fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, monospace"
           fontWeight="900"
-          fontSize="28"
-          letterSpacing="4"
+          fontSize="30"
+          letterSpacing="6"
           fill="url(#chk-g)"
           filter={glow ? "url(#chk-glow)" : undefined}
         >
@@ -50,7 +47,6 @@ export function Logo({
     );
   }
 
-  // Square icon: silhouette inside the signature rounded panel.
   const radius = (size * 12) / 64;
   return (
     <svg
@@ -74,8 +70,8 @@ export function Logo({
         stroke="url(#chk-g)"
         strokeWidth="2"
       />
-      {/* Scale the 100x130 character into the 64x64 frame, centered. */}
-      <g transform="translate(8 6) scale(0.48 0.48)">
+      {/* Scale 100x100 character into the 64x64 frame, centered. */}
+      <g transform="translate(7 6) scale(0.50)">
         <Character />
       </g>
     </svg>
@@ -92,7 +88,7 @@ function Defs({ glow }: { glow: boolean }) {
       </linearGradient>
       {glow && (
         <filter id="chk-glow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="1.4" result="b" />
+          <feGaussianBlur stdDeviation="1.2" result="b" />
           <feMerge>
             <feMergeNode in="b" />
             <feMergeNode in="SourceGraphic" />
@@ -104,52 +100,58 @@ function Defs({ glow }: { glow: boolean }) {
 }
 
 /**
- * Inspired by the NetworkChuck silhouette: curly hair on top, eyes,
- * cupped hands at the mouth (megaphone gesture), big shield-shaped beard.
- * Lives in a 100x100 box; the surrounding wordmark variant adds the HUB
- * text below in a 100x130 viewBox.
+ * Bearded character silhouette in a 100x100 box:
+ *   - curly hair mass with sideburns coming down both sides
+ *   - sharp V-shaped eyebrows over two dot eyes (visible in the face gap)
+ *   - thick beard + mustache wrapping the lower half
+ *
+ * The face skin is the negative space between hair and beard; the panel
+ * background shows through wherever the silhouette doesn't paint.
  */
 function Character() {
   return (
-    <g filter="url(#chk-glow)">
-      {/* Curly hair — chain of bumps across the top */}
-      <g fill="url(#chk-g)">
-        <circle cx="28" cy="22" r="9" />
-        <circle cx="42" cy="14" r="10" />
-        <circle cx="58" cy="14" r="10" />
-        <circle cx="72" cy="22" r="9" />
-      </g>
-
-      {/* Head silhouette */}
-      <ellipse cx="50" cy="40" rx="22" ry="20" fill="url(#chk-g)" />
-
-      {/* Beard — shield/heart shape extending below the chin */}
+    <g fill="url(#chk-g)" filter="url(#chk-glow)">
+      {/* Hair: curly bumps across the top, sideburns down to the beard line */}
       <path
-        d="M 30 48
-           C 26 60, 30 78, 42 84
-           C 47 87, 53 87, 58 84
-           C 70 78, 74 60, 70 48
-           C 65 50, 55 52, 50 52
-           C 45 52, 35 50, 30 48 Z"
-        fill="url(#chk-g)"
+        d="
+          M 24 54
+          L 24 34
+          C 24 25, 27 20, 32 22
+          C 33 14, 41 13, 45 18
+          C 47 10, 53 10, 55 18
+          C 59 13, 67 14, 68 22
+          C 73 20, 76 25, 76 34
+          L 76 54
+          L 68 54
+          C 68 44, 62 40, 50 40
+          C 38 40, 32 44, 32 54
+          Z
+        "
       />
 
-      {/* Hands cupping the mouth — two C-curves flanking the face */}
+      {/* Beard + mustache: shield-shaped mass below the eye line */}
       <path
-        d="M 20 50 C 14 52, 12 62, 18 66 C 22 66, 26 64, 28 60 Z"
-        fill="url(#chk-g)"
-      />
-      <path
-        d="M 80 50 C 86 52, 88 62, 82 66 C 78 66, 74 64, 72 60 Z"
-        fill="url(#chk-g)"
+        d="
+          M 22 54
+          L 32 54
+          C 33 57, 40 59, 50 59
+          C 60 59, 67 57, 68 54
+          L 78 54
+          C 81 66, 81 78, 76 86
+          C 68 94, 56 96, 50 96
+          C 44 96, 32 94, 24 86
+          C 19 78, 19 66, 22 54
+          Z
+        "
       />
 
-      {/* Eyes — punched out in the panel color */}
-      <circle cx="42" cy="40" r="2.6" fill="#0a0a0c" />
-      <circle cx="58" cy="40" r="2.6" fill="#0a0a0c" />
+      {/* Eyebrows: angled inward, intense */}
+      <path d="M 33 44 L 44 40 L 44 43 L 33 47 Z" />
+      <path d="M 56 40 L 67 44 L 67 47 L 56 43 Z" />
 
-      {/* Mouth — small gap to suggest the megaphone yell */}
-      <ellipse cx="50" cy="52" rx="4.5" ry="1.6" fill="#0a0a0c" />
+      {/* Eyes: dots in the face gap */}
+      <circle cx="40" cy="50" r="2.4" />
+      <circle cx="60" cy="50" r="2.4" />
     </g>
   );
 }
