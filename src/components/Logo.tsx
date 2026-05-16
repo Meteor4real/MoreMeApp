@@ -3,8 +3,8 @@ type Props = {
   className?: string;
   glow?: boolean;
   /**
-   * "icon"     — silhouette inside a rounded-square panel (favicons, sidebar chip).
-   * "withText" — silhouette stacked on top of HUB wordmark.
+   * "icon"     — just the mark inside a rounded-square panel (favicons, sidebar chip).
+   * "withText" — mark stacked on top of HUB wordmark.
    */
   variant?: "icon" | "withText";
 };
@@ -29,7 +29,9 @@ export function Logo({
         className={className}
       >
         <Defs glow={glow} />
-        <Character />
+        <g transform="translate(18 10)">
+          <Mark />
+        </g>
         <text
           x="50"
           y="128"
@@ -70,10 +72,7 @@ export function Logo({
         stroke="url(#chk-g)"
         strokeWidth="2"
       />
-      {/* Scale 100x100 character into the 64x64 frame, centered. */}
-      <g transform="translate(7 6) scale(0.50)">
-        <Character />
-      </g>
+      <Mark />
     </svg>
   );
 }
@@ -88,7 +87,7 @@ function Defs({ glow }: { glow: boolean }) {
       </linearGradient>
       {glow && (
         <filter id="chk-glow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="1.2" result="b" />
+          <feGaussianBlur stdDeviation="1.4" result="b" />
           <feMerge>
             <feMergeNode in="b" />
             <feMergeNode in="SourceGraphic" />
@@ -100,58 +99,36 @@ function Defs({ glow }: { glow: boolean }) {
 }
 
 /**
- * Bearded character silhouette in a 100x100 box:
- *   - curly hair mass with sideburns coming down both sides
- *   - sharp V-shaped eyebrows over two dot eyes (visible in the face gap)
- *   - thick beard + mustache wrapping the lower half
- *
- * The face skin is the negative space between hair and beard; the panel
- * background shows through wherever the silhouette doesn't paint.
+ * The original ChuckHub mark: a stylized C that doubles as a power-plug
+ * socket — two prong sockets cut into the inner edge — drawn in the
+ * red/pink/orange gradient.
  */
-function Character() {
+function Mark() {
   return (
-    <g fill="url(#chk-g)" filter="url(#chk-glow)">
-      {/* Hair: curly bumps across the top, sideburns down to the beard line */}
+    <g filter="url(#chk-glow)">
       <path
-        d="
-          M 24 54
-          L 24 34
-          C 24 25, 27 20, 32 22
-          C 33 14, 41 13, 45 18
-          C 47 10, 53 10, 55 18
-          C 59 13, 67 14, 68 22
-          C 73 20, 76 25, 76 34
-          L 76 54
-          L 68 54
-          C 68 44, 62 40, 50 40
-          C 38 40, 32 44, 32 54
-          Z
-        "
+        d="M46 22 a16 16 0 1 0 0 20"
+        fill="none"
+        stroke="url(#chk-g)"
+        strokeWidth="6"
+        strokeLinecap="round"
       />
-
-      {/* Beard + mustache: shield-shaped mass below the eye line */}
-      <path
-        d="
-          M 22 54
-          L 32 54
-          C 33 57, 40 59, 50 59
-          C 60 59, 67 57, 68 54
-          L 78 54
-          C 81 66, 81 78, 76 86
-          C 68 94, 56 96, 50 96
-          C 44 96, 32 94, 24 86
-          C 19 78, 19 66, 22 54
-          Z
-        "
+      <circle
+        cx="26"
+        cy="28"
+        r="2.2"
+        fill="#0a0a0c"
+        stroke="url(#chk-g)"
+        strokeWidth="1.8"
       />
-
-      {/* Eyebrows: angled inward, intense */}
-      <path d="M 33 44 L 44 40 L 44 43 L 33 47 Z" />
-      <path d="M 56 40 L 67 44 L 67 47 L 56 43 Z" />
-
-      {/* Eyes: dots in the face gap */}
-      <circle cx="40" cy="50" r="2.4" />
-      <circle cx="60" cy="50" r="2.4" />
+      <circle
+        cx="26"
+        cy="36"
+        r="2.2"
+        fill="#0a0a0c"
+        stroke="url(#chk-g)"
+        strokeWidth="1.8"
+      />
     </g>
   );
 }

@@ -9,13 +9,12 @@ import { Layout, User } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 const SERVICES = [
-  { key: "GITHUB_TOKEN", service: "github", label: "GitHub", required: true },
-  { key: "VERCEL_TOKEN", service: "vercel", label: "Vercel", required: true },
+  { key: "GITHUB_TOKEN", service: "github", label: "GitHub" },
+  { key: "VERCEL_TOKEN", service: "vercel", label: "Vercel" },
   {
     key: "SUPABASE_ACCESS_TOKEN",
     service: "supabase",
     label: "Supabase",
-    required: true,
   },
   { key: "N8N_API_KEY", service: "n8n", label: "n8n" },
   { key: "PROXMOX_TOKEN_SECRET", service: "proxmox", label: "Proxmox" },
