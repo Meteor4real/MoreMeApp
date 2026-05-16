@@ -1,6 +1,8 @@
 import { PageHeader } from "@/components/PageHeader";
 import { Panel } from "@/components/Panel";
 import { NotConfigured } from "@/components/EmptyState";
+import { Tabs } from "@/components/Tabs";
+import { ComingSoon } from "@/components/manage/ComingSoon";
 import { requireAccount } from "@/lib/auth";
 import { hasServiceToken } from "@/lib/tokens";
 import { ExternalLink } from "lucide-react";
@@ -60,14 +62,8 @@ export default async function Homelab() {
 
   const connectedCount = services.filter((s) => s.tokenSaved).length;
 
-  return (
+  const overview = (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="// homelab"
-        title="Infrastructure"
-        description="Local services live on your network — ChuckHub needs an internet-reachable URL (Twingate / Tailscale Funnel / Cloudflare Tunnel) plus a token to pull real data."
-      />
-
       <section className="chuck-panel-hot p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -131,6 +127,84 @@ export default async function Homelab() {
           </Panel>
         ))}
       </div>
+    </div>
+  );
+
+  const manage = (
+    <div className="space-y-6">
+      <section>
+        <h3 className="mb-3 chuck-title text-xs">Proxmox</h3>
+        <ComingSoon
+          title="Proxmox manage"
+          preview={[
+            "Start / stop / migrate VMs and LXC containers",
+            "Edit hardware (vCPU, RAM, disk) on the fly",
+            "Trigger snapshots and rollbacks",
+            "View live node CPU / RAM / I/O graphs",
+          ]}
+        />
+      </section>
+      <section>
+        <h3 className="mb-3 chuck-title text-xs">Portainer / Docker</h3>
+        <ComingSoon
+          title="Portainer manage"
+          preview={[
+            "Start / stop / restart any container",
+            "Pull updated images and redeploy stacks",
+            "Tail logs in real time",
+            "Edit compose files via inline editor",
+          ]}
+        />
+      </section>
+      <section>
+        <h3 className="mb-3 chuck-title text-xs">Frigate NVR</h3>
+        <ComingSoon
+          title="Frigate manage"
+          preview={[
+            "Snapshot any camera on demand",
+            "Toggle motion / object detection per zone",
+            "Review and tag recent events",
+          ]}
+        />
+      </section>
+      <section>
+        <h3 className="mb-3 chuck-title text-xs">Pi-hole</h3>
+        <ComingSoon
+          title="Pi-hole manage"
+          preview={[
+            "Whitelist / blacklist domains in one click",
+            "Toggle blocking on a timer (10m / 30m / 1h)",
+            "Refresh gravity (blocklists) on schedule",
+          ]}
+        />
+      </section>
+      <section>
+        <h3 className="mb-3 chuck-title text-xs">ZimaCube</h3>
+        <ComingSoon
+          title="ZimaCube manage"
+          preview={[
+            "View disk health (SMART) and pool status",
+            "Trigger scrubs / rebuilds via SSH",
+            "Manage shared folders and snapshots",
+          ]}
+        />
+      </section>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="// homelab"
+        title="Infrastructure"
+        description="Local services live on your network — ChuckHub needs an internet-reachable URL (Twingate / Tailscale Funnel / Cloudflare Tunnel) plus a token to pull real data."
+      />
+      <Tabs
+        tabs={[
+          { id: "overview", label: "Overview", content: overview },
+          { id: "manage", label: "Manage", content: manage, badge: "soon" },
+        ]}
+      />
     </div>
   );
 }

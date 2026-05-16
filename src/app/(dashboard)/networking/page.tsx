@@ -1,6 +1,10 @@
 import { PageHeader } from "@/components/PageHeader";
 import { Panel, Stat } from "@/components/Panel";
 import { NotConfigured, IntegrationError } from "@/components/EmptyState";
+import { Tabs } from "@/components/Tabs";
+import { CloudflareManage } from "@/components/manage/CloudflareManage";
+import { TailscaleManage } from "@/components/manage/TailscaleManage";
+import { ComingSoon } from "@/components/manage/ComingSoon";
 import { requireAccount } from "@/lib/auth";
 import { hasServiceToken } from "@/lib/tokens";
 import { getCloudflareOverview } from "@/lib/integrations/cloudflare";
@@ -36,14 +40,8 @@ export default async function Networking() {
     }
   }
 
-  return (
+  const overview = (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="// edge & overlay"
-        title="Networking"
-        description="Live Cloudflare zones/tunnels and Tailscale devices via official APIs. Twingate UI wraps their dashboard."
-      />
-
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Stat
           label="CF zones"
@@ -73,7 +71,7 @@ export default async function Networking() {
         <Stat
           label="Twingate"
           value={hasTw ? "connected" : "—"}
-          hint={hasTw ? "open admin →" : "not connected"}
+          hint={hasTw ? "manage on Twingate.com" : "not connected"}
         />
       </div>
 
@@ -84,10 +82,7 @@ export default async function Networking() {
           status={cf ? "ok" : "idle"}
         >
           {!hasCf ? (
-            <NotConfigured
-              service="Cloudflare"
-              envKey="CLOUDFLARE_API_TOKEN"
-            />
+            <NotConfigured service="Cloudflare" envKey="CLOUDFLARE_API_TOKEN" />
           ) : cfErr ? (
             <IntegrationError service="Cloudflare" error={cfErr} />
           ) : !cf || cf.zones.length === 0 ? (
@@ -127,10 +122,7 @@ export default async function Networking() {
           status={cf && cf.tunnels.length > 0 ? "ok" : "idle"}
         >
           {!hasCf ? (
-            <NotConfigured
-              service="Cloudflare"
-              envKey="CLOUDFLARE_API_TOKEN"
-            />
+            <NotConfigured service="Cloudflare" envKey="CLOUDFLARE_API_TOKEN" />
           ) : !process.env.CLOUDFLARE_ACCOUNT_ID ? (
             <p className="font-mono text-xs text-chuck-mute">
               Set <span className="text-chuck-ink">CLOUDFLARE_ACCOUNT_ID</span>{" "}
@@ -220,6 +212,53 @@ export default async function Networking() {
           )}
         </Panel>
       </div>
+    </div>
+  );
+
+  const manage = (
+    <div className="space-y-6">
+      <section>
+        <h3 className="mb-3 chuck-title text-xs">Cloudflare</h3>
+        <CloudflareManage
+          connected={!!cf}
+          zones={cf?.zones.map((z) => ({ id: z.id, name: z.name })) ?? []}
+        />
+      </section>
+      <section>
+        <h3 className="mb-3 chuck-title text-xs">Tailscale</h3>
+        <TailscaleManage
+          connected={!!ts}
+          devices={ts?.devices ?? []}
+          tailnet={ts?.tailnet ?? "-"}
+        />
+      </section>
+      <section>
+        <h3 className="mb-3 chuck-title text-xs">Twingate</h3>
+        <ComingSoon
+          title="Twingate manage"
+          preview={[
+            "Add or remove protected resources",
+            "Invite users and assign group access",
+            "View live tunnel health per peer",
+          ]}
+        />
+      </section>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="// edge & overlay"
+        title="Networking"
+        description="Overview shows live Cloudflare, Tailscale, and Twingate state. Manage lets you edit DNS, purge cache, revoke devices."
+      />
+      <Tabs
+        tabs={[
+          { id: "overview", label: "Overview", content: overview },
+          { id: "manage", label: "Manage", content: manage, badge: "live" },
+        ]}
+      />
     </div>
   );
 }

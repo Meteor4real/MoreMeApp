@@ -2,6 +2,8 @@ import Image from "next/image";
 import { PageHeader } from "@/components/PageHeader";
 import { Panel, Stat } from "@/components/Panel";
 import { NotConfigured, IntegrationError } from "@/components/EmptyState";
+import { Tabs } from "@/components/Tabs";
+import { ComingSoon } from "@/components/manage/ComingSoon";
 import { requireAccount } from "@/lib/auth";
 import { hasServiceToken } from "@/lib/tokens";
 import { getYouTubeOverview } from "@/lib/integrations/youtube";
@@ -35,14 +37,8 @@ export default async function Content() {
     }
   }
 
-  return (
+  const overview = (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="// content"
-        title="Content Stack"
-        description="Live YouTube channel data via the Data API v3. Add YOUTUBE_API_KEY and YOUTUBE_CHANNEL_ID to populate."
-      />
-
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Stat
           label="Subscribers"
@@ -139,6 +135,34 @@ export default async function Content() {
           </ul>
         )}
       </Panel>
+    </div>
+  );
+
+  const manage = (
+    <ComingSoon
+      title="YouTube manage"
+      preview={[
+        "Title & description edits via OAuth (the Data API key is read-only)",
+        "Schedule / unschedule premieres and shorts",
+        "Bulk-update video tags and thumbnails",
+        "Triggers a YouTube OAuth flow on first use — coming next",
+      ]}
+    />
+  );
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="// content"
+        title="Content Stack"
+        description="Overview shows live YouTube channel data. Manage will land once the OAuth flow is wired (read-only API keys can't write)."
+      />
+      <Tabs
+        tabs={[
+          { id: "overview", label: "Overview", content: overview },
+          { id: "manage", label: "Manage", content: manage, badge: "soon" },
+        ]}
+      />
     </div>
   );
 }

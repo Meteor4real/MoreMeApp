@@ -74,11 +74,12 @@ export const HELP: Record<string, HelpEntry> = {
     description:
       "Pulls your workflows and recent executions from a self-hosted n8n instance.",
     steps: [
-      "Open n8n in your browser.",
+      "Open n8n in your browser (use the URL you set as N8N_BASE_URL).",
       "Open your user menu → Settings → n8n API.",
       "Click 'Create an API key', name it 'chuckhub'.",
       "Copy the key and paste it here.",
     ],
+    url: "https://docs.n8n.io/api/authentication/",
     envCompanions: [
       {
         key: "N8N_BASE_URL",
@@ -100,6 +101,7 @@ export const HELP: Record<string, HelpEntry> = {
       "Save the secret value shown — it's only displayed once.",
       "Paste the secret here, then set PROXMOX_BASE_URL and PROXMOX_TOKEN_ID env vars.",
     ],
+    url: "https://pve.proxmox.com/wiki/User_Management#pveum_tokens",
     envCompanions: [
       { key: "PROXMOX_BASE_URL", description: "e.g. https://pve.example.com:8006" },
       { key: "PROXMOX_TOKEN_ID", description: "Format: user@realm!tokenname (e.g. root@pam!chuckhub)" },
@@ -114,6 +116,7 @@ export const HELP: Record<string, HelpEntry> = {
       "Name it 'chuckhub' and create.",
       "Copy the key and paste it here.",
     ],
+    url: "https://docs.portainer.io/api/access",
     envCompanions: [
       { key: "PORTAINER_BASE_URL", description: "Required, e.g. https://portainer.example.com" },
     ],
@@ -155,11 +158,12 @@ export const HELP: Record<string, HelpEntry> = {
     title: "Twingate API key",
     description: "Used to list peers, networks, and resources.",
     steps: [
-      "Open your Twingate admin console.",
+      "Open your Twingate admin console (link below — replace 'yournetwork').",
       "Settings → API → 'Generate Token'.",
       "Pick a scope (Read is enough), name it 'chuckhub', and generate.",
       "Copy and paste here. Set TWINGATE_NETWORK env to your network slug.",
     ],
+    url: "https://www.twingate.com/docs/api-overview",
     envCompanions: [
       { key: "TWINGATE_NETWORK", description: "Your Twingate network name (the subdomain before .twingate.com)." },
     ],
@@ -174,6 +178,7 @@ export const HELP: Record<string, HelpEntry> = {
       "Paste the plaintext admin password here.",
       "Set PIHOLE_BASE_URL in env (e.g. http://pi.hole or http://10.0.0.10:80).",
     ],
+    url: "https://docs.pi-hole.net/api/",
     envCompanions: [
       { key: "PIHOLE_BASE_URL", description: "Required, e.g. http://pi.hole" },
     ],
@@ -190,6 +195,7 @@ export const HELP: Record<string, HelpEntry> = {
       "Paste it here as the value (e.g. http://frigate.lan:5000).",
       "Optional: set the same value in the FRIGATE_BASE_URL env var.",
     ],
+    url: "https://docs.frigate.video/integrations/api",
     notes: [
       "If Frigate is LAN-only, expose it via Tailscale Funnel or Cloudflare Tunnel so ChuckHub on Vercel can reach it.",
     ],
@@ -220,6 +226,7 @@ export const HELP: Record<string, HelpEntry> = {
       "Set ZIMA_SSH_USER env to your username on the device.",
       "Provision an SSH key from your Vercel runtime to the box (see Vercel docs on SSH secrets).",
     ],
+    url: "https://www.zimaspace.com/docs/",
     envCompanions: [
       { key: "ZIMA_SSH_USER", description: "Username for SSH (e.g. casaos)." },
     ],
@@ -236,6 +243,7 @@ export const HELP: Record<string, HelpEntry> = {
       "Set CLAUDE_SSH_USER env to your username on the box.",
       "Run a websocket-to-SSH relay there (e.g. wetty or a custom shell2http) once the bridge ships.",
     ],
+    url: "https://docs.claude.com/claude-code",
     envCompanions: [
       { key: "CLAUDE_SSH_USER", description: "Username for the SSH connection." },
     ],

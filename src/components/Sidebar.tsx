@@ -22,13 +22,13 @@ export function Sidebar() {
         className="group flex items-center gap-3 border-b border-chuck-line px-5 py-4"
       >
         <div className="relative animate-pulseGlow">
-          <Logo size={36} className="shadow-glow" />
+          <Logo size={40} className="shadow-glow" />
         </div>
         <div className="flex flex-col leading-none">
-          <span className="font-display text-base font-bold tracking-tight">
-            CHUCK<span className="chuck-glow-text">HUB</span>
+          <span className="chuck-glow-text font-display text-xl font-black tracking-[0.18em]">
+            HUB
           </span>
-          <span className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.3em] text-chuck-mute">
+          <span className="mt-1 font-mono text-[9px] uppercase tracking-[0.3em] text-chuck-mute">
             Personal Ops
           </span>
         </div>

@@ -1,6 +1,8 @@
 import { PageHeader } from "@/components/PageHeader";
 import { Panel } from "@/components/Panel";
 import { NotConfigured } from "@/components/EmptyState";
+import { Tabs } from "@/components/Tabs";
+import { ComingSoon } from "@/components/manage/ComingSoon";
 import { requireAccount } from "@/lib/auth";
 import { hasServiceToken } from "@/lib/tokens";
 import { Bot, Cpu, ExternalLink, Sparkles, Terminal } from "lucide-react";
@@ -54,14 +56,8 @@ export default async function AI() {
   const tokenSaved = await hasServiceToken(account.id, "CLAUDE_SSH_HOST");
   const ready = !!host || tokenSaved;
 
-  return (
+  const overview = (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="// ai terminal"
-        title="AI Agents"
-        description="An in-browser terminal launcher for CLI agents over SSH. Wire an SSH bridge to enable real sessions."
-      />
-
       {!ready && (
         <Panel title="SSH bridge required" subtitle="not configured" status="idle" hot>
           <NotConfigured
@@ -125,6 +121,34 @@ export default async function AI() {
           );
         })}
       </div>
+    </div>
+  );
+
+  const manage = (
+    <ComingSoon
+      title="AI terminal manage"
+      preview={[
+        "Open an in-browser xterm.js session against your SSH bridge",
+        "One-click `claude` / `gemini` / `codex` / `opencode` launchers",
+        "Persistent session history per agent",
+        "Tail running session logs in a side panel",
+      ]}
+    />
+  );
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="// ai terminal"
+        title="AI Agents"
+        description="An in-browser terminal launcher for CLI agents over SSH. Wire an SSH bridge to enable real sessions."
+      />
+      <Tabs
+        tabs={[
+          { id: "overview", label: "Overview", content: overview },
+          { id: "manage", label: "Manage", content: manage, badge: "soon" },
+        ]}
+      />
     </div>
   );
 }

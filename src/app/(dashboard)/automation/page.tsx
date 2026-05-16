@@ -1,6 +1,8 @@
 import { PageHeader } from "@/components/PageHeader";
 import { Panel, Stat } from "@/components/Panel";
 import { NotConfigured, IntegrationError } from "@/components/EmptyState";
+import { Tabs } from "@/components/Tabs";
+import { N8nManage } from "@/components/manage/N8nManage";
 import { requireAccount } from "@/lib/auth";
 import { hasServiceToken } from "@/lib/tokens";
 import { getN8nOverview } from "@/lib/integrations/n8n";
@@ -26,27 +28,8 @@ export default async function Automation() {
 
   const activeCount = n ? n.workflows.filter((w) => w.active).length : 0;
 
-  return (
+  const overview = (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="// n8n"
-        title="Automation"
-        description="Workflows and executions pulled from your self-hosted n8n REST API."
-        actions={
-          n ? (
-            <a
-              className="chuck-btn"
-              href={n.baseUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <ExternalLink className="h-4 w-4 text-chuck-pink" />
-              Open n8n
-            </a>
-          ) : null
-        }
-      />
-
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Stat
           label="Workflows"
@@ -168,6 +151,47 @@ export default async function Automation() {
           </ul>
         </Panel>
       )}
+    </div>
+  );
+
+  const manage = (
+    <N8nManage
+      connected={!!n}
+      workflows={n?.workflows.map((w) => ({
+        id: w.id,
+        name: w.name,
+        active: w.active,
+      })) ?? []}
+      baseUrl={n?.baseUrl ?? null}
+    />
+  );
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="// n8n"
+        title="Automation"
+        description="Live workflows + the ability to toggle them active/inactive without leaving the hub."
+        actions={
+          n ? (
+            <a
+              className="chuck-btn"
+              href={n.baseUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <ExternalLink className="h-4 w-4 text-chuck-pink" />
+              Open n8n
+            </a>
+          ) : null
+        }
+      />
+      <Tabs
+        tabs={[
+          { id: "overview", label: "Overview", content: overview },
+          { id: "manage", label: "Manage", content: manage, badge: "live" },
+        ]}
+      />
     </div>
   );
 }

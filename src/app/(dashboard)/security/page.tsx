@@ -1,5 +1,7 @@
 import { PageHeader } from "@/components/PageHeader";
 import { Panel, Stat } from "@/components/Panel";
+import { Tabs } from "@/components/Tabs";
+import { ComingSoon } from "@/components/manage/ComingSoon";
 import { listAlerts } from "@/lib/alerts";
 import { requireAccount } from "@/lib/auth";
 import { AlertTriangle, ShieldAlert } from "lucide-react";
@@ -13,14 +15,8 @@ export default async function Security() {
   const warn = alerts.filter((a) => a.severity === "warn").length;
   const info = alerts.filter((a) => a.severity === "info").length;
 
-  return (
+  const overview = (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="// security"
-        title="Security & Alerts"
-        description="Anything posted to POST /api/alerts is aggregated here. Wire Frigate, Pi-hole, Cloudflare, or n8n to send events."
-      />
-
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Stat label="Total alerts" value={alerts.length} hint="all time" glow />
         <Stat label="Critical" value={crit} hint="severity = crit" />
@@ -74,6 +70,34 @@ export default async function Security() {
           </ul>
         )}
       </Panel>
+    </div>
+  );
+
+  const manage = (
+    <ComingSoon
+      title="Security manage"
+      preview={[
+        "Acknowledge / dismiss / mute alerts inline",
+        "Bulk-clear by source or severity",
+        "Forward incoming alerts to Discord, Slack, or email",
+        "Schedule quiet hours for noisy sources",
+      ]}
+    />
+  );
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="// security"
+        title="Security & Alerts"
+        description="Anything posted to POST /api/alerts is aggregated here. Wire Frigate, Pi-hole, Cloudflare, or n8n to send events."
+      />
+      <Tabs
+        tabs={[
+          { id: "overview", label: "Overview", content: overview },
+          { id: "manage", label: "Manage", content: manage, badge: "soon" },
+        ]}
+      />
     </div>
   );
 }

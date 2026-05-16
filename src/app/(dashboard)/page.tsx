@@ -114,9 +114,9 @@ export default async function Overview() {
               ))}
             </div>
           </div>
-          <div className="relative hidden h-32 w-32 shrink-0 md:flex md:items-center md:justify-center">
+          <div className="relative hidden h-36 w-36 shrink-0 md:flex md:items-center md:justify-center">
             <div className="absolute inset-0 animate-pulseGlow rounded-full bg-chuck-red/20 blur-2xl" />
-            <Logo size={120} className="relative" />
+            <Logo size={110} variant="withText" className="relative" />
           </div>
         </div>
         <span className="chuck-strip absolute inset-x-0 bottom-0" />

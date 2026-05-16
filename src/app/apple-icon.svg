@@ -5,16 +5,24 @@
       <stop offset="55%" stop-color="#ff5577"/>
       <stop offset="100%" stop-color="#ff7a2d"/>
     </linearGradient>
-    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="3" result="b"/>
+    <filter id="b" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
       <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
   </defs>
   <rect width="180" height="180" rx="38" fill="#0a0a0c"/>
   <rect x="8" y="8" width="164" height="164" rx="32" fill="none" stroke="url(#g)" stroke-width="4"/>
-  <g filter="url(#glow)" transform="translate(0,4)">
-    <path d="M128 60 a44 44 0 1 0 0 56" fill="none" stroke="url(#g)" stroke-width="16" stroke-linecap="round"/>
-    <circle cx="72" cy="78" r="6.5" fill="#0a0a0c" stroke="url(#g)" stroke-width="4.5"/>
-    <circle cx="72" cy="100" r="6.5" fill="#0a0a0c" stroke="url(#g)" stroke-width="4.5"/>
+  <g transform="translate(22 18) scale(1.36 1.36)" filter="url(#b)">
+    <circle cx="28" cy="22" r="9" fill="url(#g)"/>
+    <circle cx="42" cy="14" r="10" fill="url(#g)"/>
+    <circle cx="58" cy="14" r="10" fill="url(#g)"/>
+    <circle cx="72" cy="22" r="9" fill="url(#g)"/>
+    <ellipse cx="50" cy="40" rx="22" ry="20" fill="url(#g)"/>
+    <path d="M 30 48 C 26 60, 30 78, 42 84 C 47 87, 53 87, 58 84 C 70 78, 74 60, 70 48 C 65 50, 55 52, 50 52 C 45 52, 35 50, 30 48 Z" fill="url(#g)"/>
+    <path d="M 20 50 C 14 52, 12 62, 18 66 C 22 66, 26 64, 28 60 Z" fill="url(#g)"/>
+    <path d="M 80 50 C 86 52, 88 62, 82 66 C 78 66, 74 64, 72 60 Z" fill="url(#g)"/>
+    <circle cx="42" cy="40" r="2.6" fill="#0a0a0c"/>
+    <circle cx="58" cy="40" r="2.6" fill="#0a0a0c"/>
+    <ellipse cx="50" cy="52" rx="4.5" ry="1.6" fill="#0a0a0c"/>
   </g>
 </svg>

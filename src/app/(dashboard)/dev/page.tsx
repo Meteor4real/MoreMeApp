@@ -1,6 +1,10 @@
 import { PageHeader } from "@/components/PageHeader";
 import { Panel, Stat } from "@/components/Panel";
 import { NotConfigured, IntegrationError } from "@/components/EmptyState";
+import { Tabs } from "@/components/Tabs";
+import { VercelManage } from "@/components/manage/VercelManage";
+import { GithubManage } from "@/components/manage/GithubManage";
+import { ComingSoon } from "@/components/manage/ComingSoon";
 import { requireAccount } from "@/lib/auth";
 import { getGithubOverview } from "@/lib/integrations/github";
 import { getVercelOverview } from "@/lib/integrations/vercel";
@@ -10,7 +14,6 @@ import {
   Rocket,
   GitPullRequest,
   Star,
-  CircleAlert,
   ExternalLink,
 } from "lucide-react";
 
@@ -52,14 +55,8 @@ export default async function Dev() {
     }
   }
 
-  return (
+  const overview = (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="// ship it"
-        title="Dev & Deploy"
-        description="Live GitHub repos, Vercel deployments, and Supabase project info — only what your tokens unlock."
-      />
-
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Stat
           label="Repos"
@@ -218,14 +215,6 @@ export default async function Dev() {
                       </span>
                     )}
                   </span>
-                  <span className="hidden truncate text-[10px] text-chuck-mute md:inline">
-                    {d.meta?.githubCommitMessage ??
-                      d.meta?.githubCommitRef ??
-                      ""}
-                  </span>
-                  <span className="font-mono text-[10px] text-chuck-mute">
-                    {relTime(new Date(d.createdAt).toISOString())}
-                  </span>
                   <span
                     className={
                       d.state === "READY"
@@ -264,26 +253,63 @@ export default async function Dev() {
               description="Add a Supabase management API token to surface project & DB info."
             />
           ) : (
-            <div className="space-y-2 font-mono text-xs">
-              <div className="flex items-center gap-2 rounded-sm border border-chuck-line bg-black/40 px-3 py-2">
-                <CircleAlert className="h-3.5 w-3.5 text-chuck-pink" />
-                <span className="text-chuck-mute">
-                  Set SUPABASE_PROJECT_REF env var to fetch project details.
-                </span>
-              </div>
-              <a
-                href="https://supabase.com/dashboard"
-                target="_blank"
-                rel="noreferrer"
-                className="chuck-btn"
-              >
-                <ExternalLink className="h-3.5 w-3.5 text-chuck-pink" />
-                Open Supabase
-              </a>
-            </div>
+            <p className="font-mono text-xs text-chuck-mute">
+              Set SUPABASE_PROJECT_REF env var to fetch project details. Use Manage
+              tab for project-level actions when wired.
+            </p>
           )}
         </Panel>
       </div>
+    </div>
+  );
+
+  const manage = (
+    <div className="space-y-6">
+      <section>
+        <h3 className="mb-3 chuck-title text-xs">Vercel</h3>
+        <VercelManage connected={!!vc} />
+      </section>
+      <section>
+        <h3 className="mb-3 chuck-title text-xs">GitHub</h3>
+        <GithubManage
+          connected={!!gh}
+          repos={
+            gh?.repos.map((r) => ({
+              full_name: r.full_name,
+              html_url: r.html_url,
+              name: r.name,
+            })) ?? []
+          }
+        />
+      </section>
+      <section>
+        <h3 className="mb-3 chuck-title text-xs">Supabase</h3>
+        <ComingSoon
+          title="Supabase manage"
+          preview={[
+            "Browse tables and inline-edit rows",
+            "View and rotate project API keys",
+            "Toggle row-level-security policies per table",
+          ]}
+        />
+      </section>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="// ship it"
+        title="Dev & Deploy"
+        description="Overview shows live data; Manage lets you take action — redeploy, dispatch workflows, edit env vars."
+      />
+
+      <Tabs
+        tabs={[
+          { id: "overview", label: "Overview", content: overview },
+          { id: "manage", label: "Manage", content: manage, badge: "live" },
+        ]}
+      />
     </div>
   );
 }
