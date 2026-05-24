@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV } from "@/lib/nav";
-import { Coffee } from "lucide-react";
+import { Logo } from "@/components/Logo";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -21,16 +21,14 @@ export function Sidebar() {
         href="/"
         className="group flex items-center gap-3 border-b border-chuck-line px-5 py-4"
       >
-        <div className="relative">
-          <div className="flex h-9 w-9 items-center justify-center rounded-sm border border-chuck-red/60 bg-black shadow-glow">
-            <Coffee className="h-5 w-5 text-chuck-red animate-pulseGlow" strokeWidth={2.5} />
-          </div>
+        <div className="relative animate-pulseGlow">
+          <Logo size={40} className="shadow-glow" />
         </div>
         <div className="flex flex-col leading-none">
-          <span className="font-display text-base font-bold tracking-tight">
-            CHUCK<span className="chuck-glow-text">HUB</span>
+          <span className="chuck-glow-text font-display text-xl font-black tracking-[0.18em]">
+            HUB
           </span>
-          <span className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.3em] text-chuck-mute">
+          <span className="mt-1 font-mono text-[9px] uppercase tracking-[0.3em] text-chuck-mute">
             Personal Ops
           </span>
         </div>
@@ -81,22 +79,18 @@ export function Sidebar() {
         </ul>
       </nav>
 
-      {/* Footer — coffee count :) */}
       <div className="border-t border-chuck-line p-4">
-        <div className="chuck-panel-hot p-3">
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-chuck-mute">
-              Coffee
-            </span>
-            <span className="chuck-glow-text font-mono text-sm">∞</span>
+        <Link
+          href="/settings"
+          className="block rounded-sm border border-chuck-line bg-black/40 p-3 transition hover:border-chuck-red/60"
+        >
+          <div className="font-mono text-[10px] uppercase tracking-widest text-chuck-mute">
+            Service tokens
           </div>
-          <div className="mt-2 h-1 overflow-hidden rounded-full bg-black">
-            <div className="chuck-strip h-full w-[88%]" />
+          <div className="mt-1 font-mono text-xs text-chuck-ink">
+            Connect integrations →
           </div>
-          <p className="mt-2 font-mono text-[10px] leading-tight text-chuck-mute">
-            because coffee, and because hacker.
-          </p>
-        </div>
+        </Link>
       </div>
     </aside>
   );

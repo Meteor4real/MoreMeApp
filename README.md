@@ -18,10 +18,31 @@ glowing-red control panel.
 - `/content` — YouTube + NetworkChuck Academy
 - `/settings` — API token vault, layout preferences
 
+## Auth
+
+ChuckHub ships with built-in Postgres-backed auth — no third party required.
+
+- `POST /api/auth/signup` — email + password (bcrypt, cost 12)
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET  /api/auth/me`
+
+Sessions are JWTs (HS256, signed with `CHUCKHUB_SECRET`) stored in an
+httpOnly cookie. Every route except `/login` and `/signup` is gated by
+middleware (`middleware.ts`) and by the dashboard layout server check.
+
+## Token vault
+
+`/settings` lets you persist API tokens encrypted at rest in Postgres using
+AES-256-GCM (key derived from `CHUCKHUB_SECRET` via scrypt). Listed tokens
+display only a masked preview; the plaintext never leaves the server after
+write.
+
 ## API surface
 
-- `GET /api/health` — connectivity + env probe
+- `GET  /api/health` — connectivity + env probe (fed into the top-bar status pills)
 - `POST /api/init` — apply Postgres schema (accounts, sessions, tokens, layout, alerts)
+- `GET  /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens?keyName=…`
 
 ## Stack
 
@@ -43,9 +64,24 @@ Open http://localhost:3000.
 
 ## Required env vars
 
-Already configured per setup:
+Required:
 
-- `POSTGRES_URL`
+- `POSTGRES_URL` — **prefer the transaction-mode pooler URL** when using
+  Supabase. The session-mode pooler (port `5432` on `*.pooler.supabase.com`)
+  is capped at 15 simultaneous clients and will throw `EMAXCONNSESSION`
+  under serverless load. The transaction-mode pooler runs on port `6543`
+  and scales fine. ChuckHub will warn in logs if it detects session mode.
+  If your Vercel Supabase integration set `POSTGRES_PRISMA_URL`, ChuckHub
+  automatically prefers that.
+
+Optional:
+
+- `CHUCKHUB_SECRET` — random 32+ char string (`openssl rand -hex 32`). Signs
+  session JWTs and derives the AES key for the token vault. If unset,
+  ChuckHub auto-generates a value on first run and persists it in
+  `chuckhub_meta.session_secret`.
+- `CHUCKHUB_MASTER_CODE` — overrides the default account-recovery master
+  code (`2089`) used by the "Locked out?" form on `/login`.
 
 Add these in Vercel → Project → Environment Variables as you wire each service.
 None are required to render the UI — panels show representative data until
