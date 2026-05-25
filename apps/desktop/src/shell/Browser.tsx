@@ -14,13 +14,24 @@ function normalize(input: string): string {
   return "https://duckduckgo.com/?q=" + encodeURIComponent(v);
 }
 
-export function Browser({ initialUrl }: { initialUrl?: string }) {
+export function Browser({
+  initialUrl,
+  injectables = [],
+}: {
+  initialUrl?: string;
+  injectables?: { id: string; code: string }[];
+}) {
   const [tabs, setTabs] = useState<Tab[]>([
     { id: seq, title: "New Tab", url: initialUrl || HOME },
   ]);
   const [active, setActive] = useState(seq);
   const [omni, setOmni] = useState(initialUrl || HOME);
   const viewRefs = useRef<Map<number, WebviewEl>>(new Map());
+
+  // Keep the latest enabled house-extensions in a ref so the dom-ready
+  // handler injects the current set without needing to rebind listeners.
+  const injectRef = useRef(injectables);
+  injectRef.current = injectables;
 
   // When asked to open a specific app URL, push it as a new tab.
   useEffect(() => {
@@ -136,10 +147,17 @@ export function Browser({ initialUrl }: { initialUrl?: string }) {
             key={t.id}
             ref={(el: HTMLElement | null) => {
               if (el) {
-                viewRefs.current.set(t.id, el as unknown as WebviewEl);
+                const view = el as unknown as WebviewEl;
+                viewRefs.current.set(t.id, view);
                 el.addEventListener("page-title-updated", (ev) =>
                   setTitle(t.id, (ev as unknown as { title: string }).title)
                 );
+                // Inject enabled house extensions once the page is ready.
+                el.addEventListener("dom-ready", () => {
+                  for (const ext of injectRef.current) {
+                    view.executeJavaScript(ext.code).catch(() => {});
+                  }
+                });
               } else {
                 viewRefs.current.delete(t.id);
               }

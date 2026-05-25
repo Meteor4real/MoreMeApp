@@ -14,6 +14,7 @@ declare global {
     reload: () => void;
     loadURL: (url: string) => void;
     getURL: () => string;
+    executeJavaScript: (code: string) => Promise<unknown>;
   };
 }
 

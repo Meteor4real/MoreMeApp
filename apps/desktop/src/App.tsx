@@ -1,18 +1,40 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Boot } from "./boot/Boot";
 import { Browser } from "./shell/Browser";
 import { ControlPanel } from "./views/ControlPanel";
 import { TerminalView } from "./views/Terminal";
+import { ExtensionsView } from "./views/Extensions";
 import { SITE_APPS } from "./apps";
+import { EXTENSIONS, loadEnabled, saveEnabled } from "./extensions";
 
 type Nav =
   | { kind: "control" }
   | { kind: "terminal" }
-  | { kind: "browser"; url?: string };
+  | { kind: "browser"; url?: string }
+  | { kind: "extensions" };
 
 export function App() {
   const [booted, setBooted] = useState(false);
   const [nav, setNav] = useState<Nav>({ kind: "control" });
+  const [enabledExt, setEnabledExt] = useState<Set<string>>(() => loadEnabled());
+
+  const injectables = useMemo(
+    () =>
+      EXTENSIONS.filter((e) => enabledExt.has(e.id)).map((e) => ({
+        id: e.id,
+        code: e.code,
+      })),
+    [enabledExt]
+  );
+
+  function toggleExt(id: string) {
+    setEnabledExt((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      saveEnabled(next);
+      return next;
+    });
+  }
 
   if (!booted) return <Boot onDone={() => setBooted(true)} />;
 
@@ -37,6 +59,12 @@ export function App() {
           active={nav.kind === "browser" && !nav.url}
           onClick={() => setNav({ kind: "browser" })}
         />
+        <RailBtn
+          glyph="🧩"
+          label="Extensions"
+          active={nav.kind === "extensions"}
+          onClick={() => setNav({ kind: "extensions" })}
+        />
         <div className="rail-sep" />
         {SITE_APPS.map((a) => (
           <RailBtn
@@ -55,7 +83,12 @@ export function App() {
 
       {nav.kind === "control" && <ControlPanel />}
       {nav.kind === "terminal" && <TerminalView />}
-      {nav.kind === "browser" && <Browser key={nav.url || "blank"} initialUrl={nav.url} />}
+      {nav.kind === "browser" && (
+        <Browser key={nav.url || "blank"} initialUrl={nav.url} injectables={injectables} />
+      )}
+      {nav.kind === "extensions" && (
+        <ExtensionsView enabled={enabledExt} onToggle={toggleExt} />
+      )}
     </div>
   );
 }
