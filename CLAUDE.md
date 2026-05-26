@@ -150,16 +150,22 @@ DONE (merged to main, networkchuckhub):
   telemetry + Hermes + Polar renames), DigitalBlueprint (three.js editor + full
   material system + LLM scene generator).
 
-REMAINING / NEXT:
-- Accounts via Supabase + Control Panel reimagined in-app talking to the DB
-  directly (BLOCKED on owner rotating the pasted Supabase password).
-- New Control Panel connectors (Home Assistant, Hermes dashboard, Twingate,
-  Hostinger) + the ChuckHub "coming soon" integrations (Proxmox, Portainer,
-  Pi-hole, Frigate, ZimaCube, Supabase mgmt, YouTube OAuth).
-- Wire real keys/endpoints to light up group chat / NT5 / DigitalBlueprint gen.
-- BroBot embedded version + its AI into the group chat.
-- DigitalBlueprint less-simple logo; walk-mode (pointer lock); GLB import.
-- Windows GUI testing (owner). Cut release from main (owner).
+ALSO DONE:
+- Accounts: Supabase Auth (anon key, client-safe) login/signup gate + guest.
+- Native Control Panel (Option 2) + per-user encrypted connection vault
+  (safeStorage) covering all services incl. Home Assistant/Hermes/Twingate/
+  Hostinger. Connections are per-user, entered in-app — no bundled secrets.
+- All 6 embedded apps: MoreMe, SignalFinder, NT5, HALOS, DigitalBlueprint,
+  BroBot (gallery + key-free Openverse search; its AI is the group-chat bot).
+
+REMAINING / NEXT (polish + runtime, not blockers):
+- Live per-service data panels in the Control Panel (vault tokens are stored;
+  layer GitHub/Vercel/Cloudflare/etc. fetchers on top).
+- DigitalBlueprint: walk-mode (pointer lock), GLB import persistence, a
+  less-simple in-app logo.
+- Runtime, per-user (NOT dev blockers): users enter their own AI keys / Hermes
+  endpoint / Supabase anon key in-app.
+- Owner: cut release from main; Windows GUI testing once everything's done.
 
 Verify every increment with `npm run build --workspace=@nchub/desktop`
 (tsc + vite) and `npm run build:web`. Commit verified increments. Keep main
