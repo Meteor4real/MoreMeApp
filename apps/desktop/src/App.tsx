@@ -63,7 +63,7 @@ export function App() {
           onClick={() => setNav({ kind: "terminal" })}
         />
         <RailBtn
-          glyph="🜨"
+          glyph="AI"
           label="AI Group Chat"
           active={nav.kind === "ai"}
           onClick={() => setNav({ kind: "ai" })}
@@ -75,13 +75,13 @@ export function App() {
           onClick={() => setNav({ kind: "browser" })}
         />
         <RailBtn
-          glyph="🧩"
+          glyph="EXT"
           label="Extensions"
           active={nav.kind === "extensions"}
           onClick={() => setNav({ kind: "extensions" })}
         />
         <RailBtn
-          glyph="🎮"
+          glyph="LIB"
           label="Library"
           active={nav.kind === "library"}
           onClick={() => setNav({ kind: "library" })}
@@ -90,7 +90,7 @@ export function App() {
         {SITE_APPS.map((a) => (
           <RailBtn
             key={a.id}
-            glyph={a.icon}
+            glyph={a.label.replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase()}
             label={a.label}
             active={nav.kind === "browser" && nav.url === a.url}
             onClick={() =>

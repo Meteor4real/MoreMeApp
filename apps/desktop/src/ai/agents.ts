@@ -8,7 +8,6 @@ export type ProviderType = "anthropic" | "openai" | "gemini" | "http";
 export type AgentDef = {
   id: string;
   name: string;
-  emoji: string;
   role: string; // shown in UI
   coordinator?: boolean; // assigns work + runs the fact-check pass
   onCall?: boolean; // only responds when @mentioned
@@ -27,7 +26,6 @@ export const AGENTS: AgentDef[] = [
   {
     id: "hermes",
     name: "Hermes",
-    emoji: "⚡",
     role: "Co-boss · coordinator (Hostinger)",
     coordinator: true,
     defaultProvider: "http",
@@ -40,7 +38,6 @@ export const AGENTS: AgentDef[] = [
   {
     id: "claude",
     name: "Claude",
-    emoji: "◆",
     role: "Reasoning · code · writing",
     defaultProvider: "anthropic",
     defaultModel: "claude-opus-4-7",
@@ -51,7 +48,6 @@ export const AGENTS: AgentDef[] = [
   {
     id: "gemini",
     name: "Gemini",
-    emoji: "✦",
     role: "Research · multimodal",
     defaultProvider: "gemini",
     defaultModel: "gemini-1.5-flash",
@@ -61,7 +57,6 @@ export const AGENTS: AgentDef[] = [
   {
     id: "codex",
     name: "Codex",
-    emoji: "⌘",
     role: "Code generation · refactors",
     defaultProvider: "openai",
     defaultModel: "gpt-4o-mini",
@@ -72,7 +67,6 @@ export const AGENTS: AgentDef[] = [
   {
     id: "brobot",
     name: "BroBot",
-    emoji: "◈",
     role: "Image curation (on call)",
     onCall: true,
     defaultProvider: "http",

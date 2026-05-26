@@ -6,10 +6,11 @@ type Msg = {
   id: string;
   agentId: string;
   name: string;
-  emoji: string;
   content: string;
   kind: "user" | "agent" | "system";
 };
+
+const mono = (n: string) => n.replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase();
 
 let mid = 1;
 const PROVIDERS = ["anthropic", "openai", "gemini", "http"] as const;
@@ -67,9 +68,8 @@ export function GroupChat() {
     push({
       agentId: a.id,
       name: a.name,
-      emoji: a.emoji,
       kind: "agent",
-      content: res.ok ? res.text || "(no output)" : `⚠️ ${res.error}`,
+      content: res.ok ? res.text || "(no output)" : `[error] ${res.error}`,
     });
   }
 
@@ -77,15 +77,14 @@ export function GroupChat() {
     const task = input.trim();
     if (!task || busy) return;
     setInput("");
-    push({ agentId: "meteor", name: "Meteor", emoji: "🜨", kind: "user", content: task });
+    push({ agentId: "meteor", name: "Meteor", kind: "user", content: task });
 
     if (!anyWired) {
       push({
         agentId: "system",
         name: "Hub",
-        emoji: "◆",
         kind: "system",
-        content: "No agents are wired yet. Open ⚙ Configure and add a key/endpoint for at least one agent.",
+        content: "No agents are wired yet. Open Configure and add a key/endpoint for at least one agent.",
       });
       return;
     }
@@ -145,7 +144,7 @@ export function GroupChat() {
           AI Group Chat <span className="glow-text">· the crew</span>
         </span>
         <button className="btn" onClick={() => setShowConfig((s) => !s)}>
-          ⚙ Configure
+          Configure
         </button>
       </div>
 
@@ -157,11 +156,13 @@ export function GroupChat() {
           </div>
           {AGENTS.map((a) => (
             <div key={a.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 0" }}>
-              <span style={{ fontSize: 18 }}>{a.emoji}</span>
+              <span className="mono glow-text" style={{ fontSize: 12, width: 22, textAlign: "center" }}>
+                {mono(a.name)}
+              </span>
               <div style={{ minWidth: 0 }}>
                 <div className="mono" style={{ fontSize: 12 }}>
                   {a.name}
-                  {a.coordinator && <span className="glow-text"> ★</span>}
+                  {a.coordinator && <span className="glow-text"> · lead</span>}
                 </div>
                 <div style={{ fontSize: 10, color: "var(--mute)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {a.role}
@@ -201,7 +202,7 @@ export function GroupChat() {
               {msgs.map((m) => (
                 <div key={m.id} style={{ marginBottom: 14, opacity: m.kind === "system" ? 0.7 : 1 }}>
                   <div className="mono" style={{ fontSize: 11, color: m.kind === "user" ? "var(--orange)" : "var(--pink)" }}>
-                    {m.emoji} {m.name}
+                    {m.name}
                   </div>
                   <div style={{ fontSize: 14, marginTop: 2, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
                     {m.content}
@@ -272,7 +273,7 @@ function ConfigPanel({
         return (
           <div key={a.id} className="panel" style={{ padding: 12, marginBottom: 10 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 18 }}>{a.emoji}</span>
+              <span className="mono glow-text" style={{ fontSize: 12, width: 22, textAlign: "center" }}>{mono(a.name)}</span>
               <span className="mono" style={{ fontSize: 13 }}>{a.name}</span>
               <span style={{ fontSize: 11, color: "var(--mute)" }}>{a.role}</span>
               <label style={{ marginLeft: "auto", fontSize: 12, display: "flex", gap: 6, alignItems: "center" }}>

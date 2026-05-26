@@ -54,7 +54,7 @@ export function ExtensionsView({
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 22 }}>{e.emoji}</span>
+                  <span className="glow-text" style={{ fontSize: 18 }}>◆</span>
                   <span
                     className="mono"
                     style={{
