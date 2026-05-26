@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, shell, session } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -53,12 +53,94 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  configureSecurity();
   registerIpc();
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+
+// Harden every webview the renderer creates: no node, context-isolated, no
+// extra preload, external links to the OS browser.
+app.on("web-contents-created", (_e, contents) => {
+  contents.on("will-attach-webview", (_evt, webPreferences) => {
+    delete (webPreferences as { preload?: string }).preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+  });
+  contents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("http")) shell.openExternal(url);
+    return { action: "deny" };
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Browser security (DuckDuckGo-style): tracker blocking, HTTPS-upgrade on
+// top-level navigations, DNT/GPC headers, deny-by-default permissions, and a
+// de-fingerprinted user agent. Applied to both the default and hub sessions.
+// ---------------------------------------------------------------------------
+
+const TRACKER_HOSTS = [
+  "doubleclick.net", "googlesyndication.com", "google-analytics.com",
+  "googletagmanager.com", "adservice.google.com", "scorecardresearch.com",
+  "quantserve.com", "adnxs.com", "criteo.com", "taboola.com", "outbrain.com",
+  "connect.facebook.net", "facebook.net", "hotjar.com", "mixpanel.com",
+  "segment.com", "segment.io", "amplitude.com", "fullstory.com",
+  "doubleverify.com", "adsafeprotected.com", "moatads.com", "bat.bing.com",
+  "ads-twitter.com", "analytics.tiktok.com", "pixel.facebook.com",
+  "stats.g.doubleclick.net", "app-measurement.com", "branch.io",
+];
+
+function hostBlocked(rawUrl: string): boolean {
+  try {
+    const h = new URL(rawUrl).hostname.toLowerCase();
+    return TRACKER_HOSTS.some((t) => h === t || h.endsWith("." + t));
+  } catch {
+    return false;
+  }
+}
+
+const ALLOWED_PERMS = new Set(["fullscreen", "clipboard-sanitized-write"]);
+
+function harden(ses: Electron.Session) {
+  ses.webRequest.onBeforeRequest((details, cb) => {
+    if (hostBlocked(details.url)) return cb({ cancel: true });
+    // Upgrade insecure top-level navigations to HTTPS (skip localhost).
+    if (
+      details.resourceType === "mainFrame" &&
+      details.url.startsWith("http://") &&
+      !/^http:\/\/(localhost|127\.|\[::1\]|0\.0\.0\.0)/i.test(details.url)
+    ) {
+      return cb({ redirectURL: details.url.replace(/^http:/i, "https:") });
+    }
+    cb({});
+  });
+
+  ses.webRequest.onBeforeSendHeaders((details, cb) => {
+    details.requestHeaders["DNT"] = "1";
+    details.requestHeaders["Sec-GPC"] = "1";
+    cb({ requestHeaders: details.requestHeaders });
+  });
+
+  ses.setPermissionRequestHandler((_wc, perm, cb) => cb(ALLOWED_PERMS.has(perm)));
+  ses.setPermissionCheckHandler((_wc, perm) => ALLOWED_PERMS.has(perm));
+
+  const ua = ses
+    .getUserAgent()
+    .replace(/ Electron\/[\d.]+/i, "")
+    .replace(/ NetworkChuck Hub\/[\d.]+/i, "");
+  ses.setUserAgent(ua);
+}
+
+function configureSecurity() {
+  harden(session.defaultSession);
+  try {
+    harden(session.fromPartition("persist:hub"));
+  } catch {
+    /* partition created lazily; will inherit on first use */
+  }
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
