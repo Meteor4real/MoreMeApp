@@ -4,6 +4,7 @@ import { Browser } from "./shell/Browser";
 import { ControlPanel } from "./views/ControlPanel";
 import { TerminalView } from "./views/Terminal";
 import { ExtensionsView } from "./views/Extensions";
+import { GroupChat } from "./views/GroupChat";
 import { Ticker } from "./shell/Ticker";
 import { Notifications } from "./shell/Notifications";
 import { useFeed } from "./useFeed";
@@ -14,7 +15,8 @@ type Nav =
   | { kind: "control" }
   | { kind: "terminal" }
   | { kind: "browser"; url?: string }
-  | { kind: "extensions" };
+  | { kind: "extensions" }
+  | { kind: "ai" };
 
 export function App() {
   const [booted, setBooted] = useState(false);
@@ -59,6 +61,12 @@ export function App() {
           onClick={() => setNav({ kind: "terminal" })}
         />
         <RailBtn
+          glyph="🜨"
+          label="AI Group Chat"
+          active={nav.kind === "ai"}
+          onClick={() => setNav({ kind: "ai" })}
+        />
+        <RailBtn
           glyph="◆"
           label="Browser"
           active={nav.kind === "browser" && !nav.url}
@@ -88,6 +96,7 @@ export function App() {
 
       {nav.kind === "control" && <ControlPanel />}
       {nav.kind === "terminal" && <TerminalView />}
+      {nav.kind === "ai" && <GroupChat />}
       {nav.kind === "browser" && (
         <Browser key={nav.url || "blank"} initialUrl={nav.url} injectables={injectables} />
       )}

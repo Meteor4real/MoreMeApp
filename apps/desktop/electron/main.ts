@@ -103,6 +103,15 @@ function registerIpc() {
     }
   });
 
+  // --- AI group chat: multi-provider chat completion (CORS-free) ---
+  ipcMain.handle("ai:chat", async (_e, req: AiChatRequest): Promise<AiChatResult> => {
+    try {
+      return await aiChat(req);
+    } catch (err) {
+      return { ok: false, error: String(err) };
+    }
+  });
+
   // --- Launchers (Steam / Modrinth / Blockbench / arbitrary URI) ---
   ipcMain.handle("launch:steam", (_e, appId?: string) => {
     const uri = appId ? `steam://rungameid/${appId}` : "steam://open/games";
@@ -156,4 +165,123 @@ function registerIpc() {
     terminals.get(e.sender.id)?.kill();
     terminals.delete(e.sender.id);
   });
+}
+
+// ---------------------------------------------------------------------------
+// AI providers
+// ---------------------------------------------------------------------------
+
+type AiMsg = { role: "user" | "assistant"; content: string };
+type AiChatRequest = {
+  provider: "anthropic" | "openai" | "gemini" | "http";
+  endpoint?: string;
+  apiKey?: string;
+  model?: string;
+  system: string;
+  messages: AiMsg[];
+};
+type AiChatResult = { ok: true; text: string } | { ok: false; error: string };
+
+async function aiChat(req: AiChatRequest): Promise<AiChatResult> {
+  const { provider, apiKey, model, system, messages } = req;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 60000);
+  const j = (r: Response) => r.json() as Promise<Record<string, unknown>>;
+  try {
+    if (provider === "anthropic") {
+      if (!apiKey) return { ok: false, error: "missing API key" };
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal: ctrl.signal,
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: model || "claude-opus-4-7",
+          max_tokens: 1024,
+          // prompt caching: the role/system block is stable across turns
+          system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+          messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        }),
+      });
+      const data = await j(res);
+      if (!res.ok) return { ok: false, error: errOf(data, res.status) };
+      const blocks = data.content as { type: string; text?: string }[] | undefined;
+      return { ok: true, text: blocks?.map((b) => b.text || "").join("") || "" };
+    }
+
+    if (provider === "openai") {
+      if (!apiKey) return { ok: false, error: "missing API key" };
+      const base = (req.endpoint || "https://api.openai.com/v1").replace(/\/$/, "");
+      const res = await fetch(`${base}/chat/completions`, {
+        method: "POST",
+        signal: ctrl.signal,
+        headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: model || "gpt-4o-mini",
+          messages: [{ role: "system", content: system }, ...messages],
+        }),
+      });
+      const data = await j(res);
+      if (!res.ok) return { ok: false, error: errOf(data, res.status) };
+      const choices = data.choices as { message?: { content?: string } }[] | undefined;
+      return { ok: true, text: choices?.[0]?.message?.content || "" };
+    }
+
+    if (provider === "gemini") {
+      if (!apiKey) return { ok: false, error: "missing API key" };
+      const m = model || "gemini-1.5-flash";
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          signal: ctrl.signal,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: system }] },
+            contents: messages.map((mm) => ({
+              role: mm.role === "assistant" ? "model" : "user",
+              parts: [{ text: mm.content }],
+            })),
+          }),
+        }
+      );
+      const data = await j(res);
+      if (!res.ok) return { ok: false, error: errOf(data, res.status) };
+      const cands = data.candidates as
+        | { content?: { parts?: { text?: string }[] } }[]
+        | undefined;
+      return { ok: true, text: cands?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "" };
+    }
+
+    // "http" — a generic endpoint (e.g. Hermes on Hostinger).
+    if (!req.endpoint) return { ok: false, error: "missing endpoint" };
+    const res = await fetch(req.endpoint, {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: {
+        "content-type": "application/json",
+        ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify({ system, messages }),
+    });
+    const data = await j(res);
+    if (!res.ok) return { ok: false, error: errOf(data, res.status) };
+    const text =
+      (data.reply as string) ||
+      (data.text as string) ||
+      (data.message as string) ||
+      (typeof data === "string" ? (data as string) : JSON.stringify(data));
+    return { ok: true, text };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+function errOf(data: Record<string, unknown>, status: number): string {
+  const e = data.error as { message?: string } | string | undefined;
+  if (typeof e === "string") return e;
+  return e?.message || `HTTP ${status}`;
 }

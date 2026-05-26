@@ -15,6 +15,16 @@ const api = {
   ): Promise<{ ok: boolean; data?: T; status?: number; error?: string }> =>
     ipcRenderer.invoke("feeds:fetch", url),
 
+  aiChat: (req: {
+    provider: "anthropic" | "openai" | "gemini" | "http";
+    endpoint?: string;
+    apiKey?: string;
+    model?: string;
+    system: string;
+    messages: { role: "user" | "assistant"; content: string }[];
+  }): Promise<{ ok: true; text: string } | { ok: false; error: string }> =>
+    ipcRenderer.invoke("ai:chat", req),
+
   terminal: {
     start: (cols: number, rows: number): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("term:start", cols, rows),
