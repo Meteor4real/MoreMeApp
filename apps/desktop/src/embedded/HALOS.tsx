@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 // Embedded HALOS console (reimagined in-app). Addresses the critiques:
 // - genuinely ALIEN, non-simple Andromedan glyphs (procedural multi-stroke
@@ -102,6 +102,7 @@ export function HALOS() {
   const [incidents, setIncidents] = useState<string[]>([INCIDENTS[0]]);
   const [quote, setQuote] = useState(QUOTES[0]);
   const [translate, setTranslate] = useState("AZULBRIGHT");
+  const [tab, setTab] = useState<"telemetry" | "stocks" | "roster">("telemetry");
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -131,11 +132,25 @@ export function HALOS() {
 
   return (
     <div className="stage" style={{ background: "#07050f", color: "#cfe9ff" }}>
-      <div className="mono" style={{ padding: "10px 14px", borderBottom: `1px solid ${CY}33`, fontSize: 12, letterSpacing: 3, textTransform: "uppercase", color: CY, textShadow: `0 0 10px ${CY}` }}>
-        The HALOS Interface · Azulbright Telemetry
+      <div className="mono" style={{ padding: "8px 14px", borderBottom: `1px solid ${CY}33`, display: "flex", alignItems: "center", gap: 14 }}>
+        <span style={{ fontSize: 12, letterSpacing: 3, textTransform: "uppercase", color: CY, textShadow: `0 0 10px ${CY}` }}>The HALOS Interface</span>
+        <div style={{ display: "flex", gap: 6 }}>
+          {(["telemetry", "stocks", "roster"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className="mono"
+              style={{ background: "none", border: `1px solid ${tab === t ? CY : CY + "33"}`, color: tab === t ? CY : "#6fa8bd", borderRadius: 6, padding: "3px 10px", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", cursor: "pointer" }}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: 16, display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 14 }}>
+      <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+        {tab === "telemetry" && (
+        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 14 }}>
         {/* left column */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
           {/* threat gauge */}
@@ -225,6 +240,104 @@ export function HALOS() {
           {/* lore quote */}
           <div style={{ ...box, padding: 14, fontSize: 13, color: "#9fd3e6", fontStyle: "italic" }}>{quote}</div>
         </div>
+        </div>
+        )}
+        {tab === "stocks" && <Stocks box={box} />}
+        {tab === "roster" && <Roster box={box} />}
+      </div>
+    </div>
+  );
+}
+
+type BoxStyle = React.CSSProperties;
+
+// Azulbright Stocks — simulated DMD candlestick (lore worldbuilding).
+function Stocks({ box }: { box: BoxStyle }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const cv = ref.current;
+    if (!cv) return;
+    let raf = 0;
+    let price = 1040;
+    const candles: { o: number; h: number; l: number; c: number }[] = [];
+    for (let i = 0; i < 60; i++) {
+      const o = price;
+      price += (Math.random() - 0.5) * 24;
+      const c = price;
+      candles.push({ o, c, h: Math.max(o, c) + Math.random() * 10, l: Math.min(o, c) - Math.random() * 10 });
+    }
+    const draw = () => {
+      const w = (cv.width = cv.clientWidth);
+      const h = (cv.height = cv.clientHeight);
+      const ctx = cv.getContext("2d")!;
+      ctx.clearRect(0, 0, w, h);
+      const lo = Math.min(...candles.map((c) => c.l));
+      const hi = Math.max(...candles.map((c) => c.h));
+      const y = (v: number) => h - 16 - ((v - lo) / (hi - lo || 1)) * (h - 32);
+      const cw = w / candles.length;
+      candles.forEach((c, i) => {
+        const x = i * cw + cw / 2;
+        const up = c.c >= c.o;
+        ctx.strokeStyle = up ? "#22d3ee" : "#ff5577";
+        ctx.fillStyle = up ? "#22d3ee" : "#ff5577";
+        ctx.beginPath();
+        ctx.moveTo(x, y(c.h));
+        ctx.lineTo(x, y(c.l));
+        ctx.stroke();
+        const top = y(Math.max(c.o, c.c));
+        ctx.fillRect(x - cw * 0.3, top, cw * 0.6, Math.max(1, Math.abs(y(c.o) - y(c.c))));
+      });
+    };
+    const tick = () => {
+      const last = candles[candles.length - 1].c;
+      const o = last;
+      const c = o + (Math.random() - 0.5) * 24;
+      candles.push({ o, c, h: Math.max(o, c) + Math.random() * 10, l: Math.min(o, c) - Math.random() * 10 });
+      candles.shift();
+      draw();
+      raf = window.setTimeout(() => requestAnimationFrame(tick), 1400) as unknown as number;
+    };
+    draw();
+    tick();
+    return () => clearTimeout(raf);
+  }, []);
+  return (
+    <div style={{ ...box, padding: 14, height: "100%", display: "flex", flexDirection: "column" }}>
+      <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: PU, marginBottom: 8 }}>
+        AZULBRIGHT STOCKS · DMD (Dark Matter Diamonds)
+      </div>
+      <canvas ref={ref} style={{ flex: 1, width: "100%", minHeight: 320 }} />
+    </div>
+  );
+}
+
+const CREW: [string, string][] = [
+  ["Meteor", "Astralex · can do anything (Pact-bound)"],
+  ["Stardust", "matter + tech; builds everything"],
+  ["Fury", "best pure fighter; the boots stay on"],
+  ["Supernova", "star-people; pilot"],
+  ["Nebula", "teleport, cloak, truth detection"],
+  ["Solar Flare", "fire + lava"],
+  ["Cosmo", "telepathic space-puppy"],
+  ["Prism", "shapeshifter; phases solids"],
+  ["Byte", "built by Stardust; mech form"],
+];
+function Roster({ box }: { box: BoxStyle }) {
+  return (
+    <div style={{ ...box, padding: 16 }}>
+      <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: PU, marginBottom: 10 }}>
+        AGENT ROSTER · COSMOS CREW (ASTRALEX)
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 10 }}>
+        {CREW.map(([name, role]) => (
+          <div key={name} style={{ border: `1px solid ${CY}22`, borderRadius: 8, padding: 10, display: "flex", gap: 10, alignItems: "center" }}>
+            <span style={{ width: 30, height: 30, color: CY, flex: "none" }} dangerouslySetInnerHTML={{ __html: glyphSvg(name[0]) }} />
+            <div style={{ minWidth: 0 }}>
+              <div className="mono" style={{ fontSize: 13, color: CY }}>{name}</div>
+              <div style={{ fontSize: 11, color: "#88b8cc" }}>{role}</div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
