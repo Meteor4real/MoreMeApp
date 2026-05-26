@@ -11,5 +11,6 @@
 
 export const SUPABASE_URL = "https://juedejmrwuqdzywcpboc.supabase.co";
 
-// <-- owner: paste the Supabase anon (publishable) key here.
-export const SUPABASE_ANON_KEY = "";
+// Supabase anon (public) key — safe to ship in clients; RLS protects data.
+export const SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp1ZWRlam1yd3VxZHp5d2NwYm9jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNzY1NDgsImV4cCI6MjA5MTg1MjU0OH0.y8mtQedTZXkokmzhxa5M5Qw77XsAxIpGZ0cuiuNxHaQ";
