@@ -112,14 +112,35 @@ Nebula→Aluben · Solar Flare→Eralf Ralos · Cosmo→Omsoc · Prism→Msirp �
 
 ## Build status (update as we go)
 
-Done & on PR #3 (networkchuckhub): download page; monorepo; desktop
-foundation (boot, rail, tabbed sandboxed browser, PowerShell terminal,
-Control Panel embed, launchers); 20 house extensions; logo + custom HUB;
-unified ticker + notifications (live NT5 feed); AI group chat (multi-provider,
-coordinator+fact-check, configurable); Library (Steam/Modrinth/Blockbench).
+DONE (merged to main, networkchuckhub):
+- Download page (apps/web); monorepo; control-panel preserved.
+- Desktop foundation: boot sequence, rail, tabbed sandboxed browser, PowerShell
+  terminal (node-pty), launchers.
+- Browser/security hardening: tracker blocking, HTTPS-upgrade, DNT/GPC,
+  deny-by-default permissions, de-fingerprinted UA, hardened webviews.
+- 20 house extensions (emoji-free); logo + custom techy HUB.
+- Unified ticker + notifications (live NT5 + local NT5 + reminders).
+- AI group chat: multi-provider (Hermes/Claude/Gemini/Codex + on-call bots),
+  coordinator->workers->fact-check, configurable, honest wired/needs-setup.
+- Library: Steam scan+launch, Modrinth/Blockbench launchers.
+- OST engine (5 procedural tracks) + player.
+- Embedded apps: MoreMe (daily time-blocked checklist + modes + tiers/streak),
+  SignalFinder (from-scratch opportunity-scoring CRM), NT5 (always-on
+  topic-driven anchor reporting via Claude), HALOS (alien glyph codex +
+  telemetry + Hermes + Polar renames), DigitalBlueprint (three.js editor + full
+  material system + LLM scene generator).
 
-Blocked on owner: rotated Supabase password (accounts); AI keys + Hermes
-endpoint; Windows GUI testing.
+REMAINING / NEXT:
+- Accounts via Supabase + Control Panel reimagined in-app talking to the DB
+  directly (BLOCKED on owner rotating the pasted Supabase password).
+- New Control Panel connectors (Home Assistant, Hermes dashboard, Twingate,
+  Hostinger) + the ChuckHub "coming soon" integrations (Proxmox, Portainer,
+  Pi-hole, Frigate, ZimaCube, Supabase mgmt, YouTube OAuth).
+- Wire real keys/endpoints to light up group chat / NT5 / DigitalBlueprint gen.
+- BroBot embedded version + its AI into the group chat.
+- DigitalBlueprint less-simple logo; walk-mode (pointer lock); GLB import.
+- Windows GUI testing (owner). Cut release from main (owner).
 
 Verify every increment with `npm run build --workspace=@nchub/desktop`
-(tsc + vite) and `npm run build:web`. Commit verified increments; PR per repo.
+(tsc + vite) and `npm run build:web`. Commit verified increments. Keep main
+current so the owner can tag a release.
