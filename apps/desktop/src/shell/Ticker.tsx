@@ -1,6 +1,7 @@
+import type { ReactNode } from "react";
 import type { FeedItem } from "../feeds";
 
-export function Ticker({ items }: { items: FeedItem[] }) {
+export function Ticker({ items, left }: { items: FeedItem[]; left?: ReactNode }) {
   const line =
     items.length > 0
       ? items.map((i) => `${i.source} · ${i.text}`)
@@ -11,6 +12,7 @@ export function Ticker({ items }: { items: FeedItem[] }) {
 
   return (
     <div className="ticker-bar">
+      {left}
       <span className="ticker-tag mono">WIRE</span>
       <div className="ticker-viewport">
         <div className="ticker-track">

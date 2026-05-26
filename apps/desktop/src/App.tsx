@@ -7,6 +7,7 @@ import { ExtensionsView } from "./views/Extensions";
 import { GroupChat } from "./views/GroupChat";
 import { Library } from "./views/Library";
 import { Ticker } from "./shell/Ticker";
+import { MusicPlayer } from "./shell/MusicPlayer";
 import { Notifications } from "./shell/Notifications";
 import { useFeed } from "./useFeed";
 import { SITE_APPS } from "./apps";
@@ -113,7 +114,7 @@ export function App() {
         <ExtensionsView enabled={enabledExt} onToggle={toggleExt} />
       )}
       </div>
-      <Ticker items={items} />
+      <Ticker items={items} left={<MusicPlayer />} />
       <Notifications toasts={toasts} onDismiss={dismiss} />
     </div>
   );
