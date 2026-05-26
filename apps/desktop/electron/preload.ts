@@ -10,6 +10,11 @@ const api = {
   launchUri: (uri: string): Promise<boolean> =>
     ipcRenderer.invoke("launch:uri", uri),
 
+  fetchJson: <T = unknown>(
+    url: string
+  ): Promise<{ ok: boolean; data?: T; status?: number; error?: string }> =>
+    ipcRenderer.invoke("feeds:fetch", url),
+
   terminal: {
     start: (cols: number, rows: number): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("term:start", cols, rows),

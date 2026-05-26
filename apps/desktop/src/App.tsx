@@ -4,6 +4,9 @@ import { Browser } from "./shell/Browser";
 import { ControlPanel } from "./views/ControlPanel";
 import { TerminalView } from "./views/Terminal";
 import { ExtensionsView } from "./views/Extensions";
+import { Ticker } from "./shell/Ticker";
+import { Notifications } from "./shell/Notifications";
+import { useFeed } from "./useFeed";
 import { SITE_APPS } from "./apps";
 import { EXTENSIONS, loadEnabled, saveEnabled } from "./extensions";
 
@@ -17,6 +20,7 @@ export function App() {
   const [booted, setBooted] = useState(false);
   const [nav, setNav] = useState<Nav>({ kind: "control" });
   const [enabledExt, setEnabledExt] = useState<Set<string>>(() => loadEnabled());
+  const { items, toasts, dismiss } = useFeed();
 
   const injectables = useMemo(
     () =>
@@ -39,7 +43,8 @@ export function App() {
   if (!booted) return <Boot onDone={() => setBooted(true)} />;
 
   return (
-    <div className="app">
+    <div className="shell">
+      <div className="app" style={{ flex: 1, minHeight: 0, height: "auto" }}>
       <nav className="rail">
         <RailBtn
           glyph="C"
@@ -89,6 +94,9 @@ export function App() {
       {nav.kind === "extensions" && (
         <ExtensionsView enabled={enabledExt} onToggle={toggleExt} />
       )}
+      </div>
+      <Ticker items={items} />
+      <Notifications toasts={toasts} onDismiss={dismiss} />
     </div>
   );
 }

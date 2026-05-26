@@ -239,3 +239,111 @@ body {
   text-align: center;
   padding: 40px;
 }
+
+/* ---- Unified ticker ---- */
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.ticker-bar {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  background: #0c0c0f;
+  border-top: 1px solid var(--line);
+  overflow: hidden;
+}
+.ticker-tag {
+  flex: none;
+  padding: 0 10px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--pink);
+  border-right: 1px solid var(--line);
+  text-shadow: 0 0 8px rgba(255, 51, 85, 0.6);
+}
+.ticker-viewport {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.ticker-track {
+  display: inline-flex;
+  align-items: center;
+  animation: ticker 90s linear infinite;
+  will-change: transform;
+}
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+.ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 22px;
+  font-size: 12px;
+  color: var(--ink);
+}
+.ticker-dot {
+  color: var(--orange);
+  font-size: 8px;
+}
+@keyframes ticker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* ---- Toast notifications ---- */
+.toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 40px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 320px;
+}
+.toast {
+  position: relative;
+  padding: 10px 30px 10px 12px;
+  animation: toastin 0.25s ease;
+}
+@keyframes toastin {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+}
+.toast-src {
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.toast-text {
+  font-size: 13px;
+  margin-top: 3px;
+  color: var(--ink);
+  line-height: 1.35;
+}
+.toast-x {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--mute);
+  cursor: pointer;
+  font-size: 12px;
+}
+.toast-x:hover {
+  color: var(--red);
+}

@@ -88,6 +88,21 @@ function registerIpc() {
   ipcMain.handle("app:getVersion", () => app.getVersion());
   ipcMain.handle("app:platform", () => process.platform);
 
+  // CORS-free JSON fetch from the main process (renderer fetch to the deployed
+  // sites would be blocked by CORS). Used by the unified ticker/notifications.
+  ipcMain.handle("feeds:fetch", async (_e, url: string) => {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      const res = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(t);
+      if (!res.ok) return { ok: false, status: res.status };
+      return { ok: true, data: await res.json() };
+    } catch (err) {
+      return { ok: false, error: String(err) };
+    }
+  });
+
   // --- Launchers (Steam / Modrinth / Blockbench / arbitrary URI) ---
   ipcMain.handle("launch:steam", (_e, appId?: string) => {
     const uri = appId ? `steam://rungameid/${appId}` : "steam://open/games";
