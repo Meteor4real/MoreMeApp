@@ -48,6 +48,31 @@ const SERVICES: LocalService[] = [
     envKey: "ZIMA_SSH_HOST",
     baseUrlEnv: "ZIMA_SSH_HOST",
   },
+  {
+    title: "Home Assistant",
+    description: "Entities, scenes, and automations via the Home Assistant API.",
+    envKey: "HOMEASSISTANT_TOKEN",
+    baseUrlEnv: "HOMEASSISTANT_BASE_URL",
+  },
+  {
+    title: "Hermes Dashboard",
+    description:
+      "Co-boss AI running on Hostinger — status and controls. Also reachable from the Terminal and the AI Group Chat.",
+    envKey: "HERMES_TOKEN",
+    baseUrlEnv: "HERMES_BASE_URL",
+  },
+  {
+    title: "Twingate",
+    description: "Zero-trust resources, connectors, and tunnel health.",
+    envKey: "TWINGATE_API_KEY",
+    baseUrlEnv: "TWINGATE_BASE_URL",
+  },
+  {
+    title: "Hostinger",
+    description: "VPS / hosting inventory and status via the Hostinger API.",
+    envKey: "HOSTINGER_API_TOKEN",
+    baseUrlEnv: "HOSTINGER_BASE_URL",
+  },
 ];
 
 export default async function Homelab() {
