@@ -19,6 +19,14 @@ const api = {
   ): Promise<{ ok: boolean; data?: T; status?: number; error?: string }> =>
     ipcRenderer.invoke("feeds:fetch", url),
 
+  net: (opts: {
+    method: string;
+    url: string;
+    headers?: Record<string, string>;
+    body?: unknown;
+  }): Promise<{ ok: boolean; status: number; data?: unknown; error?: string }> =>
+    ipcRenderer.invoke("net:request", opts),
+
   vault: {
     list: (): Promise<{ service: string; hasToken: boolean; baseUrl: string }[]> =>
       ipcRenderer.invoke("vault:list"),

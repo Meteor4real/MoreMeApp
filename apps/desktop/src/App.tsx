@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { Boot } from "./boot/Boot";
+import { Login } from "./auth/Login";
+import { isAuthed, signOut, clearGuest } from "./auth/supabase";
 import { Browser } from "./shell/Browser";
 import { ControlPanel } from "./views/ControlPanel";
 import { TerminalView } from "./views/Terminal";
@@ -25,6 +27,7 @@ type Nav =
 
 export function App() {
   const [booted, setBooted] = useState(false);
+  const [authed, setAuthed] = useState(() => isAuthed());
   const [nav, setNav] = useState<Nav>({ kind: "control" });
   const [enabledExt, setEnabledExt] = useState<Set<string>>(() => loadEnabled());
   const { items, toasts, dismiss } = useFeed();
@@ -48,6 +51,7 @@ export function App() {
   }
 
   if (!booted) return <Boot onDone={() => setBooted(true)} />;
+  if (!authed) return <Login onDone={() => setAuthed(true)} />;
 
   return (
     <div className="shell">
@@ -109,6 +113,17 @@ export function App() {
             }
           />
         ))}
+        <div style={{ marginTop: "auto" }} />
+        <RailBtn
+          glyph="OUT"
+          label="Sign out"
+          active={false}
+          onClick={() => {
+            signOut();
+            clearGuest();
+            setAuthed(false);
+          }}
+        />
       </nav>
 
       {nav.kind === "control" && <ControlPanel />}

@@ -186,6 +186,34 @@ function registerIpc() {
     }
   });
 
+  // --- General JSON request (CORS-free) — used by Supabase auth, etc. ---
+  ipcMain.handle(
+    "net:request",
+    async (_e, opts: { method: string; url: string; headers?: Record<string, string>; body?: unknown }) => {
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 15000);
+        const res = await fetch(opts.url, {
+          method: opts.method,
+          headers: opts.headers,
+          body: opts.body != null ? JSON.stringify(opts.body) : undefined,
+          signal: ctrl.signal,
+        });
+        clearTimeout(t);
+        const txt = await res.text();
+        let data: unknown = null;
+        try {
+          data = txt ? JSON.parse(txt) : null;
+        } catch {
+          data = txt;
+        }
+        return { ok: res.ok, status: res.status, data };
+      } catch (err) {
+        return { ok: false, status: 0, error: String(err) };
+      }
+    }
+  );
+
   // --- AI group chat: multi-provider chat completion (CORS-free) ---
   ipcMain.handle("ai:chat", async (_e, req: AiChatRequest): Promise<AiChatResult> => {
     try {
