@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchFeed, localReminders, type FeedItem } from "./feeds";
+import { nt5TickerItems } from "./embedded/nt5store";
 
 const SEEN_KEY = "nchub.feed.seen.v1";
 const POLL_MS = 4 * 60 * 1000;
@@ -24,7 +25,7 @@ export function useFeed() {
     let stop = false;
 
     async function tick() {
-      const all = [...localReminders(), ...(await fetchFeed())];
+      const all = [...nt5TickerItems(), ...localReminders(), ...(await fetchFeed())];
       if (stop) return;
       setItems(all);
 
