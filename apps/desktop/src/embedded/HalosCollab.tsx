@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchMessages, sendMessage, getData, setData, whoAmI, cloudConfigured, type ChatMsg } from "./haloscloud";
+import { fetchMessages, sendMessage, getData, setData, whoAmI, cloudConfigured, sendSignal, fetchSignals, type ChatMsg } from "./haloscloud";
 
 const CY = "#00e5ff";
 const PU = "#a07fff";
@@ -211,6 +211,140 @@ export function HalosWorkspace() {
               placeholder="write…" style={{ ...inp, flex: 1, resize: "none" }} />
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ---- Meet (1:1 WebRTC video, signaled through hub_signals) ----
+type Sig = { t: string; sdp?: RTCSessionDescriptionInit; c?: RTCIceCandidateInit };
+
+export function HalosMeet() {
+  const [code, setCode] = useState("");
+  const [joined, setJoined] = useState(false);
+  const [status, setStatus] = useState("");
+  const [micOn, setMicOn] = useState(true);
+  const [camOn, setCamOn] = useState(true);
+  const localRef = useRef<HTMLVideoElement>(null);
+  const remoteRef = useRef<HTMLVideoElement>(null);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const idRef = useRef(whoAmI() + "-" + Math.random().toString(36).slice(2, 7));
+  const sinceRef = useRef(new Date(Date.now() - 3000).toISOString());
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  function leave() {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = null;
+    pcRef.current?.close();
+    pcRef.current = null;
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setJoined(false);
+    setStatus("");
+  }
+  useEffect(() => () => leave(), []);
+
+  async function join(room: string) {
+    if (!room.trim()) return;
+    setStatus("requesting camera + mic…");
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    } catch (e) {
+      setStatus("camera/mic unavailable: " + String(e));
+      return;
+    }
+    streamRef.current = stream;
+    setJoined(true);
+    setStatus("waiting for a peer…");
+    if (localRef.current) localRef.current.srcObject = stream;
+
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+    pcRef.current = pc;
+    stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+    pc.onicecandidate = (e) => { if (e.candidate) void sendSignal(room, idRef.current, null, { t: "ice", c: e.candidate.toJSON() }); };
+    pc.ontrack = (e) => { if (remoteRef.current) remoteRef.current.srcObject = e.streams[0]; setStatus("connected"); };
+    pc.onconnectionstatechange = () => setStatus(pc.connectionState);
+
+    await sendSignal(room, idRef.current, null, { t: "hello" });
+    pollRef.current = setInterval(async () => {
+      const sigs = await fetchSignals(room, sinceRef.current);
+      for (const s of sigs) {
+        sinceRef.current = s.created_at;
+        if (s.sender === idRef.current) continue;
+        const pl = s.payload as Sig;
+        try {
+          if (pl.t === "hello") {
+            // lower id initiates the offer to avoid glare
+            if (idRef.current < s.sender) {
+              const o = await pc.createOffer();
+              await pc.setLocalDescription(o);
+              void sendSignal(room, idRef.current, s.sender, { t: "offer", sdp: o });
+            }
+          } else if (pl.t === "offer" && pl.sdp) {
+            await pc.setRemoteDescription(pl.sdp);
+            const a = await pc.createAnswer();
+            await pc.setLocalDescription(a);
+            void sendSignal(room, idRef.current, s.sender, { t: "answer", sdp: a });
+          } else if (pl.t === "answer" && pl.sdp) {
+            await pc.setRemoteDescription(pl.sdp);
+          } else if (pl.t === "ice" && pl.c) {
+            await pc.addIceCandidate(pl.c);
+          }
+        } catch {
+          /* ignore transient signaling races */
+        }
+      }
+    }, 1400);
+  }
+
+  function toggleMic() {
+    const a = streamRef.current?.getAudioTracks()[0];
+    if (a) { a.enabled = !a.enabled; setMicOn(a.enabled); }
+  }
+  function toggleCam() {
+    const v = streamRef.current?.getVideoTracks()[0];
+    if (v) { v.enabled = !v.enabled; setCamOn(v.enabled); }
+  }
+
+  if (!cloudConfigured()) return <OfflineNote />;
+
+  if (!joined) {
+    return (
+      <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 20 }}>
+        <div style={{ ...box, padding: 20, width: 320, textAlign: "center" }}>
+          <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: PU, marginBottom: 12 }}>MEET ROOM</div>
+          <input style={{ ...inp, width: "100%", marginBottom: 10, textAlign: "center" }} placeholder="room code" value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void join(code)} />
+          <div style={{ display: "flex", gap: 8 }}>
+            <button style={{ ...btn, flex: 1 }} onClick={() => void join(code)}>Join</button>
+            <button style={{ ...btn, flex: 1 }} onClick={() => { const c = Math.random().toString(36).slice(2, 7).toUpperCase(); setCode(c); void join(c); }}>New room</button>
+          </div>
+          {status && <div style={{ fontSize: 11, color: "#6fa8bd", marginTop: 10 }}>{status}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, padding: 16 }}>
+      <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: PU, marginBottom: 10, display: "flex", justifyContent: "space-between" }}>
+        <span>ROOM {code} · {status}</span>
+      </div>
+      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, minHeight: 0 }}>
+        <div style={{ ...box, position: "relative", overflow: "hidden" }}>
+          <video ref={localRef} autoPlay muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }} />
+          <span className="mono" style={{ position: "absolute", bottom: 6, left: 8, fontSize: 10, color: CY }}>you</span>
+        </div>
+        <div style={{ ...box, position: "relative", overflow: "hidden" }}>
+          <video ref={remoteRef} autoPlay playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <span className="mono" style={{ position: "absolute", bottom: 6, left: 8, fontSize: 10, color: CY }}>peer</span>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "center" }}>
+        <button style={{ ...btn, color: micOn ? CY : "#ff5577" }} onClick={toggleMic}>{micOn ? "mute" : "unmute"}</button>
+        <button style={{ ...btn, color: camOn ? CY : "#ff5577" }} onClick={toggleCam}>{camOn ? "cam off" : "cam on"}</button>
+        <button style={{ ...btn, borderColor: "#ff5577", color: "#ff5577" }} onClick={leave}>leave</button>
       </div>
     </div>
   );

@@ -103,6 +103,13 @@ function hostBlocked(rawUrl: string): boolean {
 
 const ALLOWED_PERMS = new Set(["fullscreen", "clipboard-sanitized-write"]);
 
+// Camera/mic are allowed only for the app's OWN UI (HALOS Meet), never for
+// remote sites loaded in browser webviews.
+function isAppOrigin(u?: string): boolean {
+  if (!u) return false;
+  return u.startsWith("file://") || (!!DEV_URL && u.startsWith(DEV_URL));
+}
+
 function harden(ses: Electron.Session) {
   ses.webRequest.onBeforeRequest((details, cb) => {
     if (hostBlocked(details.url)) return cb({ cancel: true });
@@ -123,8 +130,16 @@ function harden(ses: Electron.Session) {
     cb({ requestHeaders: details.requestHeaders });
   });
 
-  ses.setPermissionRequestHandler((_wc, perm, cb) => cb(ALLOWED_PERMS.has(perm)));
-  ses.setPermissionCheckHandler((_wc, perm) => ALLOWED_PERMS.has(perm));
+  ses.setPermissionRequestHandler((_wc, perm, cb, details) => {
+    if (ALLOWED_PERMS.has(perm)) return cb(true);
+    if (perm === "media" && isAppOrigin(details?.requestingUrl)) return cb(true);
+    cb(false);
+  });
+  ses.setPermissionCheckHandler((_wc, perm, origin) => {
+    if (ALLOWED_PERMS.has(perm)) return true;
+    if (perm === "media" && isAppOrigin(origin)) return true;
+    return false;
+  });
 
   const ua = ses
     .getUserAgent()

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { HalosChat, HalosProjects, HalosWorkspace } from "./HalosCollab";
+import { HalosChat, HalosProjects, HalosWorkspace, HalosMeet } from "./HalosCollab";
 
 // Embedded HALOS console (reimagined in-app). Addresses the critiques:
 // - genuinely ALIEN, non-simple Andromedan glyphs (procedural multi-stroke
@@ -103,7 +103,7 @@ export function HALOS() {
   const [incidents, setIncidents] = useState<string[]>([INCIDENTS[0]]);
   const [quote, setQuote] = useState(QUOTES[0]);
   const [translate, setTranslate] = useState("AZULBRIGHT");
-  const [tab, setTab] = useState<"telemetry" | "stocks" | "roster" | "chat" | "projects" | "workspace">("telemetry");
+  const [tab, setTab] = useState<"telemetry" | "stocks" | "roster" | "chat" | "projects" | "workspace" | "meet">("telemetry");
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -136,7 +136,7 @@ export function HALOS() {
       <div className="mono" style={{ padding: "8px 14px", borderBottom: `1px solid ${CY}33`, display: "flex", alignItems: "center", gap: 14 }}>
         <span style={{ fontSize: 12, letterSpacing: 3, textTransform: "uppercase", color: CY, textShadow: `0 0 10px ${CY}` }}>The HALOS Interface</span>
         <div style={{ display: "flex", gap: 6 }}>
-          {(["telemetry", "stocks", "roster", "chat", "projects", "workspace"] as const).map((t) => (
+          {(["telemetry", "stocks", "roster", "chat", "projects", "workspace", "meet"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -251,6 +251,7 @@ export function HALOS() {
       {tab === "chat" && <HalosChat />}
       {tab === "projects" && <HalosProjects />}
       {tab === "workspace" && <HalosWorkspace />}
+      {tab === "meet" && <HalosMeet />}
     </div>
   );
 }
