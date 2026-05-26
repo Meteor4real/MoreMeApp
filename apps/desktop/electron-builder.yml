@@ -3,14 +3,14 @@ productName: NetworkChuck Hub
 directories:
   output: release
   buildResources: build
-npmRebuild: true
+npmRebuild: false
 buildDependenciesFromSource: false
 files:
   - dist
   - dist-electron
   - package.json
 asarUnpack:
-  - "**/node_modules/node-pty/**"
+  - "**/node_modules/@homebridge/node-pty-prebuilt-multiarch/**"
 win:
   target:
     - nsis

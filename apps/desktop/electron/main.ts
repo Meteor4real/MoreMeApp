@@ -211,12 +211,25 @@ function registerIpc() {
 
   // --- Terminal (PowerShell on Windows) via node-pty ---
   ipcMain.handle("term:start", (e, cols: number, rows: number) => {
-    let pty: typeof import("node-pty");
+    let pty: {
+      spawn: (
+        file: string,
+        args: string[],
+        opts: Record<string, unknown>
+      ) => {
+        onData: (cb: (d: string) => void) => void;
+        onExit: (cb: (e: unknown) => void) => void;
+        write: (d: string) => void;
+        resize: (c: number, r: number) => void;
+        kill: () => void;
+      };
+    };
     try {
-      // Lazy require so a missing/native-unbuilt module doesn't crash startup.
-      pty = require("node-pty");
+      // Lazy require so a missing module doesn't crash startup. Prebuilt pty
+      // (multiarch) ships binaries per Electron ABI — no native rebuild needed.
+      pty = require("@homebridge/node-pty-prebuilt-multiarch");
     } catch (err) {
-      return { ok: false, error: "node-pty unavailable: " + String(err) };
+      return { ok: false, error: "pty unavailable: " + String(err) };
     }
     const id = e.sender.id;
     const { file, args } = defaultShell();
