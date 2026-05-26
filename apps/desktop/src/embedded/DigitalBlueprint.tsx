@@ -28,9 +28,40 @@ function geom(shape: Shape): THREE.BufferGeometry {
 type Snap = {
   color: string; metalness: number; roughness: number; emissive: string;
   emissiveIntensity: number; opacity: number; transmission: number;
-  wireframe: boolean; flatShading: boolean; textureUrl: string;
+  clearcoat: number; ior: number; sheen: number;
+  wireframe: boolean; flatShading: boolean; textureUrl: string; texture: string;
   px: number; py: number; pz: number; sx: number; sy: number; sz: number;
+  rx: number; ry: number; rz: number;
 };
+
+// Procedural textures the AI (or you) can apply — "AI makes textures" without
+// needing image files. Returns a CanvasTexture.
+function makeTexture(kind: string, color = "#888888"): THREE.CanvasTexture | null {
+  if (!kind || kind === "none") return null;
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const x = c.getContext("2d")!;
+  x.fillStyle = color;
+  x.fillRect(0, 0, 256, 256);
+  x.fillStyle = "rgba(0,0,0,0.35)";
+  if (kind === "checker") {
+    for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) if ((i + j) % 2) x.fillRect(i * 32, j * 32, 32, 32);
+  } else if (kind === "grid") {
+    x.strokeStyle = "rgba(0,0,0,0.4)";
+    for (let i = 0; i <= 256; i += 32) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i, 256); x.moveTo(0, i); x.lineTo(256, i); x.stroke(); }
+  } else if (kind === "stripes") {
+    for (let i = 0; i < 256; i += 24) x.fillRect(i, 0, 12, 256);
+  } else if (kind === "noise") {
+    const img = x.getImageData(0, 0, 256, 256);
+    for (let i = 0; i < img.data.length; i += 4) { const n = (Math.random() - 0.5) * 90; img.data[i] += n; img.data[i + 1] += n; img.data[i + 2] += n; }
+    x.putImageData(img, 0, 0);
+  } else if (kind === "dots") {
+    for (let i = 16; i < 256; i += 40) for (let j = 16; j < 256; j += 40) { x.beginPath(); x.arc(i, j, 8, 0, 7); x.fill(); }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
 
 export function DigitalBlueprint() {
   const mount = useRef<HTMLDivElement>(null);
@@ -167,15 +198,19 @@ export function DigitalBlueprint() {
 
   function readSnap(m: THREE.Mesh): Snap {
     const mat = m.material as THREE.MeshPhysicalMaterial;
+    const deg = (r: number) => Math.round(THREE.MathUtils.radToDeg(r));
     return {
       color: "#" + mat.color.getHexString(),
       metalness: mat.metalness, roughness: mat.roughness,
       emissive: "#" + mat.emissive.getHexString(), emissiveIntensity: mat.emissiveIntensity,
       opacity: mat.opacity, transmission: mat.transmission,
+      clearcoat: mat.clearcoat, ior: mat.ior, sheen: mat.sheen,
       wireframe: mat.wireframe, flatShading: mat.flatShading,
       textureUrl: (m.userData.textureUrl as string) || "",
+      texture: (m.userData.texture as string) || "none",
       px: m.position.x, py: m.position.y, pz: m.position.z,
       sx: m.scale.x, sy: m.scale.y, sz: m.scale.z,
+      rx: deg(m.rotation.x), ry: deg(m.rotation.y), rz: deg(m.rotation.z),
     };
   }
 
@@ -192,11 +227,18 @@ export function DigitalBlueprint() {
       transmission: opts?.transmission ?? 0, transparent: (opts?.opacity ?? 1) < 1 || (opts?.transmission ?? 0) > 0,
       opacity: opts?.opacity ?? 1, thickness: 0.5,
       emissive: new THREE.Color(opts?.emissive || "#000000"), emissiveIntensity: opts?.emissiveIntensity ?? 1,
+      clearcoat: opts?.clearcoat ?? 0, ior: opts?.ior ?? 1.5, sheen: opts?.sheen ?? 0,
     });
+    if (opts?.texture && opts.texture !== "none") {
+      mat.map = makeTexture(opts.texture, "#" + mat.color.getHexString());
+    }
     const m = new THREE.Mesh(geom(shape), mat);
     m.userData.shape = shape;
+    if (opts?.texture) m.userData.texture = opts.texture;
     m.position.set(opts?.px ?? 0, opts?.py ?? 0.6, opts?.pz ?? 0);
     if (opts?.sx) m.scale.set(opts.sx, opts.sy ?? opts.sx, opts.sz ?? opts.sx);
+    if (opts?.rx || opts?.ry || opts?.rz)
+      m.rotation.set(THREE.MathUtils.degToRad(opts.rx || 0), THREE.MathUtils.degToRad(opts.ry || 0), THREE.MathUtils.degToRad(opts.rz || 0));
     scene.current!.add(m);
     objects.current.push(m);
     return m;
@@ -213,6 +255,9 @@ export function DigitalBlueprint() {
     if (p.emissiveIntensity !== undefined) mat.emissiveIntensity = p.emissiveIntensity;
     if (p.opacity !== undefined) { mat.opacity = p.opacity; mat.transparent = p.opacity < 1 || mat.transmission > 0; }
     if (p.transmission !== undefined) { mat.transmission = p.transmission; mat.transparent = p.transmission > 0 || mat.opacity < 1; }
+    if (p.clearcoat !== undefined) mat.clearcoat = p.clearcoat;
+    if (p.ior !== undefined) mat.ior = p.ior;
+    if (p.sheen !== undefined) mat.sheen = p.sheen;
     if (p.wireframe !== undefined) mat.wireframe = p.wireframe;
     if (p.flatShading !== undefined) { mat.flatShading = p.flatShading; mat.needsUpdate = true; }
     if (p.px !== undefined) m.position.x = p.px;
@@ -221,6 +266,9 @@ export function DigitalBlueprint() {
     if (p.sx !== undefined) m.scale.x = p.sx;
     if (p.sy !== undefined) m.scale.y = p.sy;
     if (p.sz !== undefined) m.scale.z = p.sz;
+    if (p.rx !== undefined) m.rotation.x = THREE.MathUtils.degToRad(p.rx);
+    if (p.ry !== undefined) m.rotation.y = THREE.MathUtils.degToRad(p.ry);
+    if (p.rz !== undefined) m.rotation.z = THREE.MathUtils.degToRad(p.rz);
     if (p.textureUrl !== undefined) {
       m.userData.textureUrl = p.textureUrl;
       if (p.textureUrl) {
@@ -229,6 +277,11 @@ export function DigitalBlueprint() {
           mat.map = tex; mat.needsUpdate = true;
         });
       } else { mat.map = null; mat.needsUpdate = true; }
+    }
+    if (p.texture !== undefined) {
+      m.userData.texture = p.texture;
+      mat.map = makeTexture(p.texture, "#" + mat.color.getHexString());
+      mat.needsUpdate = true;
     }
     mat.needsUpdate = true;
     setSnap(readSnap(m));
@@ -251,10 +304,9 @@ export function DigitalBlueprint() {
     const res = await window.hub.aiChat({
       provider: "anthropic", apiKey: cfg!.apiKey, model: cfg!.model || "claude-opus-4-7",
       system:
-        "You design 3D scenes for a blueprint editor. Reply ONLY with a JSON array of objects: " +
-        '[{"shape":"box|sphere|cylinder|cone|torus|plane","position":[x,y,z],"scale":[x,y,z],' +
-        '"color":"#hex","metalness":0-1,"roughness":0-1,"emissive":"#hex","emissiveIntensity":0-3,"opacity":0-1,"transmission":0-1}]. ' +
-        "Keep 3-9 objects, y>=0, sensible scales (0.2-3). No prose.",
+        "You are the DigitalBlueprint scene generator — like Blender, assembling complex models, textures, and shaders from primitives. Reply ONLY with a JSON array, no prose: " +
+        '[{"shape":"box|sphere|cylinder|cone|torus|plane","position":[x,y,z],"scale":[x,y,z],"rotation":[degX,degY,degZ],"color":"#hex","metalness":0-1,"roughness":0-1,"clearcoat":0-1,"ior":1-2.5,"sheen":0-1,"transmission":0-1,"opacity":0-1,"emissive":"#hex","emissiveIntensity":0-4,"texture":"none|checker|grid|stripes|noise|dots"}]. ' +
+        "Compose MANY primitives (up to 24) into one detailed model — assemble parts (legs, panels, rings, cores, struts) using rotation + scale. Use rich PBR: metals (metalness≈1, low roughness, some clearcoat), glass (transmission≈1, ior≈1.5, opacity<1), glowing cores (emissive + intensity), fabric (sheen). y>=0. Be ambitious and detailed.",
       messages: [{ role: "user", content: `Build: ${prompt}` }],
     });
     if (!res.ok) { setGenStatus(res.error || "Generation failed."); return; }
@@ -264,15 +316,19 @@ export function DigitalBlueprint() {
     try {
       const spec = JSON.parse(t) as Array<Record<string, unknown>>;
       let n = 0;
-      for (const o of spec) {
+      for (const o of spec.slice(0, 24)) {
         const shape = (o.shape as Shape) || "box";
         const pos = (o.position as number[]) || [0, 0.6, 0];
         const scl = (o.scale as number[]) || [1, 1, 1];
+        const rot = (o.rotation as number[]) || [0, 0, 0];
         addShape(shape, {
           color: o.color as string, metalness: o.metalness as number, roughness: o.roughness as number,
+          clearcoat: o.clearcoat as number, ior: o.ior as number, sheen: o.sheen as number,
           emissive: o.emissive as string, emissiveIntensity: o.emissiveIntensity as number,
           opacity: o.opacity as number, transmission: o.transmission as number,
+          texture: o.texture as string,
           px: pos[0], py: pos[1], pz: pos[2], sx: scl[0], sy: scl[1], sz: scl[2],
+          rx: rot[0], ry: rot[1], rz: rot[2],
         });
         n++;
       }
@@ -365,15 +421,25 @@ export function DigitalBlueprint() {
               <Slider l="emissive intensity" v={snap.emissiveIntensity} max={3} on={(v) => patch({ emissiveIntensity: v })} />
               <Slider l="opacity" v={snap.opacity} on={(v) => patch({ opacity: v })} />
               <Slider l="transmission (glass)" v={snap.transmission} on={(v) => patch({ transmission: v })} />
+              <Slider l="clearcoat" v={snap.clearcoat} on={(v) => patch({ clearcoat: v })} />
+              <Slider l="ior (refraction)" v={snap.ior} max={2.5} on={(v) => patch({ ior: v })} />
+              <Slider l="sheen (fabric)" v={snap.sheen} on={(v) => patch({ sheen: v })} />
               <Row l="wireframe"><input type="checkbox" checked={snap.wireframe} onChange={(e) => patch({ wireframe: e.target.checked })} /></Row>
               <Row l="flat shading"><input type="checkbox" checked={snap.flatShading} onChange={(e) => patch({ flatShading: e.target.checked })} /></Row>
               <Label>Texture URL</Label>
               <input value={snap.textureUrl} placeholder="https://…(jpg/png)" onChange={(e) => patch({ textureUrl: e.target.value })}
                 style={{ width: "100%", background: "rgba(0,0,0,0.5)", border: "1px solid var(--line)", borderRadius: 6, color: "var(--ink)", padding: "6px 8px", fontSize: 11, fontFamily: "ui-monospace, monospace", outline: "none" }} />
 
+              <Label>Procedural texture</Label>
+              <select value={snap.texture} onChange={(e) => patch({ texture: e.target.value })}
+                style={{ width: "100%", background: "rgba(0,0,0,0.5)", border: "1px solid var(--line)", borderRadius: 6, color: "var(--ink)", padding: "6px 8px", fontSize: 11, fontFamily: "ui-monospace, monospace", outline: "none" }}>
+                {["none", "checker", "grid", "stripes", "noise", "dots"].map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+
               <Label>Transform</Label>
               <Vec l="pos" a={snap.px} b={snap.py} c={snap.pz} on={(x, y, z) => patch({ px: x, py: y, pz: z })} />
               <Vec l="scale" a={snap.sx} b={snap.sy} c={snap.sz} step={0.1} on={(x, y, z) => patch({ sx: x, sy: y, sz: z })} />
+              <Vec l="rotation°" a={snap.rx} b={snap.ry} c={snap.rz} step={15} on={(x, y, z) => patch({ rx: x, ry: y, rz: z })} />
 
               <button className="btn" style={{ marginTop: 12 }} onClick={del}>Delete object</button>
             </>
