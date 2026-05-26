@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description:
     "NetworkChuck Hub — your unified personal-ops command center. Browser, terminal, AI group chat, homelab, and all your apps in one glowing-red desktop app.",
   icons: {
-    icon: "/icon.svg",
+    icon: "/icon.png",
   },
 };
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import logoUrl from "../assets/logo.png";
 
 // Mirrors the HALOS Interface boot sequence: a JS-driven timeline of lines
 // with a fill bar, then hands off to the app.
@@ -52,17 +53,13 @@ export function Boot({ onDone }: { onDone: () => void }) {
           "radial-gradient(circle at 50% 35%, rgba(255,45,74,0.08), transparent 60%)",
       }}
     >
-      <div
-        className="mono"
-        style={{
-          fontSize: 34,
-          fontWeight: 900,
-          letterSpacing: 8,
-          textTransform: "uppercase",
-        }}
-      >
-        NetworkChuck <span className="glow-text">Hub</span>
-      </div>
+      <img
+        src={logoUrl}
+        width={120}
+        height={120}
+        alt="NetworkChuck Hub"
+        style={{ borderRadius: 22, filter: "drop-shadow(0 0 20px rgba(255,51,85,0.5))" }}
+      />
       <div className="strip" style={{ width: 360 }} />
 
       <div
