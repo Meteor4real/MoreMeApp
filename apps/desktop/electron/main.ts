@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell } from "electron";
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
 
@@ -120,6 +121,11 @@ function registerIpc() {
   ipcMain.handle("launch:uri", (_e, uri: string) => {
     return shell.openExternal(uri).then(() => true).catch(() => false);
   });
+  ipcMain.handle("launch:path", async (_e, p: string) => {
+    const err = await shell.openPath(p);
+    return { ok: !err, error: err || undefined };
+  });
+  ipcMain.handle("steam:list", () => listSteamGames());
 
   // --- Terminal (PowerShell on Windows) via node-pty ---
   ipcMain.handle("term:start", (e, cols: number, rows: number) => {
@@ -284,4 +290,48 @@ function errOf(data: Record<string, unknown>, status: number): string {
   const e = data.error as { message?: string } | string | undefined;
   if (typeof e === "string") return e;
   return e?.message || `HTTP ${status}`;
+}
+
+// ---------------------------------------------------------------------------
+// Steam library scan (Windows): parse appmanifest_*.acf across library folders.
+// ---------------------------------------------------------------------------
+
+type SteamGame = { appid: string; name: string };
+type SteamResult = { ok: boolean; error?: string; games: SteamGame[] };
+
+function listSteamGames(): SteamResult {
+  try {
+    if (process.platform !== "win32") {
+      return { ok: false, error: "Steam library scan is Windows-only.", games: [] };
+    }
+    const pf = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+    const steamDir = path.join(pf, "Steam");
+    const libs = new Set<string>([path.join(steamDir, "steamapps")]);
+
+    const libVdf = path.join(steamDir, "steamapps", "libraryfolders.vdf");
+    if (fs.existsSync(libVdf)) {
+      const txt = fs.readFileSync(libVdf, "utf8");
+      const re = /"path"\s*"([^"]+)"/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(txt))) {
+        libs.add(path.join(m[1].replace(/\\\\/g, "\\"), "steamapps"));
+      }
+    }
+
+    const games: SteamGame[] = [];
+    for (const lib of libs) {
+      if (!fs.existsSync(lib)) continue;
+      for (const f of fs.readdirSync(lib)) {
+        if (!f.startsWith("appmanifest_") || !f.endsWith(".acf")) continue;
+        const t = fs.readFileSync(path.join(lib, f), "utf8");
+        const id = /"appid"\s*"(\d+)"/.exec(t);
+        const nm = /"name"\s*"([^"]+)"/.exec(t);
+        if (id && nm) games.push({ appid: id[1], name: nm[1] });
+      }
+    }
+    games.sort((a, b) => a.name.localeCompare(b.name));
+    return { ok: true, games };
+  } catch (e) {
+    return { ok: false, error: String(e), games: [] };
+  }
 }

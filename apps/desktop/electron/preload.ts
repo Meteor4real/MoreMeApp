@@ -9,6 +9,10 @@ const api = {
     ipcRenderer.invoke("launch:steam", appId),
   launchUri: (uri: string): Promise<boolean> =>
     ipcRenderer.invoke("launch:uri", uri),
+  launchPath: (p: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("launch:path", p),
+  steamList: (): Promise<{ ok: boolean; error?: string; games: { appid: string; name: string }[] }> =>
+    ipcRenderer.invoke("steam:list"),
 
   fetchJson: <T = unknown>(
     url: string

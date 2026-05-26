@@ -5,6 +5,7 @@ import { ControlPanel } from "./views/ControlPanel";
 import { TerminalView } from "./views/Terminal";
 import { ExtensionsView } from "./views/Extensions";
 import { GroupChat } from "./views/GroupChat";
+import { Library } from "./views/Library";
 import { Ticker } from "./shell/Ticker";
 import { Notifications } from "./shell/Notifications";
 import { useFeed } from "./useFeed";
@@ -16,7 +17,8 @@ type Nav =
   | { kind: "terminal" }
   | { kind: "browser"; url?: string }
   | { kind: "extensions" }
-  | { kind: "ai" };
+  | { kind: "ai" }
+  | { kind: "library" };
 
 export function App() {
   const [booted, setBooted] = useState(false);
@@ -78,6 +80,12 @@ export function App() {
           active={nav.kind === "extensions"}
           onClick={() => setNav({ kind: "extensions" })}
         />
+        <RailBtn
+          glyph="🎮"
+          label="Library"
+          active={nav.kind === "library"}
+          onClick={() => setNav({ kind: "library" })}
+        />
         <div className="rail-sep" />
         {SITE_APPS.map((a) => (
           <RailBtn
@@ -97,6 +105,7 @@ export function App() {
       {nav.kind === "control" && <ControlPanel />}
       {nav.kind === "terminal" && <TerminalView />}
       {nav.kind === "ai" && <GroupChat />}
+      {nav.kind === "library" && <Library />}
       {nav.kind === "browser" && (
         <Browser key={nav.url || "blank"} initialUrl={nav.url} injectables={injectables} />
       )}
