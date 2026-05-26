@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, session } from "electron";
+import { app, BrowserWindow, ipcMain, shell, session, safeStorage } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -186,6 +186,34 @@ function registerIpc() {
     }
   });
 
+  // --- General JSON request (CORS-free) — used by Supabase auth, etc. ---
+  ipcMain.handle(
+    "net:request",
+    async (_e, opts: { method: string; url: string; headers?: Record<string, string>; body?: unknown }) => {
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 15000);
+        const res = await fetch(opts.url, {
+          method: opts.method,
+          headers: opts.headers,
+          body: opts.body != null ? JSON.stringify(opts.body) : undefined,
+          signal: ctrl.signal,
+        });
+        clearTimeout(t);
+        const txt = await res.text();
+        let data: unknown = null;
+        try {
+          data = txt ? JSON.parse(txt) : null;
+        } catch {
+          data = txt;
+        }
+        return { ok: res.ok, status: res.status, data };
+      } catch (err) {
+        return { ok: false, status: 0, error: String(err) };
+      }
+    }
+  );
+
   // --- AI group chat: multi-provider chat completion (CORS-free) ---
   ipcMain.handle("ai:chat", async (_e, req: AiChatRequest): Promise<AiChatResult> => {
     try {
@@ -266,6 +294,79 @@ function registerIpc() {
     terminals.get(e.sender.id)?.kill();
     terminals.delete(e.sender.id);
   });
+
+  // --- Per-user connection vault (secure, on-device) ---
+  ipcMain.handle("vault:list", () => vaultList());
+  ipcMain.handle("vault:get", (_e, service: string) => vaultGet(service));
+  ipcMain.handle("vault:set", (_e, service: string, token: string, baseUrl?: string) =>
+    vaultSet(service, token, baseUrl)
+  );
+  ipcMain.handle("vault:delete", (_e, service: string) => vaultDelete(service));
+}
+
+// ---------------------------------------------------------------------------
+// Connection vault — each user stores THEIR OWN service credentials in-app.
+// Tokens encrypted with the OS keychain (safeStorage); persisted to userData.
+// Never committed, never in env, never bundled.
+// ---------------------------------------------------------------------------
+
+type VaultEntry = { token?: string; baseUrl?: string }; // token = base64 cipher
+type VaultFile = Record<string, VaultEntry>;
+
+function vaultPath() {
+  return path.join(app.getPath("userData"), "connections.json");
+}
+function readVault(): VaultFile {
+  try {
+    return JSON.parse(fs.readFileSync(vaultPath(), "utf8"));
+  } catch {
+    return {};
+  }
+}
+function writeVault(v: VaultFile) {
+  try {
+    fs.writeFileSync(vaultPath(), JSON.stringify(v), "utf8");
+  } catch {
+    /* ignore */
+  }
+}
+function enc(plain: string): string {
+  if (safeStorage.isEncryptionAvailable()) return "v1:" + safeStorage.encryptString(plain).toString("base64");
+  return "b64:" + Buffer.from(plain, "utf8").toString("base64"); // fallback if no keychain
+}
+function dec(stored: string): string {
+  try {
+    if (stored.startsWith("v1:")) return safeStorage.decryptString(Buffer.from(stored.slice(3), "base64"));
+    if (stored.startsWith("b64:")) return Buffer.from(stored.slice(4), "base64").toString("utf8");
+  } catch {
+    /* ignore */
+  }
+  return "";
+}
+function vaultList() {
+  const v = readVault();
+  return Object.keys(v).map((service) => ({
+    service,
+    hasToken: !!v[service].token,
+    baseUrl: v[service].baseUrl || "",
+  }));
+}
+function vaultGet(service: string) {
+  const e = readVault()[service];
+  if (!e) return { token: "", baseUrl: "" };
+  return { token: e.token ? dec(e.token) : "", baseUrl: e.baseUrl || "" };
+}
+function vaultSet(service: string, token: string, baseUrl?: string) {
+  const v = readVault();
+  v[service] = { token: token ? enc(token) : undefined, baseUrl: baseUrl || undefined };
+  writeVault(v);
+  return { ok: true };
+}
+function vaultDelete(service: string) {
+  const v = readVault();
+  delete v[service];
+  writeVault(v);
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------
