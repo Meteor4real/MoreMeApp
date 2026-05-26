@@ -4,22 +4,23 @@
 // client-side. The project URL is pre-filled from the known project ref; the
 // anon key is configured in-app (or bundled at release).
 
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "../config";
+
 const CFG = "nchub.supabase.cfg.v1";
 const SESS = "nchub.supabase.session.v1";
 
 export type SupaCfg = { url: string; anon: string };
 export type Session = { token: string; refresh: string; email: string; userId: string };
 
-const DEFAULT_URL = "https://juedejmrwuqdzywcpboc.supabase.co";
-
 export function loadCfg(): SupaCfg {
+  // A user-saved backend (Login → Backend setup) overrides the baked default.
   try {
     const c = JSON.parse(localStorage.getItem(CFG) || "");
-    if (c && c.url) return { url: c.url, anon: c.anon || "" };
+    if (c && c.url && c.anon) return { url: c.url, anon: c.anon };
   } catch {
     /* ignore */
   }
-  return { url: DEFAULT_URL, anon: "" };
+  return { url: SUPABASE_URL, anon: SUPABASE_ANON_KEY };
 }
 export function saveCfg(c: SupaCfg) {
   localStorage.setItem(CFG, JSON.stringify(c));
