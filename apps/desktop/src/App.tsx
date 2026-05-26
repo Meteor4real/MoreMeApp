@@ -11,6 +11,7 @@ import { MusicPlayer } from "./shell/MusicPlayer";
 import { Notifications } from "./shell/Notifications";
 import { useFeed } from "./useFeed";
 import { SITE_APPS } from "./apps";
+import { EMBEDDED } from "./embedded";
 import { EXTENSIONS, loadEnabled, saveEnabled } from "./extensions";
 
 type Nav =
@@ -19,7 +20,8 @@ type Nav =
   | { kind: "browser"; url?: string }
   | { kind: "extensions" }
   | { kind: "ai" }
-  | { kind: "library" };
+  | { kind: "library" }
+  | { kind: "app"; id: string };
 
 export function App() {
   const [booted, setBooted] = useState(false);
@@ -93,11 +95,17 @@ export function App() {
             key={a.id}
             glyph={a.label.replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase()}
             label={a.label}
-            active={nav.kind === "browser" && nav.url === a.url}
+            active={
+              EMBEDDED[a.id]
+                ? nav.kind === "app" && nav.id === a.id
+                : nav.kind === "browser" && nav.url === a.url
+            }
             onClick={() =>
-              a.url
-                ? setNav({ kind: "browser", url: a.url })
-                : alert(`${a.label}: ${a.note}`)
+              EMBEDDED[a.id]
+                ? setNav({ kind: "app", id: a.id })
+                : a.url
+                  ? setNav({ kind: "browser", url: a.url })
+                  : setNav({ kind: "browser" })
             }
           />
         ))}
@@ -107,6 +115,7 @@ export function App() {
       {nav.kind === "terminal" && <TerminalView />}
       {nav.kind === "ai" && <GroupChat />}
       {nav.kind === "library" && <Library />}
+      {nav.kind === "app" && renderEmbedded(nav.id)}
       {nav.kind === "browser" && (
         <Browser key={nav.url || "blank"} initialUrl={nav.url} injectables={injectables} />
       )}
@@ -118,6 +127,11 @@ export function App() {
       <Notifications toasts={toasts} onDismiss={dismiss} />
     </div>
   );
+}
+
+function renderEmbedded(id: string) {
+  const C = EMBEDDED[id];
+  return C ? <C /> : null;
 }
 
 function RailBtn({
