@@ -42,12 +42,72 @@ export function ControlPanel() {
   const [token, setToken] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
 
+  const [live, setLive] = useState<Record<string, string[]>>({});
+  const [loadingLive, setLoadingLive] = useState<string | null>(null);
+
   async function refresh() {
     setStatus(await window.hub.vault.list());
   }
   useEffect(() => {
     void refresh();
   }, []);
+
+  // Live data for the headline dev integrations, using the user's own token.
+  async function loadLive(id: string) {
+    setLoadingLive(id);
+    try {
+      const { token, baseUrl } = await window.hub.vault.get(id);
+      if (!token && !baseUrl) return;
+      if (id === "github") {
+        const r = await window.hub.net({
+          method: "GET",
+          url: "https://api.github.com/user/repos?per_page=100&sort=pushed",
+          headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": "NetworkChuckHub" },
+        });
+        const repos = Array.isArray(r.data) ? (r.data as { full_name: string; stargazers_count: number }[]) : [];
+        setLive((p) => ({ ...p, github: [`${repos.length} repositories`, ...repos.slice(0, 8).map((x) => `★ ${x.stargazers_count}  ${x.full_name}`)] }));
+      } else if (id === "vercel") {
+        const r = await window.hub.net({
+          method: "GET",
+          url: "https://api.vercel.com/v6/deployments?limit=8",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const deps = ((r.data as { deployments?: { name: string; url: string; state?: string; readyState?: string }[] })?.deployments) || [];
+        setLive((p) => ({ ...p, vercel: deps.length ? deps.map((d) => `${(d.state || d.readyState || "?").toLowerCase()} · ${d.name} · ${d.url}`) : ["no recent deployments"] }));
+      } else if (id === "cloudflare") {
+        const r = await window.hub.net({
+          method: "GET",
+          url: "https://api.cloudflare.com/client/v4/zones?per_page=50",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const zones = ((r.data as { result?: { name: string; status: string }[] })?.result) || [];
+        setLive((p) => ({ ...p, cloudflare: zones.length ? zones.map((z) => `${z.status} · ${z.name}`) : ["no zones"] }));
+      } else if (id === "tailscale") {
+        const r = await window.hub.net({
+          method: "GET",
+          url: "https://api.tailscale.com/api/v2/tailnet/-/devices",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const devices = ((r.data as { devices?: { name: string; os: string }[] })?.devices) || [];
+        setLive((p) => ({ ...p, tailscale: devices.length ? [`${devices.length} devices`, ...devices.slice(0, 8).map((d) => `${d.os} · ${d.name}`)] : ["no devices"] }));
+      } else if (id === "n8n") {
+        if (!baseUrl) { setLive((p) => ({ ...p, n8n: ["set the n8n base URL first"] })); return; }
+        const r = await window.hub.net({
+          method: "GET",
+          url: `${baseUrl.replace(/\/$/, "")}/api/v1/workflows`,
+          headers: { "X-N8N-API-KEY": token, Accept: "application/json" },
+        });
+        const wf = ((r.data as { data?: { name: string; active: boolean }[] })?.data) || [];
+        setLive((p) => ({ ...p, n8n: wf.length ? wf.slice(0, 10).map((w) => `${w.active ? "active" : "off"} · ${w.name}`) : ["no workflows"] }));
+      }
+    } catch {
+      setLive((p) => ({ ...p, [id]: ["could not load — check the token / base URL"] }));
+    } finally {
+      setLoadingLive(null);
+    }
+  }
+
+  const LIVE_SERVICES = ["github", "vercel", "cloudflare", "tailscale", "n8n"];
 
   function isConnected(id: string) {
     const s = status.find((x) => x.service === id);
@@ -118,13 +178,27 @@ export function ControlPanel() {
                         </div>
                       </div>
                     ) : (
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <button className="btn" onClick={() => void openEdit(s.id)}>{on ? "Edit" : "Connect"}</button>
-                        {on && <button className="btn" onClick={() => void disconnect(s.id)}>Disconnect</button>}
-                        {s.console && (
-                          <a className="btn" href={s.console} target="_blank" rel="noreferrer">Get token</a>
+                      <>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button className="btn" onClick={() => void openEdit(s.id)}>{on ? "Edit" : "Connect"}</button>
+                          {on && <button className="btn" onClick={() => void disconnect(s.id)}>Disconnect</button>}
+                          {on && LIVE_SERVICES.includes(s.id) && (
+                            <button className="btn" onClick={() => void loadLive(s.id)}>{loadingLive === s.id ? "…" : "Load live"}</button>
+                          )}
+                          {s.console && (
+                            <a className="btn" href={s.console} target="_blank" rel="noreferrer">Get token</a>
+                          )}
+                        </div>
+                        {live[s.id] && (
+                          <div className="mono" style={{ marginTop: 8, fontSize: 11, color: "var(--mute)", lineHeight: 1.5 }}>
+                            {live[s.id].map((line, i) => (
+                              <div key={i} style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                <span className="glow-text">›</span> {line}
+                              </div>
+                            ))}
+                          </div>
                         )}
-                      </div>
+                      </>
                     )}
                   </div>
                 );

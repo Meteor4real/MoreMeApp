@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { loadConfig, isWired } from "../ai/store";
 
 // Embedded DigitalBlueprint — a real in-app 3D editor. Full material system
@@ -37,6 +39,11 @@ export function DigitalBlueprint() {
   const camera = useRef<THREE.PerspectiveCamera>();
   const objects = useRef<THREE.Mesh[]>([]);
   const selected = useRef<THREE.Mesh | null>(null);
+  const api = useRef<{ setWalk: (b: boolean) => void; importGlb: (f: File) => void }>({
+    setWalk: () => {},
+    importGlb: () => {},
+  });
+  const [mode, setMode] = useState<"orbit" | "walk">("orbit");
   const [snap, setSnap] = useState<Snap | null>(null);
   const [prompt, setPrompt] = useState("a small sci-fi reactor: a glowing core sphere flanked by metal pillars");
   const [genStatus, setGenStatus] = useState<string | null>(null);
@@ -71,12 +78,43 @@ export function DigitalBlueprint() {
     const controls = new OrbitControls(cam, rnd.domElement);
     controls.enableDamping = true;
 
+    // walk mode (pointer lock + WASD) alongside orbit
+    const pointer = new PointerLockControls(cam, rnd.domElement);
+    const keys: Record<string, boolean> = {};
+    const kd = (e: KeyboardEvent) => (keys[e.code] = true);
+    const ku = (e: KeyboardEvent) => (keys[e.code] = false);
+    window.addEventListener("keydown", kd);
+    window.addEventListener("keyup", ku);
+    pointer.addEventListener("unlock", () => {
+      controls.enabled = true;
+      setMode("orbit");
+    });
+    const clock = new THREE.Clock();
+    api.current.setWalk = (b: boolean) => {
+      if (b) {
+        controls.enabled = false;
+        pointer.lock();
+      } else {
+        pointer.unlock();
+        controls.enabled = true;
+      }
+    };
+    api.current.importGlb = (file: File) => {
+      file.arrayBuffer().then((buf) => {
+        new GLTFLoader().parse(buf, "", (gltf) => {
+          gltf.scene.position.set(0, 0, 0);
+          sc.add(gltf.scene);
+        });
+      });
+    };
+
     scene.current = sc;
     renderer.current = rnd;
     camera.current = cam;
 
     const ray = new THREE.Raycaster();
     const onClick = (e: MouseEvent) => {
+      if (pointer.isLocked) return; // in walk mode, clicks drive look/lock
       const r = rnd.domElement.getBoundingClientRect();
       const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       ray.setFromCamera(ndc, cam);
@@ -97,7 +135,16 @@ export function DigitalBlueprint() {
 
     let raf = 0;
     const loop = () => {
-      controls.update();
+      const dt = clock.getDelta();
+      if (pointer.isLocked) {
+        const sp = 4 * dt;
+        if (keys["KeyW"]) pointer.moveForward(sp);
+        if (keys["KeyS"]) pointer.moveForward(-sp);
+        if (keys["KeyA"]) pointer.moveRight(-sp);
+        if (keys["KeyD"]) pointer.moveRight(sp);
+      } else {
+        controls.update();
+      }
       rnd.render(sc, cam);
       raf = requestAnimationFrame(loop);
     };
@@ -107,7 +154,10 @@ export function DigitalBlueprint() {
       cancelAnimationFrame(raf);
       ro.disconnect();
       rnd.domElement.removeEventListener("click", onClick);
+      window.removeEventListener("keydown", kd);
+      window.removeEventListener("keyup", ku);
       controls.dispose();
+      pointer.dispose();
       pmrem.dispose();
       rnd.dispose();
       el.removeChild(rnd.domElement);
@@ -236,8 +286,22 @@ export function DigitalBlueprint() {
 
   return (
     <div className="stage">
-      <div className="mono" style={{ padding: "10px 14px", borderBottom: "1px solid var(--line)", fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: "var(--mute)" }}>
-        DigitalBlueprint <span className="glow-text">· 3D editor</span>
+      <div className="mono" style={{ padding: "8px 14px", borderBottom: "1px solid var(--line)", fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: "var(--mute)", display: "flex", alignItems: "center" }}>
+        <svg width="22" height="22" viewBox="0 0 32 32" style={{ marginRight: 8 }} aria-hidden="true">
+          <defs>
+            <linearGradient id="dbg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stopColor="#ff2d4a" />
+              <stop offset="1" stopColor="#ff7a2d" />
+            </linearGradient>
+          </defs>
+          <path d="M3 16 A13 13 0 0 1 29 16" fill="none" stroke="url(#dbg)" strokeWidth="1" strokeDasharray="2 3" opacity="0.7" />
+          <g fill="none" stroke="url(#dbg)" strokeWidth="1.6" strokeLinejoin="round">
+            <path d="M16 4 L27 10 L27 22 L16 28 L5 22 L5 10 Z" />
+            <path d="M16 4 L16 16 M16 16 L27 10 M16 16 L5 10 M16 16 L16 28" />
+          </g>
+          <circle cx="16" cy="16" r="2" fill="url(#dbg)" />
+        </svg>
+        DigitalBlueprint <span className="glow-text">&nbsp;· 3D editor</span>
       </div>
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         <div ref={mount} style={{ flex: 1, minWidth: 0, position: "relative", background: "#0a0a0c" }} />
@@ -248,6 +312,39 @@ export function DigitalBlueprint() {
               <button key={s} className="btn" style={{ textTransform: "capitalize" }} onClick={() => select(addShape(s))}>{s}</button>
             ))}
           </div>
+
+          <Label>View</Label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
+            <button
+              className="btn"
+              onClick={() => {
+                const next = mode !== "walk";
+                api.current.setWalk(next);
+                setMode(next ? "walk" : "orbit");
+              }}
+            >
+              {mode === "walk" ? "Exit walk" : "Walk mode"}
+            </button>
+            <label className="btn" style={{ cursor: "pointer" }}>
+              Import GLB
+              <input
+                type="file"
+                accept=".glb,.gltf"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const fileEl = e.currentTarget;
+                  const f = fileEl.files?.[0];
+                  if (f) api.current.importGlb(f);
+                  fileEl.value = "";
+                }}
+              />
+            </label>
+          </div>
+          {mode === "walk" && (
+            <div style={{ fontSize: 11, color: "var(--mute)", marginBottom: 10 }}>
+              WASD to move · mouse to look · Esc to exit
+            </div>
+          )}
 
           <Label>AI generate</Label>
           <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3}
