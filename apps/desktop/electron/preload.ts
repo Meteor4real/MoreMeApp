@@ -19,6 +19,17 @@ const api = {
   ): Promise<{ ok: boolean; data?: T; status?: number; error?: string }> =>
     ipcRenderer.invoke("feeds:fetch", url),
 
+  vault: {
+    list: (): Promise<{ service: string; hasToken: boolean; baseUrl: string }[]> =>
+      ipcRenderer.invoke("vault:list"),
+    get: (service: string): Promise<{ token: string; baseUrl: string }> =>
+      ipcRenderer.invoke("vault:get", service),
+    set: (service: string, token: string, baseUrl?: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("vault:set", service, token, baseUrl),
+    remove: (service: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("vault:delete", service),
+  },
+
   aiChat: (req: {
     provider: "anthropic" | "openai" | "gemini" | "http";
     endpoint?: string;

@@ -25,9 +25,29 @@ resolve. `main` should always be releasable.
   They stay as their currently-deployed selves.
 - **Every improvement is an EMBEDDED in-app version inside `apps/desktop`.**
   The left sidebar selects apps; selecting one does NOT open the live website —
-  it opens a creative, reimplemented in-app version. (Loading live sites in
-  webviews is only a temporary stopgap until each embedded version is built.)
+  it opens a creative, reimplemented in-app version.
 - `WildCall` is phone-only — never include it.
+
+## DISTRIBUTION MODEL — this is a PRODUCT for many users (not just the owner)
+
+- NetworkChuck Hub ships to other people (NetworkChuck included). Therefore:
+- **Per-user service connections are made IN THE APP, at runtime, by whoever
+  installs it** — Hermes, Hostinger, Home Assistant, Twingate, GitHub, Vercel,
+  Cloudflare, AI provider keys, etc. Build the in-app connect flows (settings /
+  encrypted vault). Each user plugs in THEIR OWN credentials.
+- **NEVER hardcode the owner's keys/endpoints. NEVER "set this env var" connector
+  cards. NEVER frame work as "blocked on the owner's API keys."** It isn't —
+  those are runtime, per-user, entered in-app. (The AI group chat's per-agent
+  config is the correct pattern; mirror it.)
+- Store per-user secrets securely on-device via Electron `safeStorage`
+  (OS-keychain encryption) in the main process — not committed, not in env.
+- **Accounts** are the one shared backend (the app's Supabase). The connection
+  must NOT be embedded in the distributed client (extractable). Route auth
+  through a hosted API (the deployed control-panel `/api/auth`, or Hermes), with
+  a configurable base URL — never ship the DB password in the binary.
+- The Control Panel is **Option 2: reimplemented natively in the desktop app**
+  (not a webview to a deployed site).
+- Owner tests on Windows AFTER everything is done. Keep building to completion.
 
 ## HARD RULES (owner's words)
 
