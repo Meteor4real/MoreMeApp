@@ -42,12 +42,45 @@ export function ControlPanel() {
   const [token, setToken] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
 
+  const [live, setLive] = useState<Record<string, string[]>>({});
+  const [loadingLive, setLoadingLive] = useState<string | null>(null);
+
   async function refresh() {
     setStatus(await window.hub.vault.list());
   }
   useEffect(() => {
     void refresh();
   }, []);
+
+  // Live data for the headline dev integrations, using the user's own token.
+  async function loadLive(id: string) {
+    setLoadingLive(id);
+    try {
+      const { token } = await window.hub.vault.get(id);
+      if (!token) return;
+      if (id === "github") {
+        const r = await window.hub.net({
+          method: "GET",
+          url: "https://api.github.com/user/repos?per_page=100&sort=pushed",
+          headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": "NetworkChuckHub" },
+        });
+        const repos = Array.isArray(r.data) ? (r.data as { full_name: string; stargazers_count: number }[]) : [];
+        setLive((p) => ({ ...p, github: [`${repos.length} repositories`, ...repos.slice(0, 8).map((x) => `★ ${x.stargazers_count}  ${x.full_name}`)] }));
+      } else if (id === "vercel") {
+        const r = await window.hub.net({
+          method: "GET",
+          url: "https://api.vercel.com/v6/deployments?limit=8",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const deps = ((r.data as { deployments?: { name: string; url: string; state?: string; readyState?: string }[] })?.deployments) || [];
+        setLive((p) => ({ ...p, vercel: deps.length ? deps.map((d) => `${(d.state || d.readyState || "?").toLowerCase()} · ${d.name} · ${d.url}`) : ["no recent deployments"] }));
+      }
+    } catch {
+      setLive((p) => ({ ...p, [id]: ["could not load — check the token"] }));
+    } finally {
+      setLoadingLive(null);
+    }
+  }
 
   function isConnected(id: string) {
     const s = status.find((x) => x.service === id);
@@ -118,13 +151,27 @@ export function ControlPanel() {
                         </div>
                       </div>
                     ) : (
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <button className="btn" onClick={() => void openEdit(s.id)}>{on ? "Edit" : "Connect"}</button>
-                        {on && <button className="btn" onClick={() => void disconnect(s.id)}>Disconnect</button>}
-                        {s.console && (
-                          <a className="btn" href={s.console} target="_blank" rel="noreferrer">Get token</a>
+                      <>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button className="btn" onClick={() => void openEdit(s.id)}>{on ? "Edit" : "Connect"}</button>
+                          {on && <button className="btn" onClick={() => void disconnect(s.id)}>Disconnect</button>}
+                          {on && (s.id === "github" || s.id === "vercel") && (
+                            <button className="btn" onClick={() => void loadLive(s.id)}>{loadingLive === s.id ? "…" : "Load live"}</button>
+                          )}
+                          {s.console && (
+                            <a className="btn" href={s.console} target="_blank" rel="noreferrer">Get token</a>
+                          )}
+                        </div>
+                        {live[s.id] && (
+                          <div className="mono" style={{ marginTop: 8, fontSize: 11, color: "var(--mute)", lineHeight: 1.5 }}>
+                            {live[s.id].map((line, i) => (
+                              <div key={i} style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                <span className="glow-text">›</span> {line}
+                              </div>
+                            ))}
+                          </div>
                         )}
-                      </div>
+                      </>
                     )}
                   </div>
                 );
