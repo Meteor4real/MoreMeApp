@@ -1,0 +1,349 @@
+@import "@xterm/xterm/css/xterm.css";
+
+:root {
+  --bg: #0a0a0c;
+  --panel: #111114;
+  --line: #1c1c22;
+  --ink: #e8e8ee;
+  --mute: #7a7a85;
+  --red: #ff2d4a;
+  --pink: #ff5577;
+  --orange: #ff7a2d;
+  --glow: #ff3355;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+}
+
+/* Signature glowing strip */
+.strip {
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    #ff2d4a 15%,
+    #ff5577 40%,
+    #ff7a2d 60%,
+    #ff2d4a 85%,
+    transparent 100%
+  );
+  box-shadow: 0 0 12px rgba(255, 45, 74, 0.9), 0 0 24px rgba(255, 87, 119, 0.6),
+    0 0 40px rgba(255, 122, 45, 0.4);
+}
+.strip-v {
+  width: 2px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    #ff2d4a 15%,
+    #ff5577 40%,
+    #ff7a2d 60%,
+    #ff2d4a 85%,
+    transparent
+  );
+  box-shadow: 0 0 12px rgba(255, 45, 74, 0.9), 0 0 24px rgba(255, 87, 119, 0.6);
+}
+
+.glow-text {
+  color: var(--pink);
+  text-shadow: 0 0 6px rgba(255, 51, 85, 0.9), 0 0 18px rgba(255, 122, 45, 0.5);
+}
+
+.panel {
+  border: 1px solid var(--line);
+  background: rgba(17, 17, 20, 0.8);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #ff2d4a, #ff7a2d);
+  border-radius: 4px;
+}
+
+/* ---- App shell ---- */
+.app {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  height: 100vh;
+}
+
+.rail {
+  background: #0c0c0f;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  position: relative;
+}
+.rail::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2px;
+}
+.rail-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--mute);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  font-size: 18px;
+  transition: 0.15s;
+}
+.rail-btn:hover {
+  color: #fff;
+  border-color: rgba(255, 87, 119, 0.6);
+  box-shadow: 0 0 16px rgba(255, 51, 85, 0.35);
+}
+.rail-btn.active {
+  color: var(--pink);
+  border-color: rgba(255, 87, 119, 0.7);
+  box-shadow: 0 0 16px rgba(255, 51, 85, 0.4);
+}
+.rail-sep {
+  width: 28px;
+  height: 1px;
+  background: var(--line);
+  margin: 2px 0;
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* ---- Browser ---- */
+.tabbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  background: #0c0c0f;
+  border-bottom: 1px solid var(--line);
+}
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 220px;
+  padding: 6px 10px;
+  border-radius: 8px 8px 0 0;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--mute);
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.tab.active {
+  color: var(--ink);
+  border-color: rgba(255, 87, 119, 0.5);
+}
+.tab .x {
+  opacity: 0.6;
+}
+.tab .x:hover {
+  opacity: 1;
+  color: var(--red);
+}
+.omnibox {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.omnibox input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  padding: 7px 12px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  outline: none;
+}
+.omnibox input:focus {
+  border-color: rgba(255, 87, 119, 0.6);
+  box-shadow: 0 0 14px rgba(255, 51, 85, 0.25);
+}
+.webwrap {
+  flex: 1;
+  position: relative;
+  background: #000;
+}
+.webwrap webview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.btn {
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.5);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+.btn:hover {
+  border-color: rgba(255, 87, 119, 0.6);
+  color: #fff;
+}
+
+.placeholder {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  color: var(--mute);
+  text-align: center;
+  padding: 40px;
+}
+
+/* ---- Unified ticker ---- */
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.ticker-bar {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  background: #0c0c0f;
+  border-top: 1px solid var(--line);
+  overflow: hidden;
+}
+.ticker-tag {
+  flex: none;
+  padding: 0 10px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--pink);
+  border-right: 1px solid var(--line);
+  text-shadow: 0 0 8px rgba(255, 51, 85, 0.6);
+}
+.ticker-viewport {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.ticker-track {
+  display: inline-flex;
+  align-items: center;
+  animation: ticker 90s linear infinite;
+  will-change: transform;
+}
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+.ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 22px;
+  font-size: 12px;
+  color: var(--ink);
+}
+.ticker-dot {
+  color: var(--orange);
+  font-size: 8px;
+}
+@keyframes ticker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* ---- Toast notifications ---- */
+.toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 40px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 320px;
+}
+.toast {
+  position: relative;
+  padding: 10px 30px 10px 12px;
+  animation: toastin 0.25s ease;
+}
+@keyframes toastin {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+}
+.toast-src {
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.toast-text {
+  font-size: 13px;
+  margin-top: 3px;
+  color: var(--ink);
+  line-height: 1.35;
+}
+.toast-x {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--mute);
+  cursor: pointer;
+  font-size: 12px;
+}
+.toast-x:hover {
+  color: var(--red);
+}

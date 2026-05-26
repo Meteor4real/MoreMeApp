@@ -1,0 +1,419 @@
+import { app, BrowserWindow, ipcMain, shell, session } from "electron";
+import path from "node:path";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
+import os from "node:os";
+
+// In a CJS build __dirname exists; guard for ESM just in case.
+const dir =
+  typeof __dirname !== "undefined"
+    ? __dirname
+    : path.dirname(fileURLToPath(import.meta.url));
+
+const DEV_URL = process.env.VITE_DEV_SERVER_URL;
+
+let win: BrowserWindow | null = null;
+
+function createWindow() {
+  win = new BrowserWindow({
+    width: 1440,
+    height: 900,
+    minWidth: 1024,
+    minHeight: 680,
+    backgroundColor: "#0a0a0c",
+    show: false,
+    autoHideMenuBar: true,
+    title: "NetworkChuck Hub",
+    webPreferences: {
+      preload: path.join(dir, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      webviewTag: true, // tabbed browser uses <webview>
+    },
+  });
+
+  win.once("ready-to-show", () => win?.show());
+
+  // External target=_blank links open in the OS browser, not new Electron windows.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("http")) shell.openExternal(url);
+    return { action: "deny" };
+  });
+
+  if (DEV_URL) {
+    win.loadURL(DEV_URL);
+  } else {
+    win.loadFile(path.join(dir, "../dist/index.html"));
+  }
+
+  win.on("closed", () => {
+    win = null;
+  });
+}
+
+app.whenReady().then(() => {
+  configureSecurity();
+  registerIpc();
+  createWindow();
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+// Harden every webview the renderer creates: no node, context-isolated, no
+// extra preload, external links to the OS browser.
+app.on("web-contents-created", (_e, contents) => {
+  contents.on("will-attach-webview", (_evt, webPreferences) => {
+    delete (webPreferences as { preload?: string }).preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+  });
+  contents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("http")) shell.openExternal(url);
+    return { action: "deny" };
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Browser security (DuckDuckGo-style): tracker blocking, HTTPS-upgrade on
+// top-level navigations, DNT/GPC headers, deny-by-default permissions, and a
+// de-fingerprinted user agent. Applied to both the default and hub sessions.
+// ---------------------------------------------------------------------------
+
+const TRACKER_HOSTS = [
+  "doubleclick.net", "googlesyndication.com", "google-analytics.com",
+  "googletagmanager.com", "adservice.google.com", "scorecardresearch.com",
+  "quantserve.com", "adnxs.com", "criteo.com", "taboola.com", "outbrain.com",
+  "connect.facebook.net", "facebook.net", "hotjar.com", "mixpanel.com",
+  "segment.com", "segment.io", "amplitude.com", "fullstory.com",
+  "doubleverify.com", "adsafeprotected.com", "moatads.com", "bat.bing.com",
+  "ads-twitter.com", "analytics.tiktok.com", "pixel.facebook.com",
+  "stats.g.doubleclick.net", "app-measurement.com", "branch.io",
+];
+
+function hostBlocked(rawUrl: string): boolean {
+  try {
+    const h = new URL(rawUrl).hostname.toLowerCase();
+    return TRACKER_HOSTS.some((t) => h === t || h.endsWith("." + t));
+  } catch {
+    return false;
+  }
+}
+
+const ALLOWED_PERMS = new Set(["fullscreen", "clipboard-sanitized-write"]);
+
+function harden(ses: Electron.Session) {
+  ses.webRequest.onBeforeRequest((details, cb) => {
+    if (hostBlocked(details.url)) return cb({ cancel: true });
+    // Upgrade insecure top-level navigations to HTTPS (skip localhost).
+    if (
+      details.resourceType === "mainFrame" &&
+      details.url.startsWith("http://") &&
+      !/^http:\/\/(localhost|127\.|\[::1\]|0\.0\.0\.0)/i.test(details.url)
+    ) {
+      return cb({ redirectURL: details.url.replace(/^http:/i, "https:") });
+    }
+    cb({});
+  });
+
+  ses.webRequest.onBeforeSendHeaders((details, cb) => {
+    details.requestHeaders["DNT"] = "1";
+    details.requestHeaders["Sec-GPC"] = "1";
+    cb({ requestHeaders: details.requestHeaders });
+  });
+
+  ses.setPermissionRequestHandler((_wc, perm, cb) => cb(ALLOWED_PERMS.has(perm)));
+  ses.setPermissionCheckHandler((_wc, perm) => ALLOWED_PERMS.has(perm));
+
+  const ua = ses
+    .getUserAgent()
+    .replace(/ Electron\/[\d.]+/i, "")
+    .replace(/ NetworkChuck Hub\/[\d.]+/i, "");
+  ses.setUserAgent(ua);
+}
+
+function configureSecurity() {
+  harden(session.defaultSession);
+  try {
+    harden(session.fromPartition("persist:hub"));
+  } catch {
+    /* partition created lazily; will inherit on first use */
+  }
+}
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
+
+// ---------------------------------------------------------------------------
+// IPC
+// ---------------------------------------------------------------------------
+
+type Pty = {
+  write: (data: string) => void;
+  resize: (cols: number, rows: number) => void;
+  kill: () => void;
+  onData: (cb: (data: string) => void) => void;
+  onExit: (cb: () => void) => void;
+};
+
+const terminals = new Map<number, Pty>();
+
+function defaultShell(): { file: string; args: string[] } {
+  if (process.platform === "win32") {
+    return { file: "powershell.exe", args: [] };
+  }
+  return { file: process.env.SHELL || "/bin/bash", args: [] };
+}
+
+function registerIpc() {
+  ipcMain.handle("app:getVersion", () => app.getVersion());
+  ipcMain.handle("app:platform", () => process.platform);
+
+  // CORS-free JSON fetch from the main process (renderer fetch to the deployed
+  // sites would be blocked by CORS). Used by the unified ticker/notifications.
+  ipcMain.handle("feeds:fetch", async (_e, url: string) => {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      const res = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(t);
+      if (!res.ok) return { ok: false, status: res.status };
+      return { ok: true, data: await res.json() };
+    } catch (err) {
+      return { ok: false, error: String(err) };
+    }
+  });
+
+  // --- AI group chat: multi-provider chat completion (CORS-free) ---
+  ipcMain.handle("ai:chat", async (_e, req: AiChatRequest): Promise<AiChatResult> => {
+    try {
+      return await aiChat(req);
+    } catch (err) {
+      return { ok: false, error: String(err) };
+    }
+  });
+
+  // --- Launchers (Steam / Modrinth / Blockbench / arbitrary URI) ---
+  ipcMain.handle("launch:steam", (_e, appId?: string) => {
+    const uri = appId ? `steam://rungameid/${appId}` : "steam://open/games";
+    return shell.openExternal(uri).then(() => true).catch(() => false);
+  });
+  ipcMain.handle("launch:uri", (_e, uri: string) => {
+    return shell.openExternal(uri).then(() => true).catch(() => false);
+  });
+  ipcMain.handle("launch:path", async (_e, p: string) => {
+    const err = await shell.openPath(p);
+    return { ok: !err, error: err || undefined };
+  });
+  ipcMain.handle("steam:list", () => listSteamGames());
+
+  // --- Terminal (PowerShell on Windows) via node-pty ---
+  ipcMain.handle("term:start", (e, cols: number, rows: number) => {
+    let pty: typeof import("node-pty");
+    try {
+      // Lazy require so a missing/native-unbuilt module doesn't crash startup.
+      pty = require("node-pty");
+    } catch (err) {
+      return { ok: false, error: "node-pty unavailable: " + String(err) };
+    }
+    const id = e.sender.id;
+    const { file, args } = defaultShell();
+    const proc = pty.spawn(file, args, {
+      name: "xterm-color",
+      cols: cols || 80,
+      rows: rows || 24,
+      cwd: os.homedir(),
+      env: process.env as Record<string, string>,
+    });
+    const wrapped: Pty = {
+      write: (d) => proc.write(d),
+      resize: (c, r) => proc.resize(c, r),
+      kill: () => proc.kill(),
+      onData: (cb) => proc.onData(cb),
+      onExit: (cb) => proc.onExit(() => cb()),
+    };
+    wrapped.onData((d) => e.sender.send("term:data", d));
+    wrapped.onExit(() => {
+      e.sender.send("term:exit");
+      terminals.delete(id);
+    });
+    terminals.set(id, wrapped);
+    return { ok: true };
+  });
+
+  ipcMain.on("term:input", (e, data: string) => {
+    terminals.get(e.sender.id)?.write(data);
+  });
+  ipcMain.on("term:resize", (e, cols: number, rows: number) => {
+    terminals.get(e.sender.id)?.resize(cols, rows);
+  });
+  ipcMain.on("term:kill", (e) => {
+    terminals.get(e.sender.id)?.kill();
+    terminals.delete(e.sender.id);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// AI providers
+// ---------------------------------------------------------------------------
+
+type AiMsg = { role: "user" | "assistant"; content: string };
+type AiChatRequest = {
+  provider: "anthropic" | "openai" | "gemini" | "http";
+  endpoint?: string;
+  apiKey?: string;
+  model?: string;
+  system: string;
+  messages: AiMsg[];
+};
+type AiChatResult = { ok: true; text: string } | { ok: false; error: string };
+
+async function aiChat(req: AiChatRequest): Promise<AiChatResult> {
+  const { provider, apiKey, model, system, messages } = req;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 60000);
+  const j = (r: Response) => r.json() as Promise<Record<string, unknown>>;
+  try {
+    if (provider === "anthropic") {
+      if (!apiKey) return { ok: false, error: "missing API key" };
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal: ctrl.signal,
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: model || "claude-opus-4-7",
+          max_tokens: 1024,
+          // prompt caching: the role/system block is stable across turns
+          system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+          messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        }),
+      });
+      const data = await j(res);
+      if (!res.ok) return { ok: false, error: errOf(data, res.status) };
+      const blocks = data.content as { type: string; text?: string }[] | undefined;
+      return { ok: true, text: blocks?.map((b) => b.text || "").join("") || "" };
+    }
+
+    if (provider === "openai") {
+      if (!apiKey) return { ok: false, error: "missing API key" };
+      const base = (req.endpoint || "https://api.openai.com/v1").replace(/\/$/, "");
+      const res = await fetch(`${base}/chat/completions`, {
+        method: "POST",
+        signal: ctrl.signal,
+        headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: model || "gpt-4o-mini",
+          messages: [{ role: "system", content: system }, ...messages],
+        }),
+      });
+      const data = await j(res);
+      if (!res.ok) return { ok: false, error: errOf(data, res.status) };
+      const choices = data.choices as { message?: { content?: string } }[] | undefined;
+      return { ok: true, text: choices?.[0]?.message?.content || "" };
+    }
+
+    if (provider === "gemini") {
+      if (!apiKey) return { ok: false, error: "missing API key" };
+      const m = model || "gemini-1.5-flash";
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          signal: ctrl.signal,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: system }] },
+            contents: messages.map((mm) => ({
+              role: mm.role === "assistant" ? "model" : "user",
+              parts: [{ text: mm.content }],
+            })),
+          }),
+        }
+      );
+      const data = await j(res);
+      if (!res.ok) return { ok: false, error: errOf(data, res.status) };
+      const cands = data.candidates as
+        | { content?: { parts?: { text?: string }[] } }[]
+        | undefined;
+      return { ok: true, text: cands?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "" };
+    }
+
+    // "http" — a generic endpoint (e.g. Hermes on Hostinger).
+    if (!req.endpoint) return { ok: false, error: "missing endpoint" };
+    const res = await fetch(req.endpoint, {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: {
+        "content-type": "application/json",
+        ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify({ system, messages }),
+    });
+    const data = await j(res);
+    if (!res.ok) return { ok: false, error: errOf(data, res.status) };
+    const text =
+      (data.reply as string) ||
+      (data.text as string) ||
+      (data.message as string) ||
+      (typeof data === "string" ? (data as string) : JSON.stringify(data));
+    return { ok: true, text };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+function errOf(data: Record<string, unknown>, status: number): string {
+  const e = data.error as { message?: string } | string | undefined;
+  if (typeof e === "string") return e;
+  return e?.message || `HTTP ${status}`;
+}
+
+// ---------------------------------------------------------------------------
+// Steam library scan (Windows): parse appmanifest_*.acf across library folders.
+// ---------------------------------------------------------------------------
+
+type SteamGame = { appid: string; name: string };
+type SteamResult = { ok: boolean; error?: string; games: SteamGame[] };
+
+function listSteamGames(): SteamResult {
+  try {
+    if (process.platform !== "win32") {
+      return { ok: false, error: "Steam library scan is Windows-only.", games: [] };
+    }
+    const pf = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+    const steamDir = path.join(pf, "Steam");
+    const libs = new Set<string>([path.join(steamDir, "steamapps")]);
+
+    const libVdf = path.join(steamDir, "steamapps", "libraryfolders.vdf");
+    if (fs.existsSync(libVdf)) {
+      const txt = fs.readFileSync(libVdf, "utf8");
+      const re = /"path"\s*"([^"]+)"/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(txt))) {
+        libs.add(path.join(m[1].replace(/\\\\/g, "\\"), "steamapps"));
+      }
+    }
+
+    const games: SteamGame[] = [];
+    for (const lib of libs) {
+      if (!fs.existsSync(lib)) continue;
+      for (const f of fs.readdirSync(lib)) {
+        if (!f.startsWith("appmanifest_") || !f.endsWith(".acf")) continue;
+        const t = fs.readFileSync(path.join(lib, f), "utf8");
+        const id = /"appid"\s*"(\d+)"/.exec(t);
+        const nm = /"name"\s*"([^"]+)"/.exec(t);
+        if (id && nm) games.push({ appid: id[1], name: nm[1] });
+      }
+    }
+    games.sort((a, b) => a.name.localeCompare(b.name));
+    return { ok: true, games };
+  } catch (e) {
+    return { ok: false, error: String(e), games: [] };
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "@nchub/control-panel",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "jose": "^5.9.6",
+    "lucide-react": "^0.456.0",
+    "next": "^15.5.4",
+    "pg": "^8.13.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.9.0",
+    "@types/pg": "^8.11.10",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.14",
+    "typescript": "^5.6.3"
+  }
+}

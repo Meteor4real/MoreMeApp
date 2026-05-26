@@ -1,0 +1,41 @@
+appId: com.networkchuck.hub
+productName: NetworkChuck Hub
+directories:
+  output: release
+  buildResources: build
+npmRebuild: true
+buildDependenciesFromSource: false
+files:
+  - dist
+  - dist-electron
+  - package.json
+asarUnpack:
+  - "**/node_modules/node-pty/**"
+win:
+  target:
+    - nsis
+    - zip
+  icon: build/icon.ico
+  artifactName: "NetworkChuckHub-win-${arch}.${ext}"
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: "NetworkChuckHub-Setup.${ext}"
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  artifactName: "NetworkChuckHub-mac-${arch}.${ext}"
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility
+  icon: build/icon.png
+  maintainer: "NetworkChuck Hub <hub@example.com>"
+  artifactName: "NetworkChuckHub-linux.${ext}"
+publish: null
