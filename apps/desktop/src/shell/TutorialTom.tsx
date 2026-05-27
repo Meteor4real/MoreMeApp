@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { loadConfig, isWired } from "../ai/store";
+import { houseChat, llmStatus } from "../houseLLM";
 import { getData, setData, whoAmI, cloudConfigured } from "../embedded/haloscloud";
 
 // Tutorial Tom — app-wide guide. Brief tour of everything, Q&A about the app
@@ -62,19 +62,14 @@ export function TutorialTom() {
     if (!text || busy) return;
     setQ("");
     setThread((t) => [...t, { who: "you", text }]);
-    const cfg = loadConfig()["claude"];
-    if (!isWired(cfg)) {
-      setThread((t) => [...t, { who: "tom", text: "Wire Claude in AI Group Chat → Configure and I can answer anything about the app. (Meanwhile, check the Tour tab!)" }]);
-      return;
-    }
     setBusy(true);
-    const res = await window.hub.aiChat({
-      provider: "anthropic", apiKey: cfg!.apiKey, model: cfg!.model || "claude-opus-4-7",
-      system: APP_GUIDE,
-      messages: [{ role: "user", content: text }],
-    });
+    const st = await llmStatus();
+    if (!st.ready) {
+      setThread((t) => [...t, { who: "tom", text: "One sec — setting up my brain (a local model, ~2 GB) the first time. I'll answer as soon as it's ready, then it's instant and offline forever." }]);
+    }
+    const res = await houseChat(APP_GUIDE, text);
     setBusy(false);
-    setThread((t) => [...t, { who: "tom", text: res.ok ? res.text : `[error] ${res.error}` }]);
+    setThread((t) => [...t, { who: "tom", text: res.ok ? res.text || "(no answer)" : `[model error] ${res.error}` }]);
     queueMicrotask(() => scroller.current?.scrollTo({ top: scroller.current.scrollHeight }));
   }
 

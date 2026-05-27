@@ -27,6 +27,19 @@ const api = {
   }): Promise<{ ok: boolean; status: number; data?: unknown; error?: string }> =>
     ipcRenderer.invoke("net:request", opts),
 
+  llm: {
+    status: (): Promise<{ ready: boolean; downloading: boolean; progress: number }> =>
+      ipcRenderer.invoke("llm:status"),
+    ensure: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke("llm:ensure"),
+    chat: (system: string, prompt: string): Promise<{ ok: boolean; text?: string; error?: string }> =>
+      ipcRenderer.invoke("llm:chat", system, prompt),
+    onProgress: (cb: (p: number) => void) => {
+      const fn = (_e: unknown, p: number) => cb(p);
+      ipcRenderer.on("llm:progress", fn);
+      return () => ipcRenderer.removeListener("llm:progress", fn);
+    },
+  },
+
   vault: {
     list: (): Promise<{ service: string; hasToken: boolean; baseUrl: string }[]> =>
       ipcRenderer.invoke("vault:list"),

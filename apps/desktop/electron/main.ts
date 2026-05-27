@@ -310,6 +310,14 @@ function registerIpc() {
     terminals.delete(e.sender.id);
   });
 
+  // --- Local LLM (node-llama-cpp) — powers the house AIs (Tom/NT5/BroBot),
+  //     no API key. Model downloads once on first use. ---
+  ipcMain.handle("llm:status", () => ({ ready: llmReady, downloading: llmDownloading, progress: llmProgress }));
+  ipcMain.handle("llm:ensure", (e) => ensureLlm((p) => e.sender.send("llm:progress", p)));
+  ipcMain.handle("llm:chat", (_e, system: string, prompt: string) =>
+    llmChat(system, prompt).catch((err) => ({ ok: false, error: String(err) }))
+  );
+
   // --- Per-user connection vault (secure, on-device) ---
   ipcMain.handle("vault:list", () => vaultList());
   ipcMain.handle("vault:get", (_e, service: string) => vaultGet(service));
@@ -317,6 +325,94 @@ function registerIpc() {
     vaultSet(service, token, baseUrl)
   );
   ipcMain.handle("vault:delete", (_e, service: string) => vaultDelete(service));
+}
+
+// ---------------------------------------------------------------------------
+// Local LLM (node-llama-cpp). Downloads Llama-3.2-3B-Instruct (~2 GB) once to
+// userData/models, then runs fully offline. Powers Tutorial Tom, NT5's wire,
+// BroBot's chat, and SignalFinder drafts — no API key.
+// ---------------------------------------------------------------------------
+const MODEL_URL = "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf";
+const MODEL_FILE = "Llama-3.2-3B-Instruct-Q4_K_M.gguf";
+let llmReady = false;
+let llmDownloading = false;
+let llmProgress = 0;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let llamaModel: any = null;
+
+function modelDir() {
+  return path.join(app.getPath("userData"), "models");
+}
+function modelPath() {
+  return path.join(modelDir(), MODEL_FILE);
+}
+
+async function ensureLlm(onProgress?: (p: number) => void): Promise<{ ok: boolean; error?: string }> {
+  try {
+    if (llmReady) return { ok: true };
+    fs.mkdirSync(modelDir(), { recursive: true });
+    const target = modelPath();
+    if (!fs.existsSync(target)) {
+      llmDownloading = true;
+      llmProgress = 0;
+      try {
+        const res = await fetch(MODEL_URL);
+        if (!res.ok || !res.body) throw new Error(`model download failed: ${res.status}`);
+        const total = Number(res.headers.get("content-length") || 0);
+        let loaded = 0;
+        const tmp = target + ".partial";
+        const out = fs.createWriteStream(tmp);
+        const reader = (res.body as ReadableStream<Uint8Array>).getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            out.write(Buffer.from(value));
+            loaded += value.byteLength;
+            if (total) {
+              llmProgress = loaded / total;
+              onProgress?.(llmProgress);
+            }
+          }
+        }
+        out.end();
+        await new Promise<void>((r) => out.on("close", () => r()));
+        fs.renameSync(tmp, target);
+      } finally {
+        llmDownloading = false;
+      }
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mod: any = await import("node-llama-cpp");
+    const llama = await mod.getLlama();
+    llamaModel = await llama.loadModel({ modelPath: target });
+    llmReady = true;
+    return { ok: true };
+  } catch (err) {
+    llmDownloading = false;
+    return { ok: false, error: String(err) };
+  }
+}
+
+async function llmChat(system: string, prompt: string): Promise<{ ok: boolean; text?: string; error?: string }> {
+  if (!llmReady) {
+    const r = await ensureLlm();
+    if (!r.ok) return { ok: false, error: r.error || "model not ready" };
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mod: any = await import("node-llama-cpp");
+  const context = await llamaModel.createContext();
+  try {
+    const session = new mod.LlamaChatSession({ contextSequence: context.getSequence(), systemPrompt: system });
+    const text = await session.prompt(prompt, { maxTokens: 700 });
+    return { ok: true, text };
+  } finally {
+    try {
+      context.dispose?.();
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

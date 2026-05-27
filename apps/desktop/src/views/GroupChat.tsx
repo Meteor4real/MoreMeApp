@@ -30,15 +30,9 @@ export function GroupChat() {
   const [showConfig, setShowConfig] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
 
-  // On-call bots (NT5 anchors, BroBot) fall back to the Claude backend when
-  // not separately configured.
-  function cfgFor(a: AgentDef): AgentConfig | undefined {
-    const own = cfg[a.id];
-    if (isWired(own)) return own;
-    if (a.onCall && isWired(cfg["claude"])) return { ...cfg["claude"], enabled: true };
-    return undefined;
-  }
-  const wiredOf = (a: AgentDef) => !!cfgFor(a);
+  // On-call bots (NT5 anchors, BroBot) run on the local house model — always
+  // available (no key). External agents need their own key/endpoint.
+  const wiredOf = (a: AgentDef) => (a.onCall ? true : isWired(cfg[a.id]));
 
   function push(m: Omit<Msg, "id">) {
     setMsgs((prev) => {
@@ -51,27 +45,30 @@ export function GroupChat() {
   }
 
   async function callAgent(a: AgentDef, task: string, history: Msg[]): Promise<void> {
-    const c = cfgFor(a)!;
     const system =
       a.system +
       `\nParticipants: ${AGENTS.filter(wiredOf).map((x) => x.name).join(", ")}, Meteor (boss).` +
       `\nRespond only as ${a.name}. Be brief. Do not prefix your reply with your name.`;
     const convo = transcriptText(history);
-    const res = await window.hub.aiChat({
-      provider: c.provider,
-      endpoint: c.endpoint,
-      apiKey: c.apiKey,
-      model: c.model || a.defaultModel,
-      system,
-      messages: [
-        {
-          role: "user",
-          content:
-            (convo ? `Conversation so far:\n${convo}\n\n` : "") +
-            `Task from Meteor: ${task}\n\nRespond as ${a.name}:`,
-        },
-      ],
-    });
+    const userContent =
+      (convo ? `Conversation so far:\n${convo}\n\n` : "") +
+      `Task from Meteor: ${task}\n\nRespond as ${a.name}:`;
+
+    let res: { ok: boolean; text?: string; error?: string };
+    if (a.onCall) {
+      // local house model (no key)
+      res = await window.hub.llm.chat(system, userContent);
+    } else {
+      const c = cfg[a.id]!;
+      res = await window.hub.aiChat({
+        provider: c.provider,
+        endpoint: c.endpoint,
+        apiKey: c.apiKey,
+        model: c.model || a.defaultModel,
+        system,
+        messages: [{ role: "user", content: userContent }],
+      });
+    }
     push({
       agentId: a.id,
       name: a.name,

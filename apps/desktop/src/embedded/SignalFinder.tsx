@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { loadConfig, isWired } from "../ai/store";
+import { houseChat } from "../houseLLM";
 
 // SignalFinder (built from scratch) — a strategic opportunity-scoring CRM.
 // You enter real targets (creators, communities, collaborators, mentors…);
@@ -234,17 +234,14 @@ function Detail({ t, onLog, onRemove }: { t: Target; onLog: (id: string, s: Styl
   const [drafting, setDrafting] = useState(false);
 
   async function draftOutreach() {
-    const cfg = loadConfig()["claude"];
-    if (!isWired(cfg)) { setDraft("Wire Claude in AI Group Chat to use the assistant."); return; }
     setDrafting(true);
     const styleHint = t.outreach.some((o) => o.responded && o.style === "detailed") ? "detailed and warm" : "concise and genuine";
-    const res = await window.hub.aiChat({
-      provider: "anthropic", apiKey: cfg!.apiKey, model: cfg!.model || "claude-opus-4-7",
-      system: "You are SignalFinder's outreach assistant. Write one short, high-response-likelihood opening message to reach a target. Match the requested style. Reply with ONLY the message — no preamble, no quotes.",
-      messages: [{ role: "user", content: `Target: ${t.name} (${t.type})${t.niche ? ", niche: " + t.niche : ""}${t.platform ? ", on " + t.platform : ""}. My goal: ${t.goal || "connect / collaborate"}. Style: ${styleHint}.` }],
-    });
+    const res = await houseChat(
+      "You are SignalFinder's outreach assistant. Write one short, high-response-likelihood opening message to reach a target. Match the requested style. Reply with ONLY the message — no preamble, no quotes.",
+      `Target: ${t.name} (${t.type})${t.niche ? ", niche: " + t.niche : ""}${t.platform ? ", on " + t.platform : ""}. My goal: ${t.goal || "connect / collaborate"}. Style: ${styleHint}.`
+    );
     setDrafting(false);
-    setDraft(res.ok ? res.text : `[error] ${res.error}`);
+    setDraft(res.ok ? res.text || "" : `[model error] ${res.error}`);
   }
 
   const bars: [string, number][] = [

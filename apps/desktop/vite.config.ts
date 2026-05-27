@@ -12,7 +12,7 @@ export default defineConfig({
           build: {
             rollupOptions: {
               // native pty — keep external, load at runtime.
-              external: ["@homebridge/node-pty-prebuilt-multiarch", "electron"],
+              external: ["@homebridge/node-pty-prebuilt-multiarch", "node-llama-cpp", "electron"],
             },
           },
         },

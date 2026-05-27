@@ -1,10 +1,7 @@
 // NT5 embedded newsroom store + wire generator. Real always-on reporting:
-// when Claude is wired (AI group chat config), the wire generates fresh items
-// in the anchor desk's voices, weighted by the user's topics. Persisted
-// locally; also surfaced in the unified ticker. Nothing is generated unless
-// Claude is configured — no fabricated filler.
-import { loadConfig, isWired } from "../ai/store";
-
+// the wire generates fresh items in the anchor desk's voices, weighted by the
+// user's topics, using the local house model (node-llama-cpp) — no API key.
+// Persisted locally; also surfaced in the unified ticker.
 export type Anchor = { id: string; name: string; role: string; cats: string[] };
 export const ANCHORS: Anchor[] = [
   { id: "voss", name: "Voss Calloway", role: "Lead anchor", cats: ["breaking", "latest", "cc_lore"] },
@@ -45,8 +42,10 @@ export function saveNT5(s: NT5State) {
   }
 }
 
+// The wire runs on the local house model — always available (downloads on
+// first use). Kept for the UI; the model readiness is surfaced via status.
 export function nt5Wired(): boolean {
-  return isWired(loadConfig()["claude"]);
+  return true;
 }
 
 const SYSTEM =
@@ -86,23 +85,13 @@ function parseItems(text: string): Omit<Article, "id" | "ts">[] {
 
 // Runs one wire scan. Returns the new articles added (deduped by title).
 export async function runWire(count = 3): Promise<{ ok: boolean; added: Article[]; error?: string }> {
-  const cfg = loadConfig()["claude"];
-  if (!isWired(cfg)) return { ok: false, added: [], error: "Claude is not wired (configure it in AI Group Chat)." };
   const state = loadNT5();
-  const res = await window.hub.aiChat({
-    provider: "anthropic",
-    apiKey: cfg!.apiKey,
-    model: cfg!.model || "claude-opus-4-7",
-    system: SYSTEM,
-    messages: [
-      {
-        role: "user",
-        content: `Topics to weight, most important first: ${state.topics.join(", ")}. Write ${count} fresh NT5 wire items now as JSON only.`,
-      },
-    ],
-  });
+  const res = await window.hub.llm.chat(
+    SYSTEM,
+    `Topics to weight, most important first: ${state.topics.join(", ")}. Write ${count} fresh NT5 wire items now as JSON only.`
+  );
   if (!res.ok) return { ok: false, added: [], error: res.error };
-  const items = parseItems(res.text);
+  const items = parseItems(res.text || "");
   const existing = new Set(state.articles.map((a) => a.title.toLowerCase()));
   const added: Article[] = items
     .filter((i) => !existing.has(i.title.toLowerCase()))

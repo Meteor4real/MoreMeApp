@@ -23,6 +23,7 @@
     "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
+    "node-llama-cpp": "^3.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "three": "^0.163.0"
