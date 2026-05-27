@@ -10,6 +10,46 @@ import { HalosChat, HalosProjects, HalosWorkspace, HalosMeet } from "./HalosColl
 const CY = "#00e5ff";
 const PU = "#a07fff";
 
+// Matches the real HALOS interface: shiny-black + neon purple/cyan, Orbitron
+// display / Syne body / JetBrains Mono, drifting starfield + nebula glow.
+const HALOS_STYLE = `
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700;800&family=Syne:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+.halos-embed { position: relative; font-family: "Syne", system-ui, sans-serif; }
+.halos-embed .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+.halos-embed .hx-title, .halos-embed h1, .halos-embed h2, .halos-embed h3 { font-family: "Orbitron", sans-serif; }
+.halos-embed .hx-sky { position: absolute; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+.halos-embed .hx-sky::before {
+  content: ""; position: absolute; inset: 0;
+  background-image:
+    radial-gradient(ellipse 70% 60% at 15% 12%, rgba(124,63,255,0.14), transparent 65%),
+    radial-gradient(ellipse 60% 50% at 88% 82%, rgba(0,229,255,0.10), transparent 65%),
+    radial-gradient(ellipse 40% 40% at 50% 50%, rgba(124,63,255,0.05), transparent 70%);
+}
+.halos-embed .hx-sky::after {
+  content: ""; position: absolute; inset: 0;
+  background-image:
+    radial-gradient(1.8px 1.8px at 4% 12%, rgba(0,229,255,0.9), transparent 100%),
+    radial-gradient(1.2px 1.2px at 11% 44%, rgba(255,255,255,0.55), transparent 100%),
+    radial-gradient(2px 2px at 17% 73%, rgba(124,63,255,0.8), transparent 100%),
+    radial-gradient(1px 1px at 23% 29%, rgba(255,255,255,0.4), transparent 100%),
+    radial-gradient(1.8px 1.8px at 31% 88%, rgba(0,229,255,0.7), transparent 100%),
+    radial-gradient(1.2px 1.2px at 38% 6%, rgba(255,255,255,0.5), transparent 100%),
+    radial-gradient(2px 2px at 44% 52%, rgba(124,63,255,0.75), transparent 100%),
+    radial-gradient(1px 1px at 52% 19%, rgba(255,255,255,0.35), transparent 100%),
+    radial-gradient(1.8px 1.8px at 59% 67%, rgba(0,229,255,0.65), transparent 100%),
+    radial-gradient(1.2px 1.2px at 66% 38%, rgba(255,255,255,0.45), transparent 100%),
+    radial-gradient(2px 2px at 72% 81%, rgba(124,63,255,0.7), transparent 100%),
+    radial-gradient(1px 1px at 78% 14%, rgba(255,255,255,0.5), transparent 100%),
+    radial-gradient(1.8px 1.8px at 85% 56%, rgba(0,229,255,0.6), transparent 100%),
+    radial-gradient(1.2px 1.2px at 91% 92%, rgba(124,63,255,0.65), transparent 100%),
+    radial-gradient(2px 2px at 97% 33%, rgba(0,229,255,0.8), transparent 100%);
+  background-size: 100% 100%;
+  animation: hxTwinkle 6s ease-in-out infinite alternate;
+}
+@keyframes hxTwinkle { from { opacity: 0.55; } to { opacity: 1; } }
+.halos-embed .hx-content { position: relative; z-index: 1; }
+`;
+
 // ---- procedural alien glyph generator (deterministic per letter) ----
 function rng(seed: number) {
   let a = seed >>> 0;
@@ -132,9 +172,12 @@ export function HALOS() {
   };
 
   return (
-    <div className="stage" style={{ background: "#07050f", color: "#cfe9ff" }}>
+    <div className="stage halos-embed" style={{ background: "#07050f", color: "#cce8f5" }}>
+      <style>{HALOS_STYLE}</style>
+      <div className="hx-sky" />
+      <div className="hx-content" style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div className="mono" style={{ padding: "8px 14px", borderBottom: `1px solid ${CY}33`, display: "flex", alignItems: "center", gap: 14 }}>
-        <span style={{ fontSize: 12, letterSpacing: 3, textTransform: "uppercase", color: CY, textShadow: `0 0 10px ${CY}` }}>The HALOS Interface</span>
+        <span className="hx-title" style={{ fontSize: 12, letterSpacing: 3, textTransform: "uppercase", color: CY, textShadow: `0 0 10px ${CY}` }}>The HALOS Interface</span>
         <div style={{ display: "flex", gap: 6 }}>
           {(["telemetry", "stocks", "roster", "chat", "projects", "workspace", "meet"] as const).map((t) => (
             <button
@@ -252,6 +295,7 @@ export function HALOS() {
       {tab === "projects" && <HalosProjects />}
       {tab === "workspace" && <HalosWorkspace />}
       {tab === "meet" && <HalosMeet />}
+      </div>
     </div>
   );
 }
@@ -319,15 +363,15 @@ function Stocks({ box }: { box: BoxStyle }) {
 }
 
 const CREW: [string, string][] = [
-  ["Meteor", "Astralex · can do anything (Pact-bound)"],
-  ["Stardust", "matter + tech; builds everything"],
-  ["Fury", "best pure fighter; the boots stay on"],
-  ["Supernova", "star-people; pilot"],
-  ["Nebula", "teleport, cloak, truth detection"],
-  ["Solar Flare", "fire + lava"],
-  ["Cosmo", "telepathic space-puppy"],
-  ["Prism", "shapeshifter; phases solids"],
-  ["Byte", "built by Stardust; mech form"],
+  ["Roetem", "Astralex · can do anything (Pact-bound)"],
+  ["Tsudrats", "matter + tech; builds everything"],
+  ["Yruf", "best pure fighter; the boots stay on"],
+  ["Avonorepus", "star-people; pilot"],
+  ["Aluben", "teleport, cloak, truth detection"],
+  ["Eralf Ralos", "fire + lava"],
+  ["Omsoc", "telepathic space-puppy"],
+  ["Msirp", "shapeshifter; phases solids"],
+  ["Etyb", "built by Tsudrats; mech form"],
 ];
 function Roster({ box }: { box: BoxStyle }) {
   return (
