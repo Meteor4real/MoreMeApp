@@ -5,11 +5,11 @@ import { Logo } from "./logo";
 
 const RELEASES_BASE =
   process.env.NEXT_PUBLIC_RELEASES_BASE ??
-  "https://github.com/meteor4real/networkchuckhub/releases/latest/download";
+  "https://github.com/Meteor4real/NetworkChuckHub/releases/latest/download";
 
 const RELEASES_PAGE =
   process.env.NEXT_PUBLIC_RELEASES_PAGE ??
-  "https://github.com/meteor4real/networkchuckhub/releases";
+  "https://github.com/Meteor4real/NetworkChuckHub/releases";
 
 type OS = "win" | "mac-arm64" | "mac-x64" | "linux" | null;
 
