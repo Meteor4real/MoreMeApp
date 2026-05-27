@@ -30,8 +30,15 @@ export function GroupChat() {
   const [showConfig, setShowConfig] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
 
-  const wiredOf = (a: AgentDef) => isWired(cfg[a.id]);
-  const anyWired = AGENTS.some(wiredOf);
+  // On-call bots (NT5 anchors, BroBot) fall back to the Claude backend when
+  // not separately configured.
+  function cfgFor(a: AgentDef): AgentConfig | undefined {
+    const own = cfg[a.id];
+    if (isWired(own)) return own;
+    if (a.onCall && isWired(cfg["claude"])) return { ...cfg["claude"], enabled: true };
+    return undefined;
+  }
+  const wiredOf = (a: AgentDef) => !!cfgFor(a);
 
   function push(m: Omit<Msg, "id">) {
     setMsgs((prev) => {
@@ -44,7 +51,7 @@ export function GroupChat() {
   }
 
   async function callAgent(a: AgentDef, task: string, history: Msg[]): Promise<void> {
-    const c = cfg[a.id]!;
+    const c = cfgFor(a)!;
     const system =
       a.system +
       `\nParticipants: ${AGENTS.filter(wiredOf).map((x) => x.name).join(", ")}, Meteor (boss).` +
@@ -79,38 +86,36 @@ export function GroupChat() {
     setInput("");
     push({ agentId: "meteor", name: "Meteor", kind: "user", content: task });
 
-    if (!anyWired) {
-      push({
-        agentId: "system",
-        name: "Hub",
-        kind: "system",
-        content: "No agents are wired yet. Open Configure and add a key/endpoint for at least one agent.",
-      });
+    // @mention routing. @Everyone = all core agents (NOT on-call bots);
+    // @Name targets that agent (incl. on-call NT5 anchors / BroBot).
+    const mentions = (task.match(/@([A-Za-z]+)/g) || []).map((m) => m.slice(1).toLowerCase());
+    if (mentions.length === 0) {
+      push({ agentId: "system", name: "Hub", kind: "system", content: "Mention who should answer — e.g. @Claude, @Hermes, or @Everyone. On-call bots (Voss/Zara/Dex/Lena/Orin/BroBot) are @mentioned by name." });
+      return;
+    }
+    const everyone = mentions.includes("everyone");
+    let targets: AgentDef[] = everyone ? AGENTS.filter((a) => !a.onCall) : [];
+    for (const a of AGENTS) if (mentions.includes(a.name.toLowerCase()) && !targets.includes(a)) targets.push(a);
+
+    const unwired = targets.filter((a) => !wiredOf(a)).map((a) => a.name);
+    targets = targets.filter(wiredOf);
+    if (targets.length === 0) {
+      push({ agentId: "system", name: "Hub", kind: "system", content: `No mentioned agent is wired${unwired.length ? ` (${unwired.join(", ")})` : ""}. Add a key in Configure.` });
       return;
     }
 
     setBusy(true);
     try {
-      const mentioned = AGENTS.filter(
-        (a) => a.onCall && wiredOf(a) && new RegExp(`\\b${a.name}\\b`, "i").test(task)
-      );
-      const coordinator = AGENTS.find((a) => a.coordinator && wiredOf(a));
-      const workers = AGENTS.filter((a) => !a.coordinator && !a.onCall && wiredOf(a));
-
-      // 1) coordinator assigns / plans
+      const single = targets.length === 1;
+      const coordinator = targets.find((a) => a.coordinator);
+      const others = targets.filter((a) => a !== coordinator);
+      // coordinator (e.g. Hermes) plans/assigns first when it's a group
       if (coordinator) await callAgent(coordinator, task, snapshot());
-      // 2) workers respond
-      for (const w of workers) await callAgent(w, task, snapshot());
-      // 3) on-call bots that were @mentioned
-      for (const b of mentioned) await callAgent(b, task, snapshot());
-      // 4) fact-check / consolidation pass by the coordinator (or Claude)
-      const reviewer = coordinator || AGENTS.find((a) => a.id === "claude" && wiredOf(a));
-      if (reviewer && workers.length > 0) {
-        await callAgent(
-          reviewer,
-          `Review the crew's responses above for errors or hallucinations, then give Meteor the consolidated answer/plan.`,
-          snapshot()
-        );
+      for (const w of others) await callAgent(w, task, snapshot());
+      // fact-check / consolidation pass on group chats (skip for a single @mention)
+      if (!single) {
+        const reviewer = coordinator || targets.find((a) => a.id === "claude") || targets[0];
+        await callAgent(reviewer, "Review the crew's responses above for errors or hallucinations, keep everyone on track, then give Meteor the consolidated result.", snapshot());
       }
     } finally {
       setBusy(false);
@@ -224,7 +229,7 @@ export function GroupChat() {
                   fontSize: 13,
                   outline: "none",
                 }}
-                placeholder="Give the crew a task…  (@BroBot to call a bot)"
+                placeholder="@Everyone, @Claude, @Hermes… — mention who should answer"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {

@@ -75,4 +75,52 @@ export const AGENTS: AgentDef[] = [
       "gallery and only weigh in when called out by name, usually about images, " +
       "media, or vibes. Casual, brief.",
   },
+  // NT5 anchor desk — on-call AI personas. They have day jobs filing the news,
+  // so they only weigh in when @mentioned. They run on the Claude backend when
+  // not separately configured.
+  {
+    id: "voss",
+    name: "Voss",
+    role: "NT5 lead anchor (on call)",
+    onCall: true,
+    defaultProvider: "anthropic",
+    defaultModel: "claude-opus-4-7",
+    system: "You are Voss Calloway, NT5 lead anchor — authoritative, measured, declarative. Brief.",
+  },
+  {
+    id: "zara",
+    name: "Zara",
+    role: "NT5 culture (on call)",
+    onCall: true,
+    defaultProvider: "anthropic",
+    defaultModel: "claude-opus-4-7",
+    system: "You are Zara Kindle, NT5 co-anchor — warm, curious, light humor. Brief.",
+  },
+  {
+    id: "dex",
+    name: "Dex",
+    role: "NT5 gaming (on call)",
+    onCall: true,
+    defaultProvider: "anthropic",
+    defaultModel: "claude-opus-4-7",
+    system: "You are Dex Morrow, NT5 gaming correspondent — hype, deeply knowledgeable about games (Minecraft, Origin Realms, Hypixel). Brief.",
+  },
+  {
+    id: "lena",
+    name: "Lena",
+    role: "NT5 field (on call)",
+    onCall: true,
+    defaultProvider: "anthropic",
+    defaultModel: "claude-opus-4-7",
+    system: "You are Lena Faust, NT5 field reporter — sharp, fast, mid-action. Brief.",
+  },
+  {
+    id: "orin",
+    name: "Orin",
+    role: "NT5 tech & space (on call)",
+    onCall: true,
+    defaultProvider: "anthropic",
+    defaultModel: "claude-opus-4-7",
+    system: "You are Orin Vale, NT5 tech & space correspondent — nerdy, genuine enthusiasm. Brief.",
+  },
 ];
