@@ -4,7 +4,37 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { loadConfig, isWired } from "../ai/store";
+import { houseChat } from "../houseLLM";
+
+// Blueprint / draughting-paper aesthetic, matching the real Digital Blueprint
+// site: navy graph-paper, light-blue ink, amber accent, Courier New labels.
+const DB = {
+  paper: "#0e1c34", paper2: "#0a1628", paper3: "#122542",
+  ink: "#a8d8ff", inkSoft: "#7fb8e6", inkLight: "#6a86aa", inkDim: "#4a5e7c",
+  accent: "#ffb84d", accent2: "#ff7a4a", rule: "#2a4268", ruleSoft: "rgba(88,138,198,0.35)",
+  gridLine: "rgba(168,216,255,0.10)", gridMinor: "rgba(168,216,255,0.04)",
+};
+const DB_STYLE = `
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+.db-embed { background: ${DB.paper}; color: ${DB.ink}; font-family: "Inter", system-ui, sans-serif; }
+.db-embed .db-mono { font-family: "Courier New", ui-monospace, monospace; letter-spacing: 0.15em; text-transform: uppercase; }
+.db-embed .db-paper {
+  background-color: ${DB.paper};
+  background-image:
+    linear-gradient(${DB.gridLine} 1px, transparent 1px),
+    linear-gradient(90deg, ${DB.gridLine} 1px, transparent 1px),
+    linear-gradient(${DB.gridMinor} 1px, transparent 1px),
+    linear-gradient(90deg, ${DB.gridMinor} 1px, transparent 1px);
+  background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px;
+}
+.db-embed .db-btn { background: ${DB.paper3}; border: 1px solid ${DB.ink}; border-radius: 2px; padding: 7px 12px; color: ${DB.ink}; font-family: "Courier New", monospace; font-size: 11px; letter-spacing: 0.13em; text-transform: uppercase; cursor: pointer; transition: all .12s; }
+.db-embed .db-btn:hover { background: ${DB.ink}; color: ${DB.paper}; }
+.db-embed .db-btn.primary { background: ${DB.ink}; color: ${DB.paper}; }
+.db-embed .db-btn.primary:hover { background: ${DB.accent}; border-color: ${DB.accent}; color: ${DB.paper}; }
+.db-embed input, .db-embed textarea, .db-embed select { background: ${DB.paper2}; border: 1px solid ${DB.rule}; border-radius: 2px; color: ${DB.ink}; outline: none; font-family: "Courier New", monospace; }
+.db-embed input:focus, .db-embed textarea:focus, .db-embed select:focus { border-color: ${DB.accent}; }
+.db-embed input[type=range] { accent-color: ${DB.accent}; }
+`;
 
 // Embedded DigitalBlueprint — a real in-app 3D editor. Full material system
 // (metalness, roughness, transmission/transparency, emissive, textures, flat
@@ -82,7 +112,7 @@ export function DigitalBlueprint() {
   useEffect(() => {
     const el = mount.current!;
     const sc = new THREE.Scene();
-    sc.background = new THREE.Color("#0a0a0c");
+    sc.background = new THREE.Color("#0a1628");
     const cam = new THREE.PerspectiveCamera(55, 1, 0.1, 1000);
     cam.position.set(4, 3, 6);
     const rnd = new THREE.WebGLRenderer({ antialias: true });
@@ -97,12 +127,12 @@ export function DigitalBlueprint() {
     const pmrem = new THREE.PMREMGenerator(rnd);
     sc.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
-    sc.add(new THREE.HemisphereLight(0xffffff, 0x222233, 0.6));
-    const dir = new THREE.DirectionalLight(0xff5577, 1.1);
+    sc.add(new THREE.HemisphereLight(0xffffff, 0x152540, 0.6));
+    const dir = new THREE.DirectionalLight(0xfff0d0, 1.1);
     dir.position.set(5, 8, 4);
     sc.add(dir);
-    const grid = new THREE.GridHelper(40, 40, 0xff2d4a, 0x222228);
-    (grid.material as THREE.Material).opacity = 0.35;
+    const grid = new THREE.GridHelper(40, 40, 0xffb84d, 0x2a4268);
+    (grid.material as THREE.Material).opacity = 0.4;
     (grid.material as THREE.Material).transparent = true;
     sc.add(grid);
 
@@ -298,19 +328,15 @@ export function DigitalBlueprint() {
   }
 
   async function generate() {
-    const cfg = loadConfig()["claude"];
-    if (!isWired(cfg)) { setGenStatus("Wire Claude in AI Group Chat to generate."); return; }
     setGenStatus("Generating…");
-    const res = await window.hub.aiChat({
-      provider: "anthropic", apiKey: cfg!.apiKey, model: cfg!.model || "claude-opus-4-7",
-      system:
-        "You are the DigitalBlueprint scene generator — like Blender, assembling complex models, textures, and shaders from primitives. Reply ONLY with a JSON array, no prose: " +
+    const res = await houseChat(
+      "You are the DigitalBlueprint scene generator — like Blender, assembling complex models, textures, and shaders from primitives. Reply ONLY with a JSON array, no prose: " +
         '[{"shape":"box|sphere|cylinder|cone|torus|plane","position":[x,y,z],"scale":[x,y,z],"rotation":[degX,degY,degZ],"color":"#hex","metalness":0-1,"roughness":0-1,"clearcoat":0-1,"ior":1-2.5,"sheen":0-1,"transmission":0-1,"opacity":0-1,"emissive":"#hex","emissiveIntensity":0-4,"texture":"none|checker|grid|stripes|noise|dots"}]. ' +
         "Compose MANY primitives (up to 24) into one detailed model — assemble parts (legs, panels, rings, cores, struts) using rotation + scale. Use rich PBR: metals (metalness≈1, low roughness, some clearcoat), glass (transmission≈1, ior≈1.5, opacity<1), glowing cores (emissive + intensity), fabric (sheen). y>=0. Be ambitious and detailed.",
-      messages: [{ role: "user", content: `Build: ${prompt}` }],
-    });
+      `Build: ${prompt}`
+    );
     if (!res.ok) { setGenStatus(res.error || "Generation failed."); return; }
-    let t = res.text.trim().replace(/^```(json)?/i, "").replace(/```$/, "");
+    let t = (res.text || "").trim().replace(/^```(json)?/i, "").replace(/```$/, "");
     const a = t.indexOf("["), b = t.lastIndexOf("]");
     if (a >= 0 && b > a) t = t.slice(a, b + 1);
     try {
@@ -341,13 +367,14 @@ export function DigitalBlueprint() {
   const shapes: Shape[] = ["box", "sphere", "cylinder", "cone", "torus", "plane"];
 
   return (
-    <div className="stage">
-      <div className="mono" style={{ padding: "8px 14px", borderBottom: "1px solid var(--line)", fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: "var(--mute)", display: "flex", alignItems: "center" }}>
+    <div className="stage db-embed">
+      <style>{DB_STYLE}</style>
+      <div className="db-mono" style={{ padding: "10px 14px", borderBottom: `1px solid ${DB.ink}`, fontSize: 12, color: DB.ink, display: "flex", alignItems: "center" }}>
         <svg width="22" height="22" viewBox="0 0 32 32" style={{ marginRight: 8 }} aria-hidden="true">
           <defs>
             <linearGradient id="dbg" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stopColor="#ff2d4a" />
-              <stop offset="1" stopColor="#ff7a2d" />
+              <stop offset="0" stopColor="#ffb84d" />
+              <stop offset="1" stopColor="#ff7a4a" />
             </linearGradient>
           </defs>
           <path d="M3 16 A13 13 0 0 1 29 16" fill="none" stroke="url(#dbg)" strokeWidth="1" strokeDasharray="2 3" opacity="0.7" />
@@ -357,22 +384,22 @@ export function DigitalBlueprint() {
           </g>
           <circle cx="16" cy="16" r="2" fill="url(#dbg)" />
         </svg>
-        DigitalBlueprint <span className="glow-text">&nbsp;· 3D editor</span>
+        DigitalBlueprint&nbsp;<span style={{ color: DB.accent }}>· 3D editor</span>
       </div>
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-        <div ref={mount} style={{ flex: 1, minWidth: 0, position: "relative", background: "#0a0a0c" }} />
-        <div style={{ width: 300, borderLeft: "1px solid var(--line)", overflow: "auto", padding: 12 }}>
+        <div ref={mount} style={{ flex: 1, minWidth: 0, position: "relative", background: "#0a1628" }} />
+        <div className="db-paper" style={{ width: 300, borderLeft: `1px solid ${DB.ink}`, overflow: "auto", padding: 12 }}>
           <Label>Add</Label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
             {shapes.map((s) => (
-              <button key={s} className="btn" style={{ textTransform: "capitalize" }} onClick={() => select(addShape(s))}>{s}</button>
+              <button key={s} className="db-btn" onClick={() => select(addShape(s))}>{s}</button>
             ))}
           </div>
 
           <Label>View</Label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
             <button
-              className="btn"
+              className="db-btn"
               onClick={() => {
                 const next = mode !== "walk";
                 api.current.setWalk(next);
@@ -381,7 +408,7 @@ export function DigitalBlueprint() {
             >
               {mode === "walk" ? "Exit walk" : "Walk mode"}
             </button>
-            <label className="btn" style={{ cursor: "pointer" }}>
+            <label className="db-btn" style={{ cursor: "pointer" }}>
               Import GLB
               <input
                 type="file"
@@ -397,20 +424,20 @@ export function DigitalBlueprint() {
             </label>
           </div>
           {mode === "walk" && (
-            <div style={{ fontSize: 11, color: "var(--mute)", marginBottom: 10 }}>
+            <div style={{ fontSize: 11, color: DB.inkLight, marginBottom: 10 }}>
               WASD to move · mouse to look · Esc to exit
             </div>
           )}
 
           <Label>AI generate</Label>
           <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3}
-            style={{ width: "100%", background: "rgba(0,0,0,0.5)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink)", padding: 8, fontSize: 12, fontFamily: "inherit", outline: "none", resize: "vertical" }} />
-          <button className="btn" style={{ marginTop: 6 }} onClick={() => void generate()}>Generate scene</button>
-          {genStatus && <div style={{ fontSize: 11, color: "var(--mute)", marginTop: 6 }}>{genStatus}</div>}
+            style={{ width: "100%", padding: 8, fontSize: 12, resize: "vertical" }} />
+          <button className="db-btn primary" style={{ marginTop: 6 }} onClick={() => void generate()}>Generate scene</button>
+          {genStatus && <div style={{ fontSize: 11, color: DB.inkLight, marginTop: 6 }}>{genStatus}</div>}
 
-          <div style={{ height: 1, background: "var(--line)", margin: "14px 0" }} />
+          <div style={{ height: 1, background: DB.rule, margin: "14px 0" }} />
 
-          {!snap && <div style={{ fontSize: 12, color: "var(--mute)" }}>Click an object to edit its material + transform.</div>}
+          {!snap && <div style={{ fontSize: 12, color: DB.inkLight }}>Click an object to edit its material + transform.</div>}
           {snap && (
             <>
               <Label>Material</Label>
@@ -428,11 +455,11 @@ export function DigitalBlueprint() {
               <Row l="flat shading"><input type="checkbox" checked={snap.flatShading} onChange={(e) => patch({ flatShading: e.target.checked })} /></Row>
               <Label>Texture URL</Label>
               <input value={snap.textureUrl} placeholder="https://…(jpg/png)" onChange={(e) => patch({ textureUrl: e.target.value })}
-                style={{ width: "100%", background: "rgba(0,0,0,0.5)", border: "1px solid var(--line)", borderRadius: 6, color: "var(--ink)", padding: "6px 8px", fontSize: 11, fontFamily: "ui-monospace, monospace", outline: "none" }} />
+                style={{ width: "100%", padding: "6px 8px", fontSize: 11 }} />
 
               <Label>Procedural texture</Label>
               <select value={snap.texture} onChange={(e) => patch({ texture: e.target.value })}
-                style={{ width: "100%", background: "rgba(0,0,0,0.5)", border: "1px solid var(--line)", borderRadius: 6, color: "var(--ink)", padding: "6px 8px", fontSize: 11, fontFamily: "ui-monospace, monospace", outline: "none" }}>
+                style={{ width: "100%", padding: "6px 8px", fontSize: 11 }}>
                 {["none", "checker", "grid", "stripes", "noise", "dots"].map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
 
@@ -441,7 +468,7 @@ export function DigitalBlueprint() {
               <Vec l="scale" a={snap.sx} b={snap.sy} c={snap.sz} step={0.1} on={(x, y, z) => patch({ sx: x, sy: y, sz: z })} />
               <Vec l="rotation°" a={snap.rx} b={snap.ry} c={snap.rz} step={15} on={(x, y, z) => patch({ rx: x, ry: y, rz: z })} />
 
-              <button className="btn" style={{ marginTop: 12 }} onClick={del}>Delete object</button>
+              <button className="db-btn" style={{ marginTop: 12, borderColor: DB.accent2, color: DB.accent2 }} onClick={del}>Delete object</button>
             </>
           )}
         </div>
@@ -451,24 +478,24 @@ export function DigitalBlueprint() {
 }
 
 function Label({ children }: { children: React.ReactNode }) {
-  return <div className="mono" style={{ fontSize: 10, letterSpacing: 1, color: "var(--mute)", textTransform: "uppercase", margin: "8px 0 6px" }}>{children}</div>;
+  return <div className="db-mono" style={{ fontSize: 10, color: DB.accent, margin: "8px 0 6px" }}>{children}</div>;
 }
 function Row({ l, children }: { l: string; children: React.ReactNode }) {
-  return <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: "var(--mute)", marginBottom: 6 }}><span>{l}</span>{children}</div>;
+  return <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: DB.inkSoft, marginBottom: 6 }}><span>{l}</span>{children}</div>;
 }
 function Slider({ l, v, on, max = 1 }: { l: string; v: number; on: (v: number) => void; max?: number }) {
   return (
     <div style={{ marginBottom: 6 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--mute)" }}><span>{l}</span><span>{v.toFixed(2)}</span></div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: DB.inkSoft }}><span>{l}</span><span>{v.toFixed(2)}</span></div>
       <input type="range" min={0} max={max} step={0.01} value={v} onChange={(e) => on(Number(e.target.value))} style={{ width: "100%" }} />
     </div>
   );
 }
 function Vec({ l, a, b, c, on, step = 0.25 }: { l: string; a: number; b: number; c: number; on: (x: number, y: number, z: number) => void; step?: number }) {
-  const s: React.CSSProperties = { width: "31%", background: "rgba(0,0,0,0.5)", border: "1px solid var(--line)", borderRadius: 6, color: "var(--ink)", padding: "5px 6px", fontSize: 11, fontFamily: "ui-monospace, monospace", outline: "none" };
+  const s: React.CSSProperties = { width: "31%", padding: "5px 6px", fontSize: 11 };
   return (
     <div style={{ marginBottom: 6 }}>
-      <div style={{ fontSize: 11, color: "var(--mute)" }}>{l}</div>
+      <div style={{ fontSize: 11, color: DB.inkSoft }}>{l}</div>
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
         <input type="number" step={step} value={a} onChange={(e) => on(Number(e.target.value), b, c)} style={s} />
         <input type="number" step={step} value={b} onChange={(e) => on(a, Number(e.target.value), c)} style={s} />
