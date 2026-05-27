@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-6 -8 76 80">
+  <rect x="-6" y="-8" width="76" height="80" rx="14" fill="#00C896"/>
+  <!-- the MoreMe mark: sun + mountain peaks + barbell (matches .mm-logo) -->
+  <g stroke="#FFFFFF" fill="#FFFFFF">
+    <circle cx="32" cy="10" r="4" stroke="none"/>
+    <path d="M6 52 L20 24 L32 42 L44 24 L58 52" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M6 56 L58 56" fill="none" stroke-width="1.6" stroke-linecap="round" opacity="0.4"/>
+    <path d="M22 58 L42 58" fill="none" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="20" cy="58" r="3" stroke="none"/>
+    <circle cx="44" cy="58" r="3" stroke="none"/>
+  </g>
+</svg>

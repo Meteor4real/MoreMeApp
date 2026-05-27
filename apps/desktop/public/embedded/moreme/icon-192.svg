@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="36" fill="#00C896"/>
+  <!-- the MoreMe mark, scaled 3x from the 64-grid logo, centered -->
+  <g transform="translate(0,6) scale(3)" stroke="#FFFFFF" fill="#FFFFFF">
+    <circle cx="32" cy="10" r="4" stroke="none"/>
+    <path d="M6 52 L20 24 L32 42 L44 24 L58 52" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M6 56 L58 56" fill="none" stroke-width="1.6" stroke-linecap="round" opacity="0.4"/>
+    <path d="M22 58 L42 58" fill="none" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="20" cy="58" r="3" stroke="none"/>
+    <circle cx="44" cy="58" r="3" stroke="none"/>
+  </g>
+</svg>
