@@ -11,6 +11,7 @@ import { Library } from "./views/Library";
 import { Ticker } from "./shell/Ticker";
 import { MusicPlayer } from "./shell/MusicPlayer";
 import { Notifications } from "./shell/Notifications";
+import { TutorialTom } from "./shell/TutorialTom";
 import { useFeed } from "./useFeed";
 import { SITE_APPS } from "./apps";
 import { EMBEDDED } from "./embedded";
@@ -140,6 +141,7 @@ export function App() {
       </div>
       <Ticker items={items} left={<MusicPlayer />} />
       <Notifications toasts={toasts} onDismiss={dismiss} />
+      <TutorialTom />
     </div>
   );
 }

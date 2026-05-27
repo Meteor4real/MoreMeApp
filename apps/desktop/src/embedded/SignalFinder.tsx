@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { loadConfig, isWired } from "../ai/store";
 
 // SignalFinder (built from scratch) — a strategic opportunity-scoring CRM.
 // You enter real targets (creators, communities, collaborators, mentors…);
@@ -229,6 +230,23 @@ export function SignalFinder() {
 function Detail({ t, onLog, onRemove }: { t: Target; onLog: (id: string, s: Style, r: boolean) => void; onRemove: (id: string) => void }) {
   const s = score(t);
   const fu = nextFollowup(t);
+  const [draft, setDraft] = useState("");
+  const [drafting, setDrafting] = useState(false);
+
+  async function draftOutreach() {
+    const cfg = loadConfig()["claude"];
+    if (!isWired(cfg)) { setDraft("Wire Claude in AI Group Chat to use the assistant."); return; }
+    setDrafting(true);
+    const styleHint = t.outreach.some((o) => o.responded && o.style === "detailed") ? "detailed and warm" : "concise and genuine";
+    const res = await window.hub.aiChat({
+      provider: "anthropic", apiKey: cfg!.apiKey, model: cfg!.model || "claude-opus-4-7",
+      system: "You are SignalFinder's outreach assistant. Write one short, high-response-likelihood opening message to reach a target. Match the requested style. Reply with ONLY the message — no preamble, no quotes.",
+      messages: [{ role: "user", content: `Target: ${t.name} (${t.type})${t.niche ? ", niche: " + t.niche : ""}${t.platform ? ", on " + t.platform : ""}. My goal: ${t.goal || "connect / collaborate"}. Style: ${styleHint}.` }],
+    });
+    setDrafting(false);
+    setDraft(res.ok ? res.text : `[error] ${res.error}`);
+  }
+
   const bars: [string, number][] = [
     ["Response likelihood", s.response], ["Collab compatibility", s.collab],
     ["Momentum", s.momentum], ["Timing quality", s.timing], ["Relevance", s.relevance],
@@ -271,6 +289,17 @@ function Detail({ t, onLog, onRemove }: { t: Target; onLog: (id: string, s: Styl
             {o.date} · {o.style} · {o.responded ? <span className="glow-text">responded</span> : "sent"}
           </div>
         ))}
+      </div>
+
+      <div className="panel" style={{ padding: 12, marginTop: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div className="mono" style={{ fontSize: 12, letterSpacing: 1, color: "var(--mute)" }}>AI ASSISTANT</div>
+          <button className="btn" disabled={drafting} onClick={() => void draftOutreach()}>{drafting ? "…" : "Draft outreach"}</button>
+        </div>
+        {draft && (
+          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={5}
+            style={{ width: "100%", marginTop: 10, background: "rgba(0,0,0,0.5)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink)", padding: 10, fontSize: 13, fontFamily: "inherit", resize: "vertical", outline: "none" }} />
+        )}
       </div>
 
       <button className="btn" style={{ marginTop: 14 }} onClick={() => onRemove(t.id)}>Remove target</button>
