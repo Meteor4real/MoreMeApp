@@ -13,12 +13,36 @@ type Block = { id: string; start: string; end: string; label: string; xp: number
 const ASSIGNABLE: Mode[] = ["semester", "vacation", "exam", "travel"];
 
 const MODE_COLOR: Record<Mode, string> = {
-  semester: "#3b82f6",
-  weekend: "#7a7a85",
-  vacation: "#22c55e",
-  exam: "#ff7a2d",
-  travel: "#a855f7",
+  semester: "#33B5FF",
+  weekend: "#6A7280",
+  vacation: "#3EDBB5",
+  exam: "#FF7A2D",
+  travel: "#A855F7",
 };
+
+// Dude Perfect mint palette (dark theme) — matches the real More Me site:
+// mint pops off deep black, Cormorant Garamond headers, Inter body.
+const T = {
+  bg: "#0F1318", elev: "#1A2028", sunk: "#070A0D",
+  ink: "#FFFFFF", inkSoft: "#A8B3C0", inkTiny: "#6A7280", line: "#2A3038",
+  mint: "#3EDBB5", mintDeep: "#00C896", mintHi: "#7FEBD0", warn: "#FF5C5F",
+};
+const MM_STYLE = `
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap');
+.moreme-embed { background: ${T.bg}; color: ${T.ink}; font-family: "Inter", system-ui, sans-serif; }
+.moreme-embed .serif { font-family: "Cormorant Garamond", Georgia, serif; font-weight: 600; letter-spacing: .01em; }
+.moreme-embed .mm-card { background: ${T.elev}; border: 1px solid ${T.line}; border-radius: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35); }
+.moreme-embed .mm-action { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid ${T.line}; border-radius: 10px; background: ${T.sunk}; transition: border-color .15s, background .15s; width: 100%; text-align: left; }
+.moreme-embed .mm-action:hover:not(:disabled) { border-color: ${T.mint}; }
+.moreme-embed .mm-action.done { opacity: .6; }
+.moreme-embed .mm-tab { font-family: "Inter", sans-serif; font-size: 12px; padding: 5px 14px; border-radius: 999px; border: 1px solid ${T.line}; background: transparent; color: ${T.inkSoft}; cursor: pointer; transition: all .15s; text-transform: capitalize; }
+.moreme-embed .mm-tab.active { background: ${T.mint}; border-color: ${T.mint}; color: ${T.bg}; font-weight: 600; }
+.moreme-embed .mm-btn { font-family: "Inter", sans-serif; font-size: 12px; padding: 8px 14px; border-radius: 10px; border: 1px solid ${T.line}; background: ${T.sunk}; color: ${T.ink}; cursor: pointer; transition: all .15s; }
+.moreme-embed .mm-btn:hover { border-color: ${T.mint}; }
+.moreme-embed .mm-btn-primary { background: ${T.mint}; border-color: ${T.mint}; color: ${T.bg}; font-weight: 600; }
+.moreme-embed input, .moreme-embed select { background: ${T.bg}; border: 1px solid ${T.line}; border-radius: 10px; color: ${T.ink}; padding: 8px 10px; font: inherit; outline: none; }
+.moreme-embed input:focus, .moreme-embed select:focus { border-color: ${T.mint}; }
+`;
 
 const SCHEDULES: Record<Mode, Block[]> = {
   semester: [
@@ -179,52 +203,57 @@ export function MoreMe() {
   const possible = schedule.reduce((s, b) => s + b.xp, 0);
 
   return (
-    <div className="stage">
-      <div className="mono" style={{ padding: "8px 14px", borderBottom: "1px solid var(--line)", fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: "var(--mute)", display: "flex", alignItems: "center", gap: 14 }}>
-        <span>MoreMe <span className="glow-text">· daily system</span></span>
-        <div style={{ display: "flex", gap: 6 }}>
+    <div className="stage moreme-embed">
+      <style>{MM_STYLE}</style>
+      <div style={{ padding: "12px 18px", borderBottom: `1px solid ${T.line}`, display: "flex", alignItems: "center", gap: 16 }}>
+        <span className="serif" style={{ fontSize: 24, color: T.ink }}>More Me</span>
+        <span style={{ fontSize: 11, color: T.inkTiny, letterSpacing: "0.14em", textTransform: "uppercase" }}>Daily System</span>
+        <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
           {(["today", "calendar"] as const).map((t) => (
-            <button key={t} className="btn" onClick={() => setTab(t)} style={{ padding: "2px 10px", color: tab === t ? "var(--pink)" : undefined, borderColor: tab === t ? "rgba(255,87,119,0.6)" : undefined }}>{t}</button>
+            <button key={t} className={`mm-tab${tab === t ? " active" : ""}`} onClick={() => setTab(t)}>{t}</button>
           ))}
         </div>
       </div>
 
       {tab === "today" ? (
-        <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
-          <div className="panel" style={{ padding: 16, marginBottom: 14 }}>
+        <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
+          <div className="mm-card" style={{ padding: 22, marginBottom: 18 }}>
             <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
               <div>
-                <div className="mono glow-text" style={{ fontSize: 18, letterSpacing: 2 }}>LVL {totals.level} · {totals.tier}</div>
-                <div style={{ fontSize: 12, color: "var(--mute)", marginTop: 2 }}>{totals.totalXp} XP total · {totals.streak}-day streak</div>
+                <div className="serif" style={{ fontSize: 26, color: T.ink }}>Level {totals.level} · {totals.tier}</div>
+                <div style={{ fontSize: 13, color: T.inkSoft, marginTop: 2 }}>{totals.totalXp} XP total · {totals.streak}-day streak</div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div className="mono" style={{ fontSize: 13, textTransform: "uppercase", color: MODE_COLOR[mode] }}>{mode}</div>
-                <div style={{ fontSize: 11, color: "var(--mute)" }}>{reason} · set in Calendar</div>
+                <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600, color: MODE_COLOR[mode] }}>{mode}</div>
+                <div style={{ fontSize: 11, color: T.inkTiny }}>{reason} · set in Calendar</div>
               </div>
             </div>
-            <div style={{ marginTop: 12, height: 6, background: "#15151a", borderRadius: 4, overflow: "hidden" }}>
-              <div className="strip" style={{ height: "100%", width: `${totals.xpIntoLevel}%` }} />
+            <div style={{ position: "relative", marginTop: 16, height: 12, background: T.bg, border: `1px solid ${T.line}`, borderRadius: 6, overflow: "hidden" }}>
+              <div style={{ position: "absolute", inset: 0, width: `${totals.xpIntoLevel}%`, background: `linear-gradient(90deg, ${T.mintHi}, ${T.mint})`, transition: "width .35s ease" }} />
+              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: T.inkSoft, letterSpacing: "0.04em", mixBlendMode: "luminosity" }}>{totals.xpIntoLevel} / 100 XP</div>
             </div>
-            <div style={{ marginTop: 8, fontSize: 12, color: "var(--mute)" }}>
-              Today: <span className="glow-text">{earned}</span> / {possible} XP · {dayComplete(tk, state) ? "day complete" : `${Math.ceil(possible * 0.7)} XP completes the day`}
+            <div style={{ marginTop: 10, fontSize: 13, color: T.inkSoft }}>
+              Today: <span style={{ color: T.mint, fontWeight: 600 }}>{earned}</span> / {possible} XP · {dayComplete(tk, state) ? "day complete" : `${Math.ceil(possible * 0.7)} XP completes the day`}
             </div>
           </div>
 
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {schedule.map((b) => {
             const done = today.checked.includes(b.id);
             const locked = nowMin < toMin(b.start);
             const active = !locked && nowMin <= toMin(b.end);
             return (
-              <button key={b.id} onClick={() => toggle(b)} disabled={locked} className="panel"
-                style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", marginBottom: 8, cursor: locked ? "not-allowed" : "pointer", opacity: locked ? 0.5 : 1, borderColor: active ? "rgba(255,87,119,0.5)" : undefined, color: "var(--ink)" }}>
-                <span className="mono" style={{ width: 18, height: 18, borderRadius: 4, border: "1px solid var(--line)", display: "grid", placeItems: "center", color: done ? "var(--pink)" : "transparent", flex: "none" }}>✕</span>
-                <span className="mono" style={{ fontSize: 11, color: "var(--mute)", width: 150, flex: "none" }}>{fmt(b.start)} – {fmt(b.end)}</span>
-                <span style={{ flex: 1, fontSize: 13, textDecoration: done ? "line-through" : "none" }}>{b.label}</span>
-                <span className="mono" style={{ fontSize: 11, color: "var(--orange)", flex: "none" }}>{locked ? `unlocks ${fmt(b.start)}` : `+${b.xp}`}</span>
+              <button key={b.id} onClick={() => toggle(b)} disabled={locked} className={`mm-action${done ? " done" : ""}`}
+                style={{ cursor: locked ? "not-allowed" : "pointer", opacity: locked ? 0.5 : undefined, borderColor: active ? T.mint : undefined }}>
+                <span style={{ width: 22, height: 22, borderRadius: 6, border: `1px solid ${done ? T.mint : T.line}`, background: done ? T.mint : T.bg, color: T.bg, display: "grid", placeItems: "center", flex: "none", fontSize: 13, fontWeight: 700 }}>{done ? "✓" : ""}</span>
+                <span style={{ fontSize: 11, color: T.inkTiny, width: 150, flex: "none", fontVariantNumeric: "tabular-nums" }}>{fmt(b.start)} – {fmt(b.end)}</span>
+                <span style={{ flex: 1, fontSize: 14, fontWeight: 500, textDecoration: done ? "line-through" : "none" }}>{b.label}</span>
+                <span style={{ fontSize: 12, color: locked ? T.inkTiny : T.mint, fontWeight: 600, flex: "none", fontVariantNumeric: "tabular-nums" }}>{locked ? `unlocks ${fmt(b.start)}` : `+${b.xp}`}</span>
               </button>
             );
           })}
-          <p style={{ color: "var(--mute)", fontSize: 12, marginTop: 14 }}>
+          </div>
+          <p style={{ color: T.inkTiny, fontSize: 12, marginTop: 16 }}>
             The schedule is chosen automatically from your Calendar — weekends, day-types, and events. XP comes only from the day's blocks.
           </p>
         </div>
@@ -281,17 +310,17 @@ function Calendar({ state, setState, now }: { state: State; setState: React.Disp
   const monthName = view.toLocaleString(undefined, { month: "long", year: "numeric" });
 
   return (
-    <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-        <button className="btn" onClick={() => setView(new Date(year, month - 1, 1))}>‹</button>
-        <div className="mono" style={{ minWidth: 180, textAlign: "center" }}>{monthName}</div>
-        <button className="btn" onClick={() => setView(new Date(year, month + 1, 1))}>›</button>
-        <span style={{ fontSize: 11, color: "var(--mute)", marginLeft: 8 }}>click a day to cycle its type (semester → vacation → exam → travel → clear)</span>
+    <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <button className="mm-btn" onClick={() => setView(new Date(year, month - 1, 1))}>‹</button>
+        <div className="serif" style={{ minWidth: 200, textAlign: "center", fontSize: 22, color: T.ink }}>{monthName}</div>
+        <button className="mm-btn" onClick={() => setView(new Date(year, month + 1, 1))}>›</button>
+        <span style={{ fontSize: 11, color: T.inkTiny, marginLeft: 8 }}>click a day to cycle its type (semester → vacation → exam → travel → clear)</span>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
         {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
-          <div key={i} className="mono" style={{ fontSize: 10, color: "var(--mute)", textAlign: "center", padding: 4 }}>{d}</div>
+          <div key={i} style={{ fontSize: 11, color: T.inkTiny, textAlign: "center", padding: 4, fontWeight: 600, letterSpacing: "0.06em" }}>{d}</div>
         ))}
         {cells.map((dateStr, i) => {
           if (!dateStr) return <div key={i} />;
@@ -300,50 +329,46 @@ function Calendar({ state, setState, now }: { state: State; setState: React.Disp
           const ev = state.events.find((e) => dateStr >= e.start && dateStr <= e.end);
           return (
             <button key={i} onClick={() => cycleType(dateStr)} title={ev?.title || m}
-              style={{ aspectRatio: "1", border: `1px solid ${isToday ? "var(--pink)" : "var(--line)"}`, borderRadius: 6, background: `${MODE_COLOR[m]}22`, color: "var(--ink)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, padding: 2 }}>
-              <span className="mono" style={{ fontSize: 12 }}>{Number(dateStr.slice(8))}</span>
-              <span style={{ width: 14, height: 3, borderRadius: 2, background: MODE_COLOR[m] }} />
-              {ev && <span style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--orange)" }} />}
+              style={{ aspectRatio: "1", border: `1px solid ${isToday ? T.mint : T.line}`, borderRadius: 10, background: `${MODE_COLOR[m]}1f`, color: T.ink, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, padding: 2 }}>
+              <span style={{ fontSize: 13, fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>{Number(dateStr.slice(8))}</span>
+              <span style={{ width: 16, height: 3, borderRadius: 2, background: MODE_COLOR[m] }} />
+              {ev && <span style={{ width: 4, height: 4, borderRadius: "50%", background: T.mintHi }} />}
             </button>
           );
         })}
       </div>
 
       {/* legend */}
-      <div style={{ display: "flex", gap: 14, marginTop: 12, flexWrap: "wrap", fontSize: 11, color: "var(--mute)" }}>
+      <div style={{ display: "flex", gap: 16, marginTop: 14, flexWrap: "wrap", fontSize: 11, color: T.inkSoft }}>
         {(Object.keys(MODE_COLOR) as Mode[]).map((m) => (
-          <span key={m} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 2, background: MODE_COLOR[m] }} /> {m}
+          <span key={m} style={{ display: "flex", alignItems: "center", gap: 5, textTransform: "capitalize" }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: MODE_COLOR[m] }} /> {m}
           </span>
         ))}
       </div>
 
       {/* events */}
-      <div className="panel" style={{ padding: 14, marginTop: 16 }}>
-        <div className="mono" style={{ fontSize: 11, letterSpacing: 1, color: "var(--mute)", marginBottom: 8 }}>EVENTS (set a date range + the mode it should run)</div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
-          <input type="date" value={evt.start} onChange={(e) => setEvt({ ...evt, start: e.target.value })} style={inp} />
-          <span style={{ color: "var(--mute)" }}>→</span>
-          <input type="date" value={evt.end} onChange={(e) => setEvt({ ...evt, end: e.target.value })} style={inp} />
-          <input placeholder="title (e.g. Winter break)" value={evt.title} onChange={(e) => setEvt({ ...evt, title: e.target.value })} style={{ ...inp, flex: 1, minWidth: 140 }} />
-          <select value={evt.mode} onChange={(e) => setEvt({ ...evt, mode: e.target.value as Mode })} style={inp}>
+      <div className="mm-card" style={{ padding: 18, marginTop: 18 }}>
+        <div className="serif" style={{ fontSize: 18, color: T.ink, marginBottom: 4 }}>Events</div>
+        <div style={{ fontSize: 12, color: T.inkTiny, marginBottom: 12 }}>Set a date range and the mode it should run.</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+          <input type="date" value={evt.start} onChange={(e) => setEvt({ ...evt, start: e.target.value })} style={{ fontSize: 12 }} />
+          <span style={{ color: T.inkTiny }}>→</span>
+          <input type="date" value={evt.end} onChange={(e) => setEvt({ ...evt, end: e.target.value })} style={{ fontSize: 12 }} />
+          <input placeholder="title (e.g. Winter break)" value={evt.title} onChange={(e) => setEvt({ ...evt, title: e.target.value })} style={{ flex: 1, minWidth: 140, fontSize: 12 }} />
+          <select value={evt.mode} onChange={(e) => setEvt({ ...evt, mode: e.target.value as Mode })} style={{ fontSize: 12 }}>
             {ASSIGNABLE.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
-          <button className="btn" onClick={addEvent}>Add</button>
+          <button className="mm-btn mm-btn-primary" onClick={addEvent}>Add</button>
         </div>
-        {state.events.length === 0 && <div style={{ fontSize: 12, color: "var(--mute)" }}>No events yet.</div>}
+        {state.events.length === 0 && <div style={{ fontSize: 12, color: T.inkTiny }}>No events yet.</div>}
         {state.events.slice().sort((a, b) => a.start.localeCompare(b.start)).map((e) => (
-          <div key={e.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "3px 0" }}>
-            <span><span style={{ color: MODE_COLOR[e.mode || "vacation"] }}>●</span> {e.start} – {e.end} · {e.title} <span style={{ color: "var(--mute)" }}>({e.mode})</span></span>
-            <button onClick={() => removeEvent(e.id)} style={{ background: "none", border: "none", color: "var(--mute)", cursor: "pointer" }}>✕</button>
+          <div key={e.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "4px 0" }}>
+            <span><span style={{ color: MODE_COLOR[e.mode || "vacation"] }}>●</span> {e.start} – {e.end} · {e.title} <span style={{ color: T.inkTiny }}>({e.mode})</span></span>
+            <button onClick={() => removeEvent(e.id)} style={{ background: "none", border: "none", color: T.inkTiny, cursor: "pointer" }}>✕</button>
           </div>
         ))}
       </div>
     </div>
   );
 }
-
-const inp: React.CSSProperties = {
-  background: "rgba(0,0,0,0.5)", border: "1px solid var(--line)", borderRadius: 6, color: "var(--ink)",
-  padding: "6px 8px", fontSize: 12, fontFamily: "ui-monospace, monospace", outline: "none",
-};
