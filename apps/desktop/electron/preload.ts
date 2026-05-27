@@ -61,6 +61,11 @@ const api = {
   }): Promise<{ ok: true; text: string } | { ok: false; error: string }> =>
     ipcRenderer.invoke("ai:chat", req),
 
+  // Run a configured CLI agent (claude/gemini/codex/opencode, or ssh to Hermes)
+  // non-interactively in the background and return its output for the chat UI.
+  agentRun: (cmd: string, prompt: string): Promise<{ ok: boolean; text?: string; error?: string }> =>
+    ipcRenderer.invoke("agent:run", cmd, prompt),
+
   terminal: {
     start: (cols: number, rows: number): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("term:start", cols, rows),

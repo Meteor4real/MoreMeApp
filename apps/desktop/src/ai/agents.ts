@@ -13,6 +13,10 @@ export type AgentDef = {
   onCall?: boolean; // only responds when @mentioned
   defaultProvider: ProviderType;
   defaultModel?: string;
+  // Default Terminal command for the CLI transport. {prompt} is substituted;
+  // if absent the prompt is appended as the final argument. Users edit this in
+  // Configure to match how they launch each tool (and where Hermes lives).
+  defaultCmd?: string;
   system: string;
 };
 
@@ -29,6 +33,7 @@ export const AGENTS: AgentDef[] = [
     role: "Co-boss · coordinator (Hostinger)",
     coordinator: true,
     defaultProvider: "http",
+    defaultCmd: 'ssh hermes claude -p "{prompt}"',
     system:
       "You are Hermes, co-boss of the NetworkChuck Hub crew, running on Hostinger. " +
       "You coordinate: break the user's task into parts, assign them to the right " +
@@ -41,6 +46,7 @@ export const AGENTS: AgentDef[] = [
     role: "Reasoning · code · writing",
     defaultProvider: "anthropic",
     defaultModel: "claude-opus-4-7",
+    defaultCmd: 'claude -p "{prompt}"',
     system:
       "You are Claude, the crew's strongest generalist for reasoning, architecture, " +
       "and writing. " + factCheck,
@@ -51,6 +57,7 @@ export const AGENTS: AgentDef[] = [
     role: "Research · multimodal",
     defaultProvider: "gemini",
     defaultModel: "gemini-1.5-flash",
+    defaultCmd: 'gemini -p "{prompt}"',
     system:
       "You are Gemini, the crew's research and multimodal specialist. " + factCheck,
   },
@@ -60,9 +67,20 @@ export const AGENTS: AgentDef[] = [
     role: "Code generation · refactors",
     defaultProvider: "openai",
     defaultModel: "gpt-4o-mini",
+    defaultCmd: 'codex exec "{prompt}"',
     system:
       "You are Codex, the crew's code-generation and refactoring specialist. " +
       "Prefer concrete code. " + factCheck,
+  },
+  {
+    id: "opencode",
+    name: "OpenCode",
+    role: "Open-source coding agent",
+    defaultProvider: "http",
+    defaultCmd: 'opencode run "{prompt}"',
+    system:
+      "You are OpenCode, an open-source coding agent on the crew. Prefer concrete, " +
+      "runnable code and terse explanations. " + factCheck,
   },
   {
     id: "brobot",

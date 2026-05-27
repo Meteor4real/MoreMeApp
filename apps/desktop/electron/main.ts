@@ -175,6 +175,66 @@ type Pty = {
 
 const terminals = new Map<number, Pty>();
 
+// Split a command line into argv, honoring single/double quotes. A "{prompt}"
+// token is replaced by the prompt; if none is present the prompt is appended.
+function buildArgv(cmd: string, prompt: string): string[] {
+  const out: string[] = [];
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let m: RegExpExecArray | null;
+  let hadToken = false;
+  while ((m = re.exec(cmd))) {
+    const tok = m[1] ?? m[2] ?? m[3];
+    if (tok.includes("{prompt}")) {
+      hadToken = true;
+      out.push(tok.replace(/\{prompt\}/g, prompt));
+    } else {
+      out.push(tok);
+    }
+  }
+  if (!hadToken) out.push(prompt);
+  return out;
+}
+
+async function runAgentCli(
+  cmd: string,
+  prompt: string,
+  timeoutMs: number
+): Promise<{ ok: boolean; text?: string; error?: string }> {
+  const argv = buildArgv(cmd.trim(), prompt);
+  if (!argv.length) return { ok: false, error: "No command configured." };
+  const file = argv[0];
+  const args = argv.slice(1);
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { spawn } = require("node:child_process") as typeof import("node:child_process");
+  return new Promise((resolve) => {
+    let proc: ReturnType<typeof spawn>;
+    try {
+      proc = spawn(file, args, { shell: false, windowsHide: true });
+    } catch (err) {
+      resolve({ ok: false, error: String(err) });
+      return;
+    }
+    let out = "";
+    let err = "";
+    const timer = setTimeout(() => {
+      proc.kill();
+      resolve({ ok: false, error: `Timed out after ${Math.round(timeoutMs / 1000)}s. Is "${file}" installed and logged in?` });
+    }, timeoutMs);
+    proc.stdout?.on("data", (d: Buffer) => (out += d.toString()));
+    proc.stderr?.on("data", (d: Buffer) => (err += d.toString()));
+    proc.on("error", (e: Error) => {
+      clearTimeout(timer);
+      resolve({ ok: false, error: `Could not start "${file}": ${e.message}` });
+    });
+    proc.on("close", (code: number) => {
+      clearTimeout(timer);
+      const text = out.trim() || err.trim();
+      if (code === 0 || text) resolve({ ok: true, text });
+      else resolve({ ok: false, error: err.trim() || `Exited with code ${code}.` });
+    });
+  });
+}
+
 function defaultShell(): { file: string; args: string[] } {
   if (process.platform === "win32") {
     return { file: "powershell.exe", args: [] };
@@ -236,6 +296,14 @@ function registerIpc() {
     } catch (err) {
       return { ok: false, error: String(err) };
     }
+  });
+
+  // --- AI via Terminal: run a CLI agent (claude/gemini/codex/opencode, or
+  // an ssh to Hermes on Hostinger) non-interactively and return its output.
+  // The user configures the command per agent; {prompt} is substituted, else
+  // the prompt is appended as the final argument. Runs with shell:false.
+  ipcMain.handle("agent:run", async (_e, cmd: string, prompt: string, timeoutMs?: number) => {
+    return runAgentCli(cmd, prompt, timeoutMs ?? 180000);
   });
 
   // --- Launchers (Steam / Modrinth / Blockbench / arbitrary URI) ---

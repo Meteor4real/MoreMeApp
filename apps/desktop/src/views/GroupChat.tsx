@@ -55,11 +55,14 @@ export function GroupChat() {
       `Task from Meteor: ${task}\n\nRespond as ${a.name}:`;
 
     let res: { ok: boolean; text?: string; error?: string };
-    if (a.onCall) {
-      // local house model (no key)
+    const c = cfg[a.id];
+    if (a.onCall && !(c && isWired(c))) {
+      // local house model (no key) for on-call bots when not separately wired
       res = await window.hub.llm.chat(system, userContent);
-    } else {
-      const c = cfg[a.id]!;
+    } else if (c && c.transport === "cli") {
+      // launch the agent's CLI in the Terminal and capture its reply
+      res = await window.hub.agentRun(c.cmd || a.defaultCmd || "", `${system}\n\n${userContent}`);
+    } else if (c) {
       res = await window.hub.aiChat({
         provider: c.provider,
         endpoint: c.endpoint,
@@ -68,6 +71,8 @@ export function GroupChat() {
         system,
         messages: [{ role: "user", content: userContent }],
       });
+    } else {
+      res = { ok: false, error: "not configured" };
     }
     push({
       agentId: a.id,
@@ -256,22 +261,28 @@ function ConfigPanel({
   onChange: (next: ConfigMap) => void;
 }) {
   function update(id: string, patch: Partial<AgentConfig>) {
+    const def = AGENTS.find((a) => a.id === id)!;
     const base: AgentConfig = cfg[id] || {
       enabled: false,
-      provider: AGENTS.find((a) => a.id === id)!.defaultProvider,
+      transport: "cli",
+      cmd: def.defaultCmd || "",
+      provider: def.defaultProvider,
     };
     onChange({ ...cfg, [id]: { ...base, ...patch } });
   }
 
   return (
     <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
-      <p style={{ color: "var(--mute)", fontSize: 13, marginTop: 0, maxWidth: 640 }}>
-        Wire each agent to its backend. Keys stay on this machine (a later
-        update moves them into the encrypted Control Panel vault). Hermes uses an
-        HTTP endpoint (your Hostinger box); Claude/Gemini/Codex use their APIs.
+      <p style={{ color: "var(--mute)", fontSize: 13, marginTop: 0, maxWidth: 660 }}>
+        Each agent runs as a command-line tool you launch in the Terminal —
+        Claude Code, Gemini CLI, Codex, OpenCode, or an <code>ssh</code> to Hermes
+        on your Hostinger box. The Hub runs the command for each message and shows
+        the reply here. <code>{"{prompt}"}</code> is replaced by the message (or
+        appended if you omit it). Switch a tool to <em>API</em> to use a key instead.
       </p>
       {AGENTS.map((a) => {
-        const c = cfg[a.id] || { enabled: false, provider: a.defaultProvider };
+        const c = cfg[a.id] || { enabled: false, transport: "cli" as const, cmd: a.defaultCmd || "", provider: a.defaultProvider };
+        const transport = c.transport ?? "cli";
         return (
           <div key={a.id} className="panel" style={{ padding: 12, marginBottom: 10 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -288,32 +299,51 @@ function ConfigPanel({
               </label>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8, marginTop: 10 }}>
-              <Field label="provider">
+              <Field label="connect via">
                 <select
-                  value={c.provider}
-                  onChange={(e) => update(a.id, { provider: e.target.value as AgentConfig["provider"] })}
+                  value={transport}
+                  onChange={(e) => update(a.id, { transport: e.target.value as AgentConfig["transport"] })}
                   style={fieldStyle}
                 >
-                  {PROVIDERS.map((p) => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
+                  <option value="cli">Terminal (CLI)</option>
+                  <option value="api">API (key)</option>
                 </select>
               </Field>
-              {c.provider === "http" ? (
-                <Field label="endpoint">
-                  <input style={fieldStyle} value={c.endpoint || ""} placeholder="https://hermes.yourbox…"
-                    onChange={(e) => update(a.id, { endpoint: e.target.value })} />
+              {transport === "cli" ? (
+                <Field label="terminal command">
+                  <input style={fieldStyle} value={c.cmd ?? a.defaultCmd ?? ""} placeholder={a.defaultCmd || 'tool -p "{prompt}"'}
+                    onChange={(e) => update(a.id, { cmd: e.target.value })} />
                 </Field>
               ) : (
-                <Field label="model">
-                  <input style={fieldStyle} value={c.model || ""} placeholder={a.defaultModel || ""}
-                    onChange={(e) => update(a.id, { model: e.target.value })} />
-                </Field>
+                <>
+                  <Field label="provider">
+                    <select
+                      value={c.provider}
+                      onChange={(e) => update(a.id, { provider: e.target.value as AgentConfig["provider"] })}
+                      style={fieldStyle}
+                    >
+                      {PROVIDERS.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  {c.provider === "http" ? (
+                    <Field label="endpoint">
+                      <input style={fieldStyle} value={c.endpoint || ""} placeholder="https://hermes.yourbox…"
+                        onChange={(e) => update(a.id, { endpoint: e.target.value })} />
+                    </Field>
+                  ) : (
+                    <Field label="model">
+                      <input style={fieldStyle} value={c.model || ""} placeholder={a.defaultModel || ""}
+                        onChange={(e) => update(a.id, { model: e.target.value })} />
+                    </Field>
+                  )}
+                  <Field label={c.provider === "http" ? "bearer (optional)" : "API key"}>
+                    <input style={fieldStyle} type="password" value={c.apiKey || ""} placeholder="•••••••"
+                      onChange={(e) => update(a.id, { apiKey: e.target.value })} />
+                  </Field>
+                </>
               )}
-              <Field label={c.provider === "http" ? "bearer (optional)" : "API key"}>
-                <input style={fieldStyle} type="password" value={c.apiKey || ""} placeholder="•••••••"
-                  onChange={(e) => update(a.id, { apiKey: e.target.value })} />
-              </Field>
             </div>
           </div>
         );
