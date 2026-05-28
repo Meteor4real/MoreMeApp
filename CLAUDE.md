@@ -72,58 +72,70 @@ pattern → `apps/desktop/build/icon-source.png`, `apps/desktop/src/assets/logo.
 
 ## The app's surfaces (sidebar)
 
-- **The Control Panel** (front-and-center, its own prominent area): the ChuckHub
-  dashboard reimagined in-app, talking to Supabase directly. Integrations —
-  live: GitHub, Vercel, YouTube, Cloudflare, Tailscale, n8n. Build the
-  "coming soon": Proxmox, Portainer, Pi-hole, Frigate, ZimaCube, Supabase mgmt,
-  Twingate, YouTube OAuth. **Add new connectors: Home Assistant, Hermes
-  dashboard, Twingate, Hostinger.**
-- **The Terminal** (below Control Panel): real Windows PowerShell via node-pty.
-  Also hosts the AI group chat plumbing.
-- **AI Group Chat**: Claude, Gemini, Codex, **Hermes** (co-boss, runs on
-  Hostinger, reachable via terminal + group chat), plus on-call bots (BroBot's
-  AI, NT5 anchors) that only chime in when called by name. They split tasks,
-  fact-check each other, critique, and converge before the owner sees output.
-- **Browser**: DuckDuckGo-style, tabs, visit any page, DuckDuckGo-grade
-  security/privacy. **~20 house-made extensions** (only ones WE make), all
-  stupid/funny/irreverent. No third-party store.
+- **Browser** (the default canvas): our OWN chrome — tabs that persist across
+  restarts, an address bar with bookmarks/extensions/more-menu, and built-in
+  about:* pages for Bookmarks/History/Downloads/Passwords/TabGroups/
+  Extensions. Search engine is pluggable in Settings (DuckDuckGo / Brave /
+  Google / Startpage); home page configurable. DuckDuckGo-grade *privacy*
+  posture (tracker blocking, HTTPS-upgrade, DNT/GPC, hardened webviews) —
+  NOT DDG's UI as our UI. **~20 house-made extensions** (only ones WE make)
+  are toggled in a quick dropdown on the address bar and re-inject on every
+  navigation. Downloads are captured via Electron will-download and persisted
+  in userData; passwords are encrypted in the OS keychain (safeStorage).
+- **Control Panel** (everything in one place): the ChuckHub dashboard
+  reimagined in-app, with live per-service data (GitHub, Vercel — now
+  team-scoped, Cloudflare, Tailscale, n8n) and connect cards for every other
+  service. Tokens encrypted on-device via OS keychain; nothing bundled.
+- **Terminal**: real Windows PowerShell via node-pty (default shell elsewhere).
+  Also where users launch the CLI agents that show up in the AI group chat.
+- **AI Group Chat**: BroBot and the NT5 anchors (Voss/Zara/Dex/Lena/Orin) run
+  on the bundled house model — always on call, no setup. The outside crew
+  (Claude / Gemini / Codex / OpenCode / Hermes) connect via their CLI tools
+  in Configure; users launch the tool and we run it for each message. Chat
+  history persists across tab switches and restarts. @Everyone routes to
+  every available agent; @Name targets a specific one. Roster hides agents
+  that aren't set up; no "add a key" friction.
 - **Library**: launch + view Steam games, Modrinth, Blockbench.
-- **Startup sequence** like the HALOS Interface boot.
+- **NO startup sequence.** App opens straight to the canvas; the bundled
+  local model auto-downloads in the background.
 - **Accounts** via Supabase (Postgres).
+- **Floating info widgets**: toggleable on-screen cards (NT5 breaking,
+  anchor desk filings, Origin Realms server pulse) — right-click to dismiss
+  individually; on/off per-type in Settings.
 - **Unified notifications + ticker**: data from all sites surfaces here —
-  NT5 articles/blogs, BroBot gallery adds, "Gemini started a project", MoreMe
-  "time for bed", etc. Not overwhelming. All site notification systems land here.
-- **OSTs**: more music than HALOS's single bland pad. (Generating audio is hard
-  here — if blocked, tell the owner exactly what to install/run so they supply
-  files.)
+  NT5 articles/blogs, BroBot gallery adds, MoreMe "time for bed", etc.
+- **OST player**: 10 procedural tracks (drums, arps, distinct vibes) with a
+  picker that lifts the whole stable into the chrome.
+- **Tutorial Tom**: a real guided tour (highlight + Prev/Next + Esc to skip)
+  plus a Q&A backed by the bundled local model and a shared feedback feed.
 
-## Embedded app versions to build (in `apps/desktop`)
+## Embedded app versions
 
-- **MoreMe**: scrap unlimited self-logged XP. Rebuild as a strict DAILY
-  time-blocked checklist ("this time → this time: do X", repeating to end of
-  day). XP only by checking a block during/after its window. Add Semester /
-  Vacation / Exam / Travel modes (don't exist yet). Full blueprint: morning/
-  bedtime routines, fitness, food, weekly/semester/yearly/identity goals,
-  projects (3 active max), gaming rules, XP/levels/tiers (Initiate→Dude
-  Perfect), streaks, seasons/prestige, battlepass, achievements.
-- **DigitalBlueprint**: real material system — any texture, shininess,
-  transparency, emissive, shape (Blender-grade minus mesh authoring). Add a
-  real LLM-assisted generator (currently `js/ai.js` is an empty stub). Redo the
-  too-simple logo. Fix: GLB imports don't persist; saved-worlds list key bug.
-- **HALOS**: NO simple geometry. Alien-ify the 26 Andromedan glyphs (currently
-  basic circle/line/polygon — too human; `app.js` `AZ_ANDROMADEAN_ALPHABET`).
-  Replace the pyramid logo (4 spots + 15-option picker). Remove OpenClaw
-  entirely → **Hermes**. Apply Polar Cosmos Crew renames (below).
-- **NT5**: real always-on, topic-driven reporting (cron is daily-only; hot
-  topics only hit localStorage and never reach Claude — dead-ended). Owner
-  wants e.g. Origin Realms (Minecraft servers) on the feed. 5 anchors in
-  `lib/anchors.ts`. Article+ElevenLabs pipeline is real; the always-on + topic
-  store + `/article/[slug]` page need building.
-- **BroBot**: its local AI joins the group chat; gallery events feed the ticker.
-- **SignalFinder**: built FROM SCRATCH, in-app only (no repo exists). Strategic
-  networking / opportunity-radar: creator discovery, multi-dimension scoring
-  (response likelihood, collab compatibility, momentum, timing, relevance),
-  outreach CRM, personalization.
+All six embedded apps are bundled as **real carbon copies** of their sites,
+running offline inside the Hub via iframes — HALOS (real index.html/app.js/
+style.css, OpenClaw→Hermes, Polar Cosmos Crew renames, localStorage shim
+for /api/auth + /api/data), MoreMe (real site files with paths relativized
+and an /api shim), NT5 (real Next.js app statically exported under
+public/embedded/nt5 with a wire shim that serves /api/articles/ticker/
+stats/broadcast from an on-device store), BroBot (real desktop renderer
+built from its release branch with a window.brobot shim — gallery →
+localStorage, search → Openverse, chat/LLM bridged via postMessage to the
+Hub host so it runs on the local house brain).
+
+The Hub layers things on top of those bundled sites where it makes sense:
+- An in-app NT5 wire scheduler runs every N minutes while the app is open,
+  generates fresh anchor articles via the house model, persists them, and
+  postMessages them into the NT5 iframe so the bundled site stays alive.
+  Dex's coverage gets a live Origin Realms (mcstatus.io) snapshot as
+  context so his gaming articles track the real server state.
+- An NT5 broadcast bar above the iframe plays the lead story aloud using
+  the OS's Web Speech voices, heuristic-matched to the assigned anchor.
+- A reworked NT5 logo (legible at any size) sits in the sidebar and as a
+  header above the iframe. Other apps use their real site brand marks.
+
+SignalFinder is built FROM SCRATCH (no real site to copy); hub-themed,
+opportunity-scoring CRM that drafts personalized outreach using the
+bundled local model.
 
 ## Polar Cosmos Crew renames (apply wherever Polar lore appears)
 

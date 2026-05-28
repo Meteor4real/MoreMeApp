@@ -118,6 +118,14 @@ export function Browser({
   function back() { viewRefs.current.get(activeId)?.goBack(); }
   function forward() { viewRefs.current.get(activeId)?.goForward(); }
   function home() { go(prefs.homePage || ""); }
+  function zoom(delta: number) {
+    const v = viewRefs.current.get(activeId);
+    if (!v) return;
+    try { v.setZoomLevel(Math.max(-3, Math.min(4, (v.getZoomLevel?.() || 0) + delta))); } catch { /* ignore */ }
+  }
+  function zoomReset() {
+    try { viewRefs.current.get(activeId)?.setZoomLevel(0); } catch { /* ignore */ }
+  }
   function toggleBookmark() {
     if (!activeTab) return;
     const existing = bookmarks.find((b) => b.url === activeTab.url);
@@ -176,6 +184,11 @@ export function Browser({
           <div ref={menuRef} style={{ position: "absolute", right: 12, top: 44, zIndex: 50, minWidth: 220, background: "#0e0e14", border: "1px solid var(--line)", borderRadius: 10, padding: 8, boxShadow: "0 12px 28px rgba(0,0,0,0.55)" }}>
             {menuOpen === "menu" && (
               <>
+                <div style={{ display: "flex", gap: 6, padding: "6px 10px", borderBottom: "1px solid var(--line)" }}>
+                  <button className="btn" style={{ flex: 1 }} onClick={() => zoom(-0.5)}>−</button>
+                  <button className="btn" style={{ flex: 1 }} onClick={zoomReset}>100%</button>
+                  <button className="btn" style={{ flex: 1 }} onClick={() => zoom(0.5)}>+</button>
+                </div>
                 <MenuItem onClick={() => { newTab("about:bookmarks"); setMenuOpen(null); }}>Bookmarks</MenuItem>
                 <MenuItem onClick={() => { newTab("about:history"); setMenuOpen(null); }}>History</MenuItem>
                 <MenuItem onClick={() => { newTab("about:downloads"); setMenuOpen(null); }}>Downloads</MenuItem>
