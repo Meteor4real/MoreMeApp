@@ -155,6 +155,47 @@ function configureSecurity() {
   } catch {
     /* partition created lazily; will inherit on first use */
   }
+  attachDownloads(session.defaultSession);
+  try { attachDownloads(session.fromPartition("persist:hub")); } catch { /* same */ }
+}
+
+// --- Downloads ------------------------------------------------------------
+type DownloadRec = { id: string; filename: string; path: string; url: string; bytes: number; state: "completed" | "interrupted" | "cancelled"; ts: number };
+function downloadsPath() { return path.join(app.getPath("userData"), "downloads.json"); }
+function readDownloads(): DownloadRec[] {
+  try { return JSON.parse(fs.readFileSync(downloadsPath(), "utf8")) as DownloadRec[]; } catch { return []; }
+}
+function writeDownloads(arr: DownloadRec[]) {
+  try {
+    fs.mkdirSync(path.dirname(downloadsPath()), { recursive: true });
+    fs.writeFileSync(downloadsPath(), JSON.stringify(arr.slice(0, 1000)));
+  } catch { /* ignore */ }
+}
+function broadcastDownloads(win?: BrowserWindow) {
+  const arr = readDownloads();
+  const w = win ?? BrowserWindow.getAllWindows()[0];
+  w?.webContents.send("downloads:updated", arr);
+}
+function attachDownloads(ses: Electron.Session) {
+  ses.on("will-download", (_e, item) => {
+    const id = String(Date.now()) + Math.random().toString(36).slice(2, 6);
+    const savePath = path.join(app.getPath("downloads"), item.getFilename());
+    item.setSavePath(savePath);
+    item.on("done", (_evt, state) => {
+      const rec: DownloadRec = {
+        id,
+        filename: item.getFilename(),
+        path: savePath,
+        url: item.getURL(),
+        bytes: item.getTotalBytes(),
+        state: state === "completed" ? "completed" : state === "cancelled" ? "cancelled" : "interrupted",
+        ts: Date.now(),
+      };
+      const arr = [rec, ...readDownloads()];
+      writeDownloads(arr);
+      broadcastDownloads();
+    });
+  });
 }
 
 app.on("window-all-closed", () => {
@@ -319,6 +360,13 @@ function registerIpc() {
     return { ok: !err, error: err || undefined };
   });
   ipcMain.handle("steam:list", () => listSteamGames());
+
+  // --- Downloads — captured from webview sessions (will-download) ---
+  ipcMain.handle("downloads:list", () => readDownloads());
+  ipcMain.handle("downloads:clear", () => { writeDownloads([]); broadcastDownloads(); return { ok: true }; });
+  ipcMain.handle("downloads:remove", (_e, id: string) => { writeDownloads(readDownloads().filter((d) => d.id !== id)); broadcastDownloads(); return { ok: true }; });
+  ipcMain.handle("downloads:open", (_e, p: string) => shell.openPath(p));
+  ipcMain.handle("downloads:reveal", (_e, p: string) => { shell.showItemInFolder(p); return { ok: true }; });
 
   // --- Terminal (PowerShell on Windows) via node-pty ---
   ipcMain.handle("term:start", (e, cols: number, rows: number) => {

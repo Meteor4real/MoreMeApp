@@ -4,7 +4,6 @@ import { isAuthed, signOut, clearGuest } from "./auth/supabase";
 import { Browser } from "./shell/Browser";
 import { ControlPanel } from "./views/ControlPanel";
 import { TerminalView } from "./views/Terminal";
-import { ExtensionsView } from "./views/Extensions";
 import { GroupChat } from "./views/GroupChat";
 import { Library } from "./views/Library";
 import { Settings } from "./views/Settings";
@@ -16,7 +15,7 @@ import { FloatingInfo } from "./shell/FloatingInfo";
 import { useFeed } from "./useFeed";
 import { SITE_APPS } from "./apps";
 import { EMBEDDED } from "./embedded";
-import { EXTENSIONS, loadEnabled, saveEnabled } from "./extensions";
+import { EXTENSIONS, loadEnabled, subscribeEnabled } from "./extensions";
 import { ICON } from "./icons";
 import { applyAccent, loadAccent } from "./theme-accent";
 import { startWireScheduler } from "./services/nt5Wire";
@@ -28,7 +27,6 @@ type Nav =
   | { kind: "control" }
   | { kind: "terminal" }
   | { kind: "ai" }
-  | { kind: "extensions" }
   | { kind: "library" }
   | { kind: "settings" }
   | { kind: "app"; id: string };
@@ -49,21 +47,15 @@ export function App() {
     // Start the in-app NT5 wire scheduler — generates fresh articles every
     // N minutes as long as the app is open, drives floating info + the ticker.
     startWireScheduler();
-    return subscribePrefs(setPrefs);
+    const offP = subscribePrefs(setPrefs);
+    const offE = subscribeEnabled((s) => setEnabledExt(new Set(s)));
+    return () => { offP(); offE(); };
   }, []);
 
   const injectables = useMemo(
     () => EXTENSIONS.filter((e) => enabledExt.has(e.id)).map((e) => ({ id: e.id, code: e.code })),
     [enabledExt]
   );
-  function toggleExt(id: string) {
-    setEnabledExt((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      saveEnabled(next);
-      return next;
-    });
-  }
   function logout() {
     signOut();
     clearGuest();
@@ -82,7 +74,6 @@ export function App() {
             <RailBtn icon={ICON.control} label="Control Panel" active={nav.kind === "control"} onClick={() => setNav({ kind: "control" })} />
             <RailBtn icon={ICON.terminal} label="Terminal" active={nav.kind === "terminal"} onClick={() => setNav({ kind: "terminal" })} />
             <RailBtn icon={ICON.ai} label="AI Group Chat" active={nav.kind === "ai"} onClick={() => setNav({ kind: "ai" })} />
-            <RailBtn icon={ICON.extensions} label="Extensions" active={nav.kind === "extensions"} onClick={() => setNav({ kind: "extensions" })} />
             <RailBtn icon={ICON.library} label="Library" active={nav.kind === "library"} onClick={() => setNav({ kind: "library" })} />
             <div className="rail-sep" />
             {SITE_APPS.map((a) => (
@@ -101,13 +92,12 @@ export function App() {
           </nav>
         )}
 
-        {nav.kind === "browser" && <Browser key={nav.url || "home"} initialUrl={nav.url} injectables={injectables} />}
+        {nav.kind === "browser" && <Browser initialUrl={nav.url} injectables={injectables} />}
         {nav.kind === "control" && <ControlPanel />}
         {nav.kind === "terminal" && <TerminalView />}
         {nav.kind === "ai" && <GroupChat />}
         {nav.kind === "library" && <Library />}
         {nav.kind === "settings" && <Settings onSignOut={logout} />}
-        {nav.kind === "extensions" && <ExtensionsView enabled={enabledExt} onToggle={toggleExt} />}
         {nav.kind === "app" && renderEmbedded(nav.id)}
       </div>
 

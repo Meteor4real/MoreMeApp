@@ -66,6 +66,20 @@ const api = {
   agentRun: (cmd: string, prompt: string): Promise<{ ok: boolean; text?: string; error?: string }> =>
     ipcRenderer.invoke("agent:run", cmd, prompt),
 
+  downloads: {
+    list: (): Promise<Array<{ id: string; filename: string; path: string; url: string; bytes: number; state: string; ts: number }>> =>
+      ipcRenderer.invoke("downloads:list"),
+    clear: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("downloads:clear"),
+    remove: (id: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("downloads:remove", id),
+    open: (p: string): Promise<string> => ipcRenderer.invoke("downloads:open", p),
+    reveal: (p: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("downloads:reveal", p),
+    onUpdated: (cb: (arr: Array<{ id: string; filename: string; path: string; url: string; bytes: number; state: string; ts: number }>) => void) => {
+      const fn = (_e: unknown, arr: Array<{ id: string; filename: string; path: string; url: string; bytes: number; state: string; ts: number }>) => cb(arr);
+      ipcRenderer.on("downloads:updated", fn);
+      return () => ipcRenderer.removeListener("downloads:updated", fn);
+    },
+  },
+
   terminal: {
     start: (cols: number, rows: number): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("term:start", cols, rows),
