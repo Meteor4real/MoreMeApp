@@ -36,6 +36,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
+      - name: List build output
+        run: node -e "const fs=require('fs');const d='apps/desktop/release';if(!fs.existsSync(d)){console.error('NO release dir — packaging produced nothing');process.exit(1);}const f=fs.readdirSync(d);console.log('Built:',f);if(!f.length){console.error('release dir empty');process.exit(1);}"
+
       - name: Upload Windows artifacts
         if: matrix.os == 'windows-latest'
         uses: softprops/action-gh-release@v2
@@ -43,7 +46,7 @@ jobs:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           draft: false
           prerelease: false
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true
           files: |
             apps/desktop/release/*.exe
             apps/desktop/release/*.zip
@@ -55,7 +58,7 @@ jobs:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           draft: false
           prerelease: false
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true
           files: |
             apps/desktop/release/*.dmg
             apps/desktop/release/*.zip
@@ -67,7 +70,7 @@ jobs:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           draft: false
           prerelease: false
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true
           files: |
             apps/desktop/release/*.AppImage
             apps/desktop/release/*.deb
