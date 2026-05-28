@@ -94,6 +94,7 @@ export function FloatingInfo() {
 
   return (
     <div
+      data-tour="floating-info"
       style={{
         position: "fixed",
         right: 14,

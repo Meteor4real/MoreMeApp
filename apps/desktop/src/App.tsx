@@ -70,15 +70,16 @@ export function App() {
         {railOpen && (
           <nav className="rail">
             <img className="rail-logo" src={logoUrl} alt="NetworkChuck Hub" title="NetworkChuck Hub" />
-            <RailBtn icon={ICON.browser} label="Browser" active={nav.kind === "browser" && !nav.url} onClick={() => setNav({ kind: "browser" })} />
-            <RailBtn icon={ICON.control} label="Control Panel" active={nav.kind === "control"} onClick={() => setNav({ kind: "control" })} />
-            <RailBtn icon={ICON.terminal} label="Terminal" active={nav.kind === "terminal"} onClick={() => setNav({ kind: "terminal" })} />
-            <RailBtn icon={ICON.ai} label="AI Group Chat" active={nav.kind === "ai"} onClick={() => setNav({ kind: "ai" })} />
-            <RailBtn icon={ICON.library} label="Library" active={nav.kind === "library"} onClick={() => setNav({ kind: "library" })} />
+            <RailBtn tour="rail-browser" icon={ICON.browser} label="Browser" active={nav.kind === "browser" && !nav.url} onClick={() => setNav({ kind: "browser" })} />
+            <RailBtn tour="rail-control" icon={ICON.control} label="Control Panel" active={nav.kind === "control"} onClick={() => setNav({ kind: "control" })} />
+            <RailBtn tour="rail-terminal" icon={ICON.terminal} label="Terminal" active={nav.kind === "terminal"} onClick={() => setNav({ kind: "terminal" })} />
+            <RailBtn tour="rail-ai" icon={ICON.ai} label="AI Group Chat" active={nav.kind === "ai"} onClick={() => setNav({ kind: "ai" })} />
+            <RailBtn tour="rail-library" icon={ICON.library} label="Library" active={nav.kind === "library"} onClick={() => setNav({ kind: "library" })} />
             <div className="rail-sep" />
             {SITE_APPS.map((a) => (
               <RailBtn
                 key={a.id}
+                tour={`rail-app-${a.id}`}
                 icon={ICON[a.id] ?? a.label.slice(0, 2).toUpperCase()}
                 label={a.label}
                 active={EMBEDDED[a.id] ? nav.kind === "app" && nav.id === a.id : nav.kind === "browser" && nav.url === a.url}
@@ -86,7 +87,7 @@ export function App() {
               />
             ))}
             <div style={{ marginTop: "auto" }} />
-            <RailBtn icon={ICON.settings} label="Settings" active={nav.kind === "settings"} onClick={() => setNav({ kind: "settings" })} />
+            <RailBtn tour="rail-settings" icon={ICON.settings} label="Settings" active={nav.kind === "settings"} onClick={() => setNav({ kind: "settings" })} />
             <RailBtn glyph="⊟" label="Fullscreen (hide sidebar)" active={false} onClick={() => setRailOpen(false)} />
             <RailBtn glyph="⏻" label="Sign out" active={false} onClick={logout} />
           </nav>
@@ -130,15 +131,17 @@ function RailBtn({
   label,
   active,
   onClick,
+  tour,
 }: {
   icon?: ReactNode;
   glyph?: string;
   label: string;
   active: boolean;
   onClick: () => void;
+  tour?: string;
 }) {
   return (
-    <button className={"rail-btn mono" + (active ? " active" : "")} title={label} onClick={onClick} style={{ fontSize: 16 }}>
+    <button className={"rail-btn mono" + (active ? " active" : "")} title={label} onClick={onClick} style={{ fontSize: 16 }} data-tour={tour}>
       {icon ?? glyph}
     </button>
   );
