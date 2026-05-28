@@ -71,6 +71,17 @@ export function Browser({
   useEffect(() => subscribeBookmarks(setBookmarks), []);
   useEffect(() => subscribePrefs(setPrefs), []);
 
+  const tabs = tabsState.tabs;
+  const activeId = tabsState.activeId;
+
+  // Whenever the user toggles extensions on/off, re-inject into the active
+  // webview immediately so they don't have to reload to see the change.
+  useEffect(() => {
+    const view = viewRefs.current.get(activeId);
+    if (!view) return;
+    for (const ext of injectables) view.executeJavaScript(ext.code).catch(() => undefined);
+  }, [injectables, activeId]);
+
   // Reflect external "open this URL" requests (rail clicks on site apps).
   useEffect(() => {
     if (!initialUrl) return;
@@ -89,8 +100,6 @@ export function Browser({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  const tabs = tabsState.tabs;
-  const activeId = tabsState.activeId;
   const activeTab = tabs.find((t) => t.id === activeId) || tabs[0];
   useEffect(() => { setOmni(activeTab?.url && !isPanel(activeTab.url) ? activeTab.url : ""); }, [activeTab?.url, activeTab?.id]);
 
@@ -217,14 +226,21 @@ export function Browser({
                 if (el) {
                   const view = el as unknown as WebviewEl;
                   viewRefs.current.set(t.id, view);
+                  function inject() {
+                    for (const ext of injectRef.current) view.executeJavaScript(ext.code).catch(() => undefined);
+                  }
                   el.addEventListener("page-title-updated", (ev) => {
                     const title = (ev as unknown as { title: string }).title;
                     setTabTitle(t.id, title);
                     recordHistory(title, t.url);
                   });
-                  el.addEventListener("dom-ready", () => {
-                    for (const ext of injectRef.current) view.executeJavaScript(ext.code).catch(() => undefined);
-                  });
+                  // Inject early (DOM exists) AND after the page settles AND
+                  // on every SPA navigation. The IIFE guard inside each ext
+                  // keeps re-injects idempotent per page load.
+                  el.addEventListener("dom-ready", inject);
+                  el.addEventListener("did-finish-load", inject);
+                  el.addEventListener("did-navigate", inject);
+                  el.addEventListener("did-navigate-in-page", inject);
                 } else {
                   viewRefs.current.delete(t.id);
                 }
