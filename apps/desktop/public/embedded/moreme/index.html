@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#00C896">
+<title>More Me</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-512.svg">
+<link rel="stylesheet" href="css/style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body data-screen="loading">
+
+<!-- ========== LOADING ========== -->
+<section class="screen screen-loading" data-screen-name="loading">
+  <div class="loader-core">
+    <svg class="mm-logo mm-logo-lg" viewBox="0 0 64 64" aria-hidden="true">
+      <circle cx="32" cy="10" r="4" class="mm-sun"/>
+      <path class="mm-peaks" d="M6 52 L20 24 L32 42 L44 24 L58 52" />
+      <path class="mm-baseline" d="M6 56 L58 56" />
+      <path class="mm-barbell" d="M22 58 L42 58" />
+      <circle cx="20" cy="58" r="2.6" class="mm-weight"/>
+      <circle cx="44" cy="58" r="2.6" class="mm-weight"/>
+    </svg>
+    <div class="loader-ring"></div>
+    <div class="loader-brand">More Me</div>
+    <div class="loader-sub">The Davis Website</div>
+  </div>
+</section>
+
+<!-- ========== LOGIN ========== -->
+<section class="screen screen-login" data-screen-name="login" hidden>
+  <div class="login-card">
+    <header class="login-head">
+      <svg class="mm-logo mm-logo-md" viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="10" r="4" class="mm-sun"/>
+        <path class="mm-peaks" d="M6 52 L20 24 L32 42 L44 24 L58 52" />
+        <path class="mm-baseline" d="M6 56 L58 56" />
+        <path class="mm-barbell" d="M22 58 L42 58" />
+        <circle cx="20" cy="58" r="2.6" class="mm-weight"/>
+        <circle cx="44" cy="58" r="2.6" class="mm-weight"/>
+      </svg>
+      <h1>More Me</h1>
+      <p class="tag">The Davis Website</p>
+    </header>
+
+    <blockquote class="rock-quote rock-quote-lg">
+      <p>&ldquo;Discipline. Dedication. Domination.<br>That&rsquo;s what happens in this house.&rdquo;</p>
+      <cite>— Dwayne &ldquo;The Rock&rdquo; Johnson</cite>
+    </blockquote>
+
+    <div class="sport-strip" aria-hidden="true">
+      <span class="sport-ico sport-ico-dumbbell" title="Workout"></span>
+      <span class="sport-ico sport-ico-basketball" title="Basketball"></span>
+      <span class="card-deco card-deco-football" title="Football"></span>
+      <span class="card-deco card-deco-soccer" title="Soccer"></span>
+      <span class="card-deco card-deco-hockey" title="Hockey"></span>
+      <span class="sport-ico sport-ico-target" title="Focus"></span>
+      <span class="sport-ico sport-ico-trophy" title="Wins"></span>
+      <span class="sport-ico sport-ico-flame" title="Streak"></span>
+      <span class="sport-ico sport-ico-stopwatch" title="Clock"></span>
+      <span class="card-deco card-deco-shoe" title="Running"></span>
+      <span class="card-deco card-deco-whistle" title="Coach"></span>
+    </div>
+
+    <div class="login-quote">
+      <p id="loginQuote">&ldquo;This is how legends are made, doin&rsquo; what you&rsquo;re doin&rsquo;.&rdquo;</p>
+      <cite id="loginQuoteAuthor">— Johnny Silverhand</cite>
+    </div>
+
+    <form id="loginForm" class="login-form">
+      <label>
+        <span>Email</span>
+        <input type="email" id="loginEmail" autocomplete="email" required placeholder="you@example.com">
+      </label>
+      <label id="firstNameWrap" hidden>
+        <span>First name</span>
+        <input type="text" id="loginFirstName" autocomplete="given-name" placeholder="Davis">
+      </label>
+      <label>
+        <span id="codeLabel">Access code</span>
+        <input type="password" id="loginCode" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="8" required placeholder="••••">
+      </label>
+      <div class="login-error" id="loginError" hidden></div>
+      <button type="submit" class="btn btn-primary" id="loginBtn">Send it</button>
+      <div class="login-alt">
+        <button type="button" class="linkbtn" id="forgotBtn">Forgot code?</button>
+      </div>
+    </form>
+
+    <p class="login-foot">One code for More Me + HALOS.</p>
+  </div>
+</section>
+
+<!-- ========== APP ========== -->
+<section class="screen screen-app" data-screen-name="app" hidden>
+
+  <header class="topbar">
+    <div class="topbar-brand">
+      <svg class="mm-logo mm-logo-sm" viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="10" r="4" class="mm-sun"/>
+        <path class="mm-peaks" d="M6 52 L20 24 L32 42 L44 24 L58 52" />
+        <path class="mm-baseline" d="M6 56 L58 56" />
+        <path class="mm-barbell" d="M22 58 L42 58" />
+        <circle cx="20" cy="58" r="2.6" class="mm-weight"/>
+        <circle cx="44" cy="58" r="2.6" class="mm-weight"/>
+      </svg>
+      <span class="brand-name">More Me</span>
+    </div>
+    <div class="topbar-clock" id="topbarClock" aria-live="polite">
+      <span class="clock-time" id="clockTime">—</span>
+      <span class="clock-phase" id="clockPhase"></span>
+    </div>
+    <nav class="tabs" id="tabs">
+      <button class="tab is-active" data-tab="home">Home</button>
+      <button class="tab" data-tab="progress">Progress</button>
+      <button class="tab" data-tab="plan">Plan</button>
+      <button class="tab" data-tab="settings">Settings</button>
+    </nav>
+    <div class="topbar-user">
+      <span id="userName">—</span>
+      <button class="icon-btn" id="logoutBtn" title="Sign out" aria-label="Sign out">⏻</button>
+    </div>
+  </header>
+
+  <!-- XP bar always visible below topbar -->
+  <div class="xp-strip">
+    <div class="xp-meta">
+      <span class="xp-tier" id="tierLabel">Initiate</span>
+      <span class="xp-level">Lv <span id="levelLabel">1</span></span>
+      <span class="xp-prestige" id="prestigeLabel" hidden></span>
+    </div>
+    <div class="xp-bar">
+      <div class="xp-bar-fill" id="xpFill"></div>
+      <span class="xp-bar-text" id="xpText">0 / 100 XP</span>
+    </div>
+    <div class="xp-streak">
+      <span class="flame">🔥</span>
+      <span id="streakLabel">0</span>-day
+    </div>
+  </div>
+
+  <!-- Rock quote banner — pinned across every panel -->
+  <div class="rock-banner" role="complementary">
+    <span class="rock-banner-mark" aria-hidden="true">🪨</span>
+    <div class="rock-banner-body">
+      <p class="rock-banner-quote">&ldquo;Discipline. Dedication. Domination. That&rsquo;s what happens in this house.&rdquo;</p>
+      <cite class="rock-banner-who">— Dwayne &ldquo;The Rock&rdquo; Johnson</cite>
+    </div>
+    <button class="rock-banner-rotate" id="rockRotateBtn" title="Swap quote" aria-label="Swap quote">↻</button>
+  </div>
+
+  <main class="content" id="content">
+
+    <!-- ==================== HOME ==================== -->
+    <section class="panel" data-panel="home">
+      <header class="panel-head">
+        <h2><span class="panel-ico panel-ico-flame" aria-hidden="true"></span>Today</h2>
+        <p class="panel-sub" id="todayDateLabel">—</p>
+      </header>
+
+      <div class="hype-strip" aria-live="polite">
+        <span class="hype-label">Tipoff</span>
+        <span>Game day. Every day. Lace up, show up, put in the work.</span>
+      </div>
+
+      <div class="scoreboard">
+        <div class="score-cell">
+          <span class="score-label">Streak</span>
+          <span class="score-value" id="sbStreak">0</span>
+          <span class="score-caption">days strong</span>
+        </div>
+        <div class="score-cell">
+          <span class="score-label">Today</span>
+          <span class="score-value" id="sbTodayXP">0</span>
+          <span class="score-caption">XP banked</span>
+        </div>
+        <div class="score-cell">
+          <span class="score-label">Tier</span>
+          <span class="score-value" id="sbTier">1</span>
+          <span class="score-caption" id="sbTierName">Initiate</span>
+        </div>
+        <div class="score-cell">
+          <span class="score-label">Season</span>
+          <span class="score-value" id="sbSeasonXP">0</span>
+          <span class="score-caption" id="sbSeasonName">Foundation</span>
+        </div>
+      </div>
+
+      <article class="card card-quicklog card-feature">
+        <h3><span class="card-deco card-deco-stopwatch" aria-hidden="true"></span>Quick log</h3>
+        <p class="card-sub">Type it. Log it. Send it. Move on.</p>
+        <div id="quickLog"></div>
+      </article>
+
+      <article class="card card-wide card-feature card-calendar">
+        <h3><span class="card-deco card-deco-basketball" aria-hidden="true"></span>This week ⚽🏈🏀</h3>
+        <p class="card-sub">Tap today's action to log it. Past days are locked — no stat-padding, no rewriting game tape.</p>
+        <div id="calendar"></div>
+      </article>
+
+      <div class="grid grid-home-compact">
+        <article class="card">
+          <h3><span class="card-deco card-deco-target" aria-hidden="true"></span>Top 3 for today</h3>
+          <p class="card-sub">Academic · Personal · Responsibility.</p>
+          <form class="top3-form" id="top3Form">
+            <input type="text" data-top3="academic" placeholder="Academic goal">
+            <input type="text" data-top3="personal" placeholder="Personal goal">
+            <input type="text" data-top3="responsibility" placeholder="Responsibility goal">
+          </form>
+          <div class="top3-state" id="top3State"></div>
+        </article>
+
+        <article class="card">
+          <h3><span class="card-deco card-deco-trophy" aria-hidden="true"></span>Session break</h3>
+          <p class="card-sub" id="breakChallengeDay">—</p>
+          <ul class="break-list" id="breakList"></ul>
+        </article>
+
+        <article class="card">
+          <h3><span class="card-deco card-deco-stopwatch" aria-hidden="true"></span>Today's log</h3>
+          <p class="card-sub">Everything you earned today.</p>
+          <ul class="xp-log" id="xpLog"></ul>
+        </article>
+
+        <article class="card card-identity">
+          <h3><span class="card-deco card-deco-flame" aria-hidden="true"></span>Identity</h3>
+          <ul class="identity-list">
+            <li>I am someone who shows up — first whistle to final buzzer.</li>
+            <li>I am someone who finishes what I start — no quitting at halftime.</li>
+            <li>I am someone who takes responsibility — own the play, own the result.</li>
+            <li>I am someone who stays locked in — no sideline distractions.</li>
+          </ul>
+          <p class="hype-tag">Train like an athlete. Think like a champion. Compete like it's the championship.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ==================== PROGRESS ==================== -->
+    <section class="panel" data-panel="progress" hidden>
+      <header class="panel-head">
+        <h2><span class="panel-ico panel-ico-trophy" aria-hidden="true"></span>Progress</h2>
+        <p class="panel-sub" id="seasonLabel">Season —</p>
+      </header>
+
+      <div class="hype-strip" aria-hidden="true">
+        <span class="hype-label">Scoreboard</span>
+        <span>Tier track. Season stats. Overtime rewards. Fourth quarter mentality — finish strong.</span>
+      </div>
+
+      <div class="season-bar">
+        <div class="season-info">
+          <span class="season-theme" id="seasonTheme">—</span>
+          <span class="season-ends" id="seasonEnds">—</span>
+        </div>
+        <div class="season-progress">
+          <div class="season-progress-fill" id="seasonProgressFill"></div>
+        </div>
+      </div>
+
+      <section class="subpanel">
+        <h3 class="subpanel-head"><span class="card-deco card-deco-dumbbell" aria-hidden="true"></span>Tier track</h3>
+        <div class="tier-track" id="tierTrack"></div>
+      </section>
+
+      <div class="grid grid-2-tight">
+        <article class="card">
+          <h3><span class="card-deco card-deco-basketball" aria-hidden="true"></span>Weekly quests</h3>
+          <p class="card-sub">3 workouts. 3 sports. 5 focus blocks. 5 on-time. 1 milestone. +50 XP when all 5 land — Overtime starts now.</p>
+          <div class="quest-list" id="weeklyQuests"></div>
+          <div class="quest-reward" id="weeklyReward"></div>
+        </article>
+
+        <article class="card">
+          <h3><span class="card-deco card-deco-flame" aria-hidden="true"></span>Streak rewards</h3>
+          <ul class="reward-list">
+            <li>Day 3 → +10 XP — warming up</li>
+            <li>Day 7 → +25 XP — full-court press</li>
+            <li>Day 14 → +50 XP — two-a-day grind</li>
+            <li>Day 30 → +100 XP and a tier skip. MVP of the month.</li>
+          </ul>
+          <p class="tiny">Skip a day? You don't get cut — you just don't move up the depth chart.</p>
+        </article>
+
+        <article class="card">
+          <h3><span class="card-deco card-deco-trophy" aria-hidden="true"></span>Season rewards</h3>
+          <ul class="reward-list">
+            <li>Hit the season goal — championship ring earned.</li>
+            <li>Full streak reset — new season, fresh scoreboard.</li>
+            <li>New XP challenges unlocked — next weight class.</li>
+            <li>Hit Lv 10 before the month ends = automatic prestige. Hall of fame stuff.</li>
+          </ul>
+        </article>
+
+        <article class="card">
+          <h3><span class="card-deco card-deco-target" aria-hidden="true"></span>Prestige</h3>
+          <p class="card-sub">No button. Hit Lv 10 and close out the season — prestige is automatic. Achievements stay; streaks reset. Level cost climbs +100, capped at 400.</p>
+          <p class="tiny">You earn the ring. Nobody hands you the trophy.</p>
+        </article>
+      </div>
+
+      <section class="subpanel">
+        <div class="subpanel-head-row">
+          <h3><span class="card-deco card-deco-trophy" aria-hidden="true"></span>Achievements</h3>
+          <p class="tiny"><span id="achUnlocked">0</span> / <span id="achTotal">0</span> unlocked</p>
+        </div>
+        <div class="ach-grid" id="achGrid"></div>
+      </section>
+    </section>
+
+    <!-- ==================== PLAN ==================== -->
+    <section class="panel" data-panel="plan" hidden>
+      <header class="panel-head">
+        <h2><span class="panel-ico panel-ico-target" aria-hidden="true"></span>Plan</h2>
+        <p class="panel-sub">Projects. Routines. Goals. Habits. Travel. All in one sheet.</p>
+      </header>
+
+      <div class="hype-strip" aria-hidden="true">
+        <span class="hype-label">Game plan</span>
+        <span>Playbook is set. Drills are loaded. Run the routes, hit the marks, don't skip reps.</span>
+      </div>
+
+      <section class="subpanel">
+        <div class="subpanel-head-row">
+          <h3><span class="card-deco card-deco-dumbbell" aria-hidden="true"></span>Projects</h3>
+          <span class="tiny" id="activeCount"></span>
+          <button class="btn" id="newProjectBtn">+ New</button>
+        </div>
+        <div class="project-list" id="projectList"></div>
+      </section>
+
+      <section class="subpanel">
+        <h3 class="subpanel-head"><span class="card-deco card-deco-stopwatch" aria-hidden="true"></span>Routines</h3>
+        <div class="routine-tabs" id="routineTabs"></div>
+        <article class="card card-routine" id="routineCard"></article>
+      </section>
+
+      <section class="subpanel">
+        <h3 class="subpanel-head"><span class="card-deco card-deco-target" aria-hidden="true"></span>Goals — lifetime down to this week</h3>
+        <p class="tiny" style="margin-bottom:8px;color:var(--ink-soft);">Write it down. Lock it in. What's the championship you're training for this season?</p>
+        <div class="goal-ladder" id="goalLadder"></div>
+      </section>
+
+      <section class="subpanel">
+        <div class="subpanel-head-row">
+          <h3><span class="card-deco card-deco-basketball" aria-hidden="true"></span>Habits</h3>
+          <p class="tiny" id="weekLabel">Week of —</p>
+        </div>
+        <div class="habit-wrap">
+          <table class="habit-grid" id="habitGrid"></table>
+          <div class="habit-toolbar">
+            <input type="text" id="newHabitInput" placeholder="Add a habit…" maxlength="60">
+            <button class="btn" id="addHabitBtn">Add</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="subpanel">
+        <h3 class="subpanel-head"><span class="card-deco card-deco-flame" aria-hidden="true"></span>Travel</h3>
+        <div class="travel-modes">
+          <button class="travel-mode" data-travel-mode="home">🏠 Home</button>
+          <button class="travel-mode" data-travel-mode="beach">🏖 Beach</button>
+          <button class="travel-mode" data-travel-mode="anywhere">✈ Anywhere</button>
+        </div>
+        <div class="grid grid-2-tight">
+          <article class="card">
+            <h3>Universal travel workout</h3>
+            <ul>
+              <li>15 squats</li>
+              <li>10 push-ups</li>
+              <li>20 jumping jacks</li>
+              <li>30-second plank</li>
+              <li>Repeat 2–3 times</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Packing checklist</h3>
+            <div class="pack-list" id="packList"></div>
+            <div class="pack-check" id="packCheck">
+              <p><strong>Did I forget anything?</strong></p>
+              <ul>
+                <li>Sleep, shower, dress, move, learn, stay entertained?</li>
+                <li>Anything for sports or projects?</li>
+                <li>Chargers?</li>
+                <li>Card?</li>
+              </ul>
+            </div>
+          </article>
+        </div>
+      </section>
+    </section>
+
+    <!-- ==================== SETTINGS ==================== -->
+    <section class="panel" data-panel="settings" hidden>
+      <header class="panel-head">
+        <h2><span class="panel-ico panel-ico-stopwatch" aria-hidden="true"></span>Settings</h2>
+        <p class="panel-sub">Theme, sound, notifications, profile, reset.</p>
+      </header>
+
+      <div class="hype-strip" aria-hidden="true">
+        <span class="hype-label">Ground rules</span>
+        <span>Same rules as the gym. Respect the process, put in honest work, no cutting corners.</span>
+      </div>
+
+      <div class="grid grid-2-tight">
+        <article class="card">
+          <h3><span class="card-deco card-deco-basketball" aria-hidden="true"></span>Theme</h3>
+          <p class="tiny">DP Mint on white or DP Mint on black. That's it.</p>
+          <div class="theme-picker" id="themePicker">
+            <button class="theme-swatch is-active" data-theme="light" title="Light — DP Mint on white">
+              <span class="theme-dot theme-dot-light"></span><span>Light</span>
+            </button>
+            <button class="theme-swatch" data-theme="dark" title="Dark — DP Mint on black">
+              <span class="theme-dot theme-dot-dark"></span><span>Dark</span>
+            </button>
+          </div>
+        </article>
+
+        <article class="card">
+          <h3><span class="card-deco card-deco-flame" aria-hidden="true"></span>Sound &amp; notifications</h3>
+          <label class="toggle">
+            <input type="checkbox" id="sfxToggle">
+            <span>Sound effects</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="notifyToggle">
+            <span>Scheduled reminders (browser notifications)</span>
+          </label>
+          <p class="tiny" id="notifyHint">Reminders fire at 6:30, 7:30, 15:30, 17:00, 20:30, 21:30, 21:55.</p>
+        </article>
+
+        <article class="card">
+          <h3><span class="card-deco card-deco-target" aria-hidden="true"></span>Profile</h3>
+          <label>
+            <span>Display name</span>
+            <input type="text" id="profileName">
+          </label>
+          <label>
+            <span>One line about you</span>
+            <textarea id="profileBio" rows="2"></textarea>
+          </label>
+          <button class="btn" id="saveProfileBtn">Save</button>
+        </article>
+
+        <article class="card card-danger">
+          <h3>Danger zone</h3>
+          <p class="tiny">Wipes your More Me data (not your HALOS data). Account stays — the tracker starts over.</p>
+          <button class="btn btn-danger" id="wipeBtn">Wipe More Me data</button>
+        </article>
+      </div>
+
+      <p class="tiny hype-foot">No cheat codes. No stat inflation. No shortcuts past the scoreboard. Earn it on the field or stay on the bench.</p>
+    </section>
+
+  </main>
+
+  <!-- Toast container -->
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+  <!-- XP-gain floater -->
+  <div class="xp-gain" id="xpGain" hidden></div>
+
+</section>
+
+<!-- New project modal -->
+<div class="modal" id="projectModal" hidden>
+  <div class="modal-body">
+    <h3 id="projectModalTitle">New project</h3>
+    <form id="projectForm" class="modal-form">
+      <label>
+        <span>Title</span>
+        <input type="text" name="title" required maxlength="80">
+      </label>
+      <label>
+        <span>Category</span>
+        <select name="category">
+          <option value="school">School</option>
+          <option value="personal">Personal</option>
+        </select>
+      </label>
+      <label>
+        <span>Sub-category</span>
+        <select name="sub">
+          <option value="physical">Physical</option>
+          <option value="digital">Digital</option>
+        </select>
+      </label>
+      <label>
+        <span>Next action</span>
+        <input type="text" name="nextAction" required maxlength="120" placeholder="One clear next step">
+      </label>
+      <label>
+        <span>Deadline</span>
+        <input type="date" name="deadline">
+      </label>
+      <label>
+        <span>Notes</span>
+        <textarea name="notes" rows="2" maxlength="400"></textarea>
+      </label>
+      <label>
+        <span>Status</span>
+        <select name="status">
+          <option value="active">Active</option>
+          <option value="in-progress">In progress</option>
+          <option value="paused">Paused</option>
+          <option value="complete">Complete</option>
+        </select>
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="projectCancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save project</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="js/hub-shim.js"></script>
+<script src="js/data.js"></script>
+<script src="js/sfx.js"></script>
+<script src="js/clock.js"></script>
+<script src="js/xp.js"></script>
+<script src="js/quests.js"></script>
+<script src="js/streaks.js"></script>
+<script src="js/seasons.js"></script>
+<script src="js/achievements.js"></script>
+<script src="js/routines.js"></script>
+<script src="js/quicklog.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
