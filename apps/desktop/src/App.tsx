@@ -19,6 +19,7 @@ import { EXTENSIONS, loadEnabled, subscribeEnabled } from "./extensions";
 import { ICON } from "./icons";
 import { applyAccent, loadAccent } from "./theme-accent";
 import { startWireScheduler } from "./services/nt5Wire";
+import { startOriginPolling } from "./services/originRealms";
 import { loadPrefs, subscribePrefs } from "./uiPrefs";
 import logoUrl from "./assets/logo.png";
 
@@ -47,6 +48,9 @@ export function App() {
     // Start the in-app NT5 wire scheduler — generates fresh articles every
     // N minutes as long as the app is open, drives floating info + the ticker.
     startWireScheduler();
+    // Origin Realms server pulse — feeds the floating info widget and the
+    // NT5 wire so Dex's coverage tracks the actual server state right now.
+    startOriginPolling();
     const offP = subscribePrefs(setPrefs);
     const offE = subscribeEnabled((s) => setEnabledExt(new Set(s)));
     return () => { offP(); offE(); };

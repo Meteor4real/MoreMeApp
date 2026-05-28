@@ -1,51 +1,27 @@
 import { useEffect, useState } from "react";
 import { loadPrefs, subscribePrefs } from "../uiPrefs";
 import { subscribeWire, type WireArticle } from "../services/nt5Wire";
+import { subscribeOriginPulse, type OriginPulse } from "../services/originRealms";
 
 // Floating, toggleable info pieces. They sit on top of the canvas, rotate
 // gently, and can be turned off per-type in Settings. Drives from the in-app
-// NT5 wire (breaking + filed-now), MoreMe schedule (next-up), and a Minecraft
-// server-status query (Origin Realms pulse).
-
-type OriginStatus = { online: boolean; players: number; max: number; motd: string };
+// NT5 wire (breaking + filed-now) and the live Origin Realms pulse.
 
 const CARD_BG = "linear-gradient(140deg, rgba(20,8,12,0.96), rgba(8,8,14,0.96))";
 
 export function FloatingInfo() {
   const [prefs, setPrefs] = useState(loadPrefs);
   const [arts, setArts] = useState<WireArticle[]>([]);
-  const [origin, setOrigin] = useState<OriginStatus | null>(null);
+  const [origin, setOrigin] = useState<OriginPulse | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [tick, setTick] = useState(0);
 
   useEffect(() => subscribePrefs(setPrefs), []);
   useEffect(() => subscribeWire(setArts), []);
+  useEffect(() => subscribeOriginPulse(setOrigin), []);
   useEffect(() => {
     const t = setInterval(() => setTick((n) => n + 1), 11000);
     return () => clearInterval(t);
-  }, []);
-
-  // Origin Realms server pulse — refreshed every 90 s. Uses mcstatus.io
-  // (free, no key). Falls back gracefully when offline.
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const r = await fetch("https://api.mcstatus.io/v2/status/java/play.originrealms.com");
-        if (!r.ok) return;
-        const j = await r.json();
-        if (cancelled) return;
-        setOrigin({
-          online: !!j.online,
-          players: j?.players?.online ?? 0,
-          max: j?.players?.max ?? 0,
-          motd: (j?.motd?.clean as string[] | undefined)?.join(" ") || "Origin Realms",
-        });
-      } catch { /* offline */ }
-    }
-    void load();
-    const t = setInterval(load, 90_000);
-    return () => { cancelled = true; clearInterval(t); };
   }, []);
 
   const breaking = arts.filter((a) => a.category === "breaking").slice(0, 4);

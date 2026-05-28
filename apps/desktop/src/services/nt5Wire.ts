@@ -8,6 +8,7 @@
 // needs a background service / tray — not in this slice.
 
 import { loadPrefs, subscribePrefs } from "../uiPrefs";
+import { getOriginPulse } from "./originRealms";
 
 export type WireArticle = {
   id: string;
@@ -90,9 +91,15 @@ function parseItems(text: string): { category: string; anchor_id: string; title:
 
 export async function runWireOnce(count = 3): Promise<{ ok: boolean; added: WireArticle[]; error?: string }> {
   const topics = DEFAULT_TOPICS;
+  // Feed live context to the wire so Dex's Origin Realms coverage tracks the
+  // server's actual right-now state instead of being purely imagined.
+  const pulse = getOriginPulse();
+  const liveCtx = pulse
+    ? `\nLIVE CONTEXT (real-time, use this in any Origin Realms item — especially Dex's): play.originrealms.com is ${pulse.online ? `online with ${pulse.players}/${pulse.max} players` : "offline"}; MOTD: "${pulse.motd}"; version: ${pulse.version}.`
+    : "";
   const res = await window.hub.llm.chat(
     SYSTEM,
-    `Topics to weight, most important first: ${topics.join(", ")}. Write ${count} fresh NT5 wire items now as JSON only.`
+    `Topics to weight, most important first: ${topics.join(", ")}.${liveCtx}\nWrite ${count} fresh NT5 wire items now as JSON only.`
   );
   if (!res.ok) return { ok: false, added: [], error: res.error };
   const items = parseItems(res.text || "");

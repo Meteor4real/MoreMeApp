@@ -1,13 +1,18 @@
+import { NT5Broadcast } from "../shell/NT5Broadcast";
+
 // Embedded NT5 / S.P.A.C.E. News — the real Next.js site, statically exported
 // and bundled into the app under public/embedded/nt5, run locally (offline) in
-// an iframe as a true carbon copy. A header bar above the iframe shows the
-// reworked Hub-readable NT5 mark and a live wire pulse; the in-app wire
-// scheduler keeps the bundled site supplied with fresh anchor articles.
+// an iframe as a true carbon copy. A header bar shows the reworked NT5 mark,
+// and a broadcast bar gives every wire article a real audio (TTS) read-out
+// in the assigned anchor's voice. The in-app wire scheduler keeps the
+// bundled site supplied with fresh anchor articles (Dex's Origin Realms
+// coverage tracks the actual live mcstatus.io pulse).
 
 export function NT5() {
   return (
     <div className="stage" style={{ background: "#05050d", padding: 0, display: "flex", flexDirection: "column" }}>
       <NT5Header />
+      <NT5Broadcast />
       <iframe
         title="NT5 — S.P.A.C.E. News"
         src="embedded/nt5/index.html"
