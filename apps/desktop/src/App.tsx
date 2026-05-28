@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Boot } from "./boot/Boot";
 import { Login } from "./auth/Login";
 import { isAuthed, signOut, clearGuest } from "./auth/supabase";
 import { Browser } from "./shell/Browser";
@@ -13,12 +12,15 @@ import { Ticker } from "./shell/Ticker";
 import { MusicPlayer } from "./shell/MusicPlayer";
 import { Notifications } from "./shell/Notifications";
 import { TutorialTom } from "./shell/TutorialTom";
+import { FloatingInfo } from "./shell/FloatingInfo";
 import { useFeed } from "./useFeed";
 import { SITE_APPS } from "./apps";
 import { EMBEDDED } from "./embedded";
 import { EXTENSIONS, loadEnabled, saveEnabled } from "./extensions";
 import { ICON } from "./icons";
 import { applyAccent, loadAccent } from "./theme-accent";
+import { startWireScheduler } from "./services/nt5Wire";
+import { loadPrefs, subscribePrefs } from "./uiPrefs";
 import logoUrl from "./assets/logo.png";
 
 type Nav =
@@ -32,15 +34,22 @@ type Nav =
   | { kind: "app"; id: string };
 
 export function App() {
-  const [booted, setBooted] = useState(false);
   const [authed, setAuthed] = useState(() => isAuthed());
   const [nav, setNav] = useState<Nav>({ kind: "browser" }); // Browser is the default canvas
   const [railOpen, setRailOpen] = useState(true);
   const [enabledExt, setEnabledExt] = useState<Set<string>>(() => loadEnabled());
+  const [prefs, setPrefs] = useState(loadPrefs);
   const { items, toasts, dismiss } = useFeed();
 
   useEffect(() => {
     applyAccent(loadAccent());
+    // Auto-ensure the bundled local model on startup so the house AIs
+    // (BroBot, NT5 anchors, Tutorial Tom) are ready when the user reaches them.
+    void window.hub.llm.ensure().catch(() => undefined);
+    // Start the in-app NT5 wire scheduler — generates fresh articles every
+    // N minutes as long as the app is open, drives floating info + the ticker.
+    startWireScheduler();
+    return subscribePrefs(setPrefs);
   }, []);
 
   const injectables = useMemo(
@@ -61,7 +70,6 @@ export function App() {
     setAuthed(false);
   }
 
-  if (!booted) return <Boot onDone={() => setBooted(true)} />;
   if (!authed) return <Login onDone={() => setAuthed(true)} />;
 
   return (
@@ -113,8 +121,9 @@ export function App() {
         </button>
       )}
 
-      <Ticker items={items} left={<MusicPlayer />} />
+      {prefs.tickerEnabled && <Ticker items={items} left={<MusicPlayer />} />}
       <Notifications toasts={toasts} onDismiss={dismiss} />
+      <FloatingInfo />
       <TutorialTom />
     </div>
   );
