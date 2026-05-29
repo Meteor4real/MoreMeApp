@@ -46,7 +46,7 @@ export function Library() {
           color: "var(--mute)",
         }}
       >
-        Library <span className="glow-text">· launch</span>
+        Library
       </div>
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>

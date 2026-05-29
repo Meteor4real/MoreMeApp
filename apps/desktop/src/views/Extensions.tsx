@@ -20,7 +20,7 @@ export function ExtensionsView({
           color: "var(--mute)",
         }}
       >
-        House Extensions <span className="glow-text">· {enabled.size} on</span>
+        Extensions
       </div>
 
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>

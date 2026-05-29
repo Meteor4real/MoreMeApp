@@ -179,9 +179,7 @@ export function GroupChat() {
           gap: 10,
         }}
       >
-        <span>
-          AI Group Chat <span className="glow-text">· the crew</span>
-        </span>
+        <span>AI Group Chat</span>
         <div style={{ display: "flex", gap: 6 }}>
           <button className="btn" onClick={clearChat} title="Clear chat history">Clear</button>
           <button className="btn" onClick={() => setShowConfig((s) => !s)}>{showConfig ? "Done" : "Configure"}</button>

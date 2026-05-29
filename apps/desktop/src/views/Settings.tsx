@@ -67,7 +67,7 @@ export function Settings({ onSignOut }: { onSignOut: () => void }) {
     <div className="stage">
       <div className="panel-head">
         <img src={logoUrl} width={20} height={20} alt="" style={{ borderRadius: 5 }} />
-        Settings <span className="glow-text">· hub</span>
+        Settings
       </div>
       <div style={{ flex: 1, overflow: "auto", padding: 18, display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", alignContent: "start" }}>
         {/* account */}

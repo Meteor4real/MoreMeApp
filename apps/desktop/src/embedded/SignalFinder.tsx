@@ -1,15 +1,28 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { houseChat } from "../houseLLM";
 
-// SignalFinder (built from scratch) — a strategic opportunity-scoring CRM.
+// SignalFinder — strategic-opportunity / relationship-intelligence CRM.
 // You enter real targets (creators, communities, collaborators, mentors…);
 // the engine scores them across response-likelihood, collab-compatibility,
-// momentum, timing, and relevance, ranks them, and tracks outreach + warmth +
-// follow-up. Personalization learns which outreach style lands responses.
+// momentum, timing, and relevance, ranks them, and tracks outreach + warmth
+// + follow-up. A top-level networking-goals filter biases scoring + LLM
+// drafts toward the goals you're actively pursuing, and the personalization
+// engine adapts the suggested outreach style based on what's landed.
 // No fabricated data — everything here is the user's own entries.
 
 type Style = "concise" | "detailed";
 type Outreach = { date: string; style: Style; responded: boolean };
+
+const NETWORK_GOALS = [
+  { id: "collab",     label: "Creator collaborations",      hint: "co-projects, splits, features" },
+  { id: "career",     label: "Career advancement",          hint: "roles, intros, references" },
+  { id: "startup",    label: "Startup development",         hint: "co-founders, hires, advisors" },
+  { id: "community",  label: "Community building",          hint: "members, partners, sponsors" },
+  { id: "mentor",     label: "Mentorship acquisition",      hint: "guidance, feedback, sponsorship" },
+  { id: "recruit",    label: "Project recruitment",         hint: "contributors, talent, collaborators" },
+] as const;
+type NetworkGoalId = typeof NETWORK_GOALS[number]["id"];
+
 type Target = {
   id: string;
   name: string;
@@ -17,31 +30,60 @@ type Target = {
   niche: string;
   platform: string;
   audience: number;
-  growth: number; // 1-5
-  activity: number; // 1-5
+  growth: number;        // 1-5
+  activity: number;      // 1-5
   accessibility: number; // 1-5
-  relevance: number; // 1-5
-  goal: string;
+  relevance: number;     // 1-5
+  goal: string;          // per-target free-text context
+  goalAlignment: NetworkGoalId[]; // which user goals this target serves
   outreach: Outreach[];
 };
 
-const KEY = "nchub.signalfinder.v1";
+const KEY = "nchub.signalfinder.v2";
+const PREF_KEY = "nchub.signalfinder.prefs.v1";
+
 const TYPES = ["creator", "developer", "artist", "business", "mentor", "community", "collaborator"];
 const today = () => new Date().toISOString().slice(0, 10);
 
+type Prefs = { goals: NetworkGoalId[] };
+function loadPrefs(): Prefs {
+  try {
+    const raw = localStorage.getItem(PREF_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return { goals: [] };
+}
+function savePrefs(p: Prefs) {
+  try { localStorage.setItem(PREF_KEY, JSON.stringify(p)); } catch { /* ignore */ }
+}
+
 function load(): Target[] {
   try {
-    return JSON.parse(localStorage.getItem(KEY) || "[]");
+    const raw = JSON.parse(localStorage.getItem(KEY) || "[]") as unknown[];
+    return raw.map((r): Target => {
+      const t = r as Partial<Target> & { goalAlignment?: NetworkGoalId[] };
+      return {
+        id: t.id ?? String(Math.random()),
+        name: t.name ?? "",
+        type: t.type ?? "creator",
+        niche: t.niche ?? "",
+        platform: t.platform ?? "",
+        audience: t.audience ?? 0,
+        growth: t.growth ?? 3,
+        activity: t.activity ?? 3,
+        accessibility: t.accessibility ?? 3,
+        relevance: t.relevance ?? 3,
+        goal: t.goal ?? "",
+        goalAlignment: t.goalAlignment ?? [],
+        outreach: t.outreach ?? [],
+      };
+    });
   } catch {
     return [];
   }
 }
 function persist(t: Target[]) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(t));
-  } catch {
-    /* ignore */
-  }
+  try { localStorage.setItem(KEY, JSON.stringify(t)); } catch { /* ignore */ }
 }
 
 type Scores = {
@@ -53,21 +95,26 @@ type Scores = {
   overall: number;
 };
 
-function score(t: Target): Scores {
+function score(t: Target, activeGoals: NetworkGoalId[]): Scores {
   const acc = t.accessibility / 5;
   const act = t.activity / 5;
   const grw = t.growth / 5;
   const rel = t.relevance / 5;
-  const sizeFactor = 1 / (1 + Math.log10(Math.max(t.audience, 1)) / 6); // smaller = easier
+  const sizeFactor = 1 / (1 + Math.log10(Math.max(t.audience, 1)) / 6);
   const recentResponded = t.outreach.some((o) => o.responded);
   const attempted = t.outreach.length > 0;
   const warmthBoost = recentResponded ? 0.15 : attempted ? 0.05 : 0;
+  // Goal alignment lifts the relevance score: every active goal this target
+  // serves adds a small multiplier; targets aligned to nothing the user is
+  // pursuing right now sink in the ranking.
+  const goalHits = activeGoals.length === 0 ? 1 : t.goalAlignment.filter((g) => activeGoals.includes(g)).length;
+  const goalLift = activeGoals.length === 0 ? 0 : Math.min(0.3, goalHits * 0.12);
 
   const response = Math.round(Math.min(1, 0.6 * acc + 0.25 * act + 0.15 * sizeFactor + warmthBoost) * 100);
-  const collab = Math.round((0.7 * rel + 0.3 * act) * 100);
+  const collab = Math.round(Math.min(1, 0.7 * rel + 0.3 * act + goalLift) * 100);
   const momentum = Math.round((0.6 * grw + 0.4 * act) * 100);
   const timing = Math.round((0.6 * act + 0.4 * grw) * 100);
-  const relevance = Math.round(rel * 100);
+  const relevance = Math.round(Math.min(1, rel + goalLift) * 100);
   const overall = Math.round(
     0.3 * response + 0.2 * collab + 0.2 * momentum + 0.15 * timing + 0.15 * relevance
   );
@@ -89,15 +136,18 @@ function nextFollowup(t: Target): string | null {
 
 const empty = (): Omit<Target, "id" | "outreach"> => ({
   name: "", type: "creator", niche: "", platform: "", audience: 1000,
-  growth: 3, activity: 3, accessibility: 3, relevance: 3, goal: "",
+  growth: 3, activity: 3, accessibility: 3, relevance: 3, goal: "", goalAlignment: [],
 });
 
 export function SignalFinder() {
   const [targets, setTargets] = useState<Target[]>(load);
+  const [prefs, setPrefs] = useState<Prefs>(loadPrefs);
   const [sel, setSel] = useState<string | null>(null);
   const [form, setForm] = useState(empty());
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState("all");
+
+  useEffect(() => { savePrefs(prefs); }, [prefs]);
 
   function update(next: Target[]) {
     setTargets(next);
@@ -108,11 +158,11 @@ export function SignalFinder() {
     () =>
       [...targets]
         .filter((t) => filter === "all" || t.type === filter)
-        .sort((a, b) => score(b).overall - score(a).overall),
-    [targets, filter]
+        .sort((a, b) => score(b, prefs.goals).overall - score(a, prefs.goals).overall),
+    [targets, filter, prefs.goals]
   );
 
-  // personalization: which outreach style lands responses?
+  // Personalization engine: which outreach style lands responses?
   const styleReco = useMemo(() => {
     const stat = { concise: { n: 0, r: 0 }, detailed: { n: 0, r: 0 } };
     targets.forEach((t) =>
@@ -122,7 +172,14 @@ export function SignalFinder() {
       })
     );
     const rate = (s: { n: number; r: number }) => (s.n ? Math.round((s.r / s.n) * 100) : null);
-    return { concise: rate(stat.concise), detailed: rate(stat.detailed), stat };
+    const cRate = rate(stat.concise);
+    const dRate = rate(stat.detailed);
+    const recommend: Style | null =
+      cRate == null && dRate == null ? null
+      : cRate == null ? "detailed"
+      : dRate == null ? "concise"
+      : cRate >= dRate ? "concise" : "detailed";
+    return { concise: cRate, detailed: dRate, stat, recommend };
   }, [targets]);
 
   function addTarget() {
@@ -145,6 +202,13 @@ export function SignalFinder() {
     update(targets.filter((t) => t.id !== id));
     if (sel === id) setSel(null);
   }
+  function toggleGoal(g: NetworkGoalId) {
+    setPrefs((p) => ({ ...p, goals: p.goals.includes(g) ? p.goals.filter((x) => x !== g) : [...p.goals, g] }));
+  }
+  function patchSelectedTarget(patch: Partial<Target>) {
+    if (!sel) return;
+    update(targets.map((t) => (t.id === sel ? { ...t, ...patch } : t)));
+  }
 
   const current = targets.find((t) => t.id === sel) || null;
 
@@ -158,18 +222,39 @@ export function SignalFinder() {
           display: "flex", justifyContent: "space-between", alignItems: "center",
         }}
       >
-        <span>SignalFinder <span className="glow-text">· opportunity radar</span></span>
+        <span>SignalFinder</span>
         <button className="btn" onClick={() => setAdding((a) => !a)}>{adding ? "Close" : "+ Target"}</button>
       </div>
 
+      {/* Networking goals (top-level state — drives scoring + LLM drafts) */}
+      <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--line)" }}>
+        <div className="mono" style={{ fontSize: 10, letterSpacing: 1, color: "var(--mute)", textTransform: "uppercase", marginBottom: 6 }}>
+          Active networking goals
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {NETWORK_GOALS.map((g) => {
+            const on = prefs.goals.includes(g.id);
+            return (
+              <button key={g.id} onClick={() => toggleGoal(g.id)} title={g.hint} className="btn"
+                style={{ padding: "4px 10px", fontSize: 11, color: on ? "var(--pink)" : undefined, borderColor: on ? "rgba(255,87,119,0.55)" : undefined }}>
+                {g.label}
+              </button>
+            );
+          })}
+        </div>
+        {prefs.goals.length === 0 && (
+          <div style={{ fontSize: 11, color: "var(--mute)", marginTop: 6 }}>
+            Select what you&apos;re actually pursuing right now — scoring will weight aligned targets up, the rest down.
+          </div>
+        )}
+      </div>
+
+      {/* Personalization readout */}
       {(styleReco.concise !== null || styleReco.detailed !== null) && (
         <div className="mono" style={{ padding: "8px 14px", fontSize: 12, color: "var(--mute)", borderBottom: "1px solid var(--line)" }}>
           Outreach landing rate — concise {styleReco.concise ?? "–"}% · detailed {styleReco.detailed ?? "–"}%
-          {styleReco.concise !== null && styleReco.detailed !== null && (
-            <span className="glow-text">
-              {"  → lead with "}
-              {(styleReco.concise ?? 0) >= (styleReco.detailed ?? 0) ? "concise" : "detailed"}
-            </span>
+          {styleReco.recommend && (
+            <span className="glow-text">{"  → lead with "}{styleReco.recommend}</span>
           )}
         </div>
       )}
@@ -188,14 +273,27 @@ export function SignalFinder() {
           <Slider l="growth" v={form.growth} on={(v) => setForm({ ...form, growth: v })} />
           <Slider l="activity" v={form.activity} on={(v) => setForm({ ...form, activity: v })} />
           <Slider l="accessibility" v={form.accessibility} on={(v) => setForm({ ...form, accessibility: v })} />
-          <Slider l="relevance to goal" v={form.relevance} on={(v) => setForm({ ...form, relevance: v })} />
-          <Field l="your goal"><input style={inp} value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value })} /></Field>
+          <Slider l="relevance to your work" v={form.relevance} on={(v) => setForm({ ...form, relevance: v })} />
+          <Field l="per-target context"><input style={inp} placeholder="why this target, in one line" value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value })} /></Field>
+          <Field l="serves which goals">
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+              {NETWORK_GOALS.map((g) => {
+                const on = form.goalAlignment.includes(g.id);
+                return (
+                  <button key={g.id} className="btn" style={{ padding: "2px 8px", fontSize: 10, color: on ? "var(--pink)" : undefined }}
+                    onClick={() => setForm({ ...form, goalAlignment: on ? form.goalAlignment.filter((x) => x !== g.id) : [...form.goalAlignment, g.id] })}>
+                    {g.label.split(" ")[0]}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
           <div style={{ alignSelf: "end" }}><button className="btn" onClick={addTarget}>Add</button></div>
         </div>
       )}
 
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-        {/* ranked list */}
+        {/* Ranked list */}
         <div style={{ width: 320, borderRight: "1px solid var(--line)", overflow: "auto" }}>
           <div style={{ padding: "8px 10px", display: "flex", gap: 6, flexWrap: "wrap" }}>
             {["all", ...TYPES].map((f) => (
@@ -204,7 +302,7 @@ export function SignalFinder() {
           </div>
           {ranked.length === 0 && <div className="placeholder"><div style={{ fontSize: 13 }}>No targets yet. Add one to start scoring.</div></div>}
           {ranked.map((t) => {
-            const s = score(t);
+            const s = score(t, prefs.goals);
             return (
               <button key={t.id} onClick={() => setSel(t.id)} className="panel" style={{ display: "block", width: "calc(100% - 16px)", margin: "0 8px 8px", textAlign: "left", padding: 10, cursor: "pointer", borderColor: sel === t.id ? "rgba(255,87,119,0.6)" : undefined, color: "var(--ink)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
@@ -212,33 +310,70 @@ export function SignalFinder() {
                   <span className="mono glow-text" style={{ fontSize: 16 }}>{s.overall}</span>
                 </div>
                 <div style={{ fontSize: 11, color: "var(--mute)" }}>{t.type} · {t.platform || "—"} · {warmth(t)}</div>
+                {t.goalAlignment.length > 0 && (
+                  <div style={{ fontSize: 10, color: "var(--mute)", marginTop: 2 }}>
+                    {t.goalAlignment.map((g) => NETWORK_GOALS.find((x) => x.id === g)?.label.split(" ")[0]).join(" · ")}
+                  </div>
+                )}
               </button>
             );
           })}
         </div>
 
-        {/* detail */}
+        {/* Detail */}
         <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
           {!current && <div className="placeholder"><div style={{ fontSize: 13 }}>Select a target to see its scoring breakdown + outreach.</div></div>}
-          {current && <Detail t={current} onLog={logOutreach} onRemove={removeTarget} />}
+          {current && (
+            <Detail
+              t={current}
+              activeGoals={prefs.goals}
+              styleRecommend={styleReco.recommend}
+              onLog={logOutreach}
+              onRemove={removeTarget}
+              onPatch={patchSelectedTarget}
+            />
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function Detail({ t, onLog, onRemove }: { t: Target; onLog: (id: string, s: Style, r: boolean) => void; onRemove: (id: string) => void }) {
-  const s = score(t);
+function Detail({
+  t, activeGoals, styleRecommend, onLog, onRemove, onPatch,
+}: {
+  t: Target;
+  activeGoals: NetworkGoalId[];
+  styleRecommend: Style | null;
+  onLog: (id: string, s: Style, r: boolean) => void;
+  onRemove: (id: string) => void;
+  onPatch: (patch: Partial<Target>) => void;
+}) {
+  const s = score(t, activeGoals);
   const fu = nextFollowup(t);
   const [draft, setDraft] = useState("");
   const [drafting, setDrafting] = useState(false);
 
   async function draftOutreach() {
     setDrafting(true);
-    const styleHint = t.outreach.some((o) => o.responded && o.style === "detailed") ? "detailed and warm" : "concise and genuine";
+    // Style preference: per-target landed style > global recommendation > default concise.
+    const landed = t.outreach.find((o) => o.responded);
+    const targetStyle: Style = landed ? landed.style : (styleRecommend ?? "concise");
+    const styleHint =
+      targetStyle === "detailed"
+        ? "detailed, warm, references one specific thing they made"
+        : "concise, genuine, two sentences max, references one specific thing they made";
+    const goalContext = activeGoals.length > 0
+      ? activeGoals.map((g) => goalLabel(g)).join(", ")
+      : "general networking";
+    const targetGoalText = t.goalAlignment.length > 0 ? t.goalAlignment.map(goalLabel).join(" + ") : "open";
     const res = await houseChat(
-      "You are SignalFinder's outreach assistant. Write one short, high-response-likelihood opening message to reach a target. Match the requested style. Reply with ONLY the message — no preamble, no quotes.",
-      `Target: ${t.name} (${t.type})${t.niche ? ", niche: " + t.niche : ""}${t.platform ? ", on " + t.platform : ""}. My goal: ${t.goal || "connect / collaborate"}. Style: ${styleHint}.`
+      "You are SignalFinder's outreach assistant. Write one short, high-response-likelihood opening message to reach a target. Reply with ONLY the message — no preamble, no quotes, no signature.",
+      `My active networking goals: ${goalContext}.
+Target: ${t.name} (${t.type})${t.niche ? ", niche: " + t.niche : ""}${t.platform ? ", on " + t.platform : ""}.
+What this target offers me: ${targetGoalText}.
+Specific context: ${t.goal || "(none)"}.
+Style: ${styleHint}.`
     );
     setDrafting(false);
     setDraft(res.ok ? res.text || "" : `[model error] ${res.error}`);
@@ -254,9 +389,25 @@ function Detail({ t, onLog, onRemove }: { t: Target; onLog: (id: string, s: Styl
         <div>
           <div className="mono" style={{ fontSize: 18 }}>{t.name}</div>
           <div style={{ fontSize: 12, color: "var(--mute)" }}>{t.type} · {t.niche || "—"} · {t.platform || "—"} · {t.audience.toLocaleString()} audience</div>
-          {t.goal && <div style={{ fontSize: 12, color: "var(--mute)" }}>goal: {t.goal}</div>}
+          {t.goal && <div style={{ fontSize: 12, color: "var(--mute)" }}>context: {t.goal}</div>}
         </div>
         <div className="mono glow-text" style={{ fontSize: 32 }}>{s.overall}</div>
+      </div>
+
+      <div className="panel" style={{ padding: 10, margin: "10px 0" }}>
+        <div className="mono" style={{ fontSize: 10, color: "var(--mute)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Serves which of your goals</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {NETWORK_GOALS.map((g) => {
+            const on = t.goalAlignment.includes(g.id);
+            const active = activeGoals.includes(g.id);
+            return (
+              <button key={g.id} className="btn" style={{ padding: "2px 8px", fontSize: 10, color: on ? "var(--pink)" : undefined, borderColor: on && active ? "rgba(255,87,119,0.55)" : undefined }}
+                onClick={() => onPatch({ goalAlignment: on ? t.goalAlignment.filter((x) => x !== g.id) : [...t.goalAlignment, g.id] })}>
+                {g.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div style={{ margin: "16px 0" }}>
@@ -290,7 +441,10 @@ function Detail({ t, onLog, onRemove }: { t: Target; onLog: (id: string, s: Styl
 
       <div className="panel" style={{ padding: 12, marginTop: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div className="mono" style={{ fontSize: 12, letterSpacing: 1, color: "var(--mute)" }}>AI ASSISTANT</div>
+          <div className="mono" style={{ fontSize: 12, letterSpacing: 1, color: "var(--mute)" }}>
+            AI ASSISTANT
+            {styleRecommend && <span className="glow-text"> · {styleRecommend} recommended</span>}
+          </div>
           <button className="btn" disabled={drafting} onClick={() => void draftOutreach()}>{drafting ? "…" : "Draft outreach"}</button>
         </div>
         {draft && (
@@ -302,6 +456,10 @@ function Detail({ t, onLog, onRemove }: { t: Target; onLog: (id: string, s: Styl
       <button className="btn" style={{ marginTop: 14 }} onClick={() => onRemove(t.id)}>Remove target</button>
     </div>
   );
+}
+
+function goalLabel(g: NetworkGoalId): string {
+  return NETWORK_GOALS.find((x) => x.id === g)?.label ?? g;
 }
 
 const inp: React.CSSProperties = {

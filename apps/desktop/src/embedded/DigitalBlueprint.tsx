@@ -62,6 +62,26 @@ type Snap = {
   wireframe: boolean; flatShading: boolean; textureUrl: string; texture: string;
   px: number; py: number; pz: number; sx: number; sy: number; sz: number;
   rx: number; ry: number; rz: number;
+  // Spatial documentation: text attached to the object in 3D space. Title is
+  // rendered as a label above the object; body shows in the inspector and on
+  // hover/selection over the floating label.
+  annTitle: string; annBody: string;
+};
+
+// Atmosphere — real-time controls over scene lighting + sky so the blueprint
+// supports simulation of scale, lighting, and "atmosphere" as the spec calls
+// for. Stored independently of objects.
+type Atmosphere = {
+  bg: string;          // scene background / sky color
+  ambient: number;     // hemisphere intensity 0..2
+  sunColor: string;
+  sunIntensity: number; // directional light intensity 0..3
+  sunAzimuth: number;  // degrees
+  sunElevation: number; // degrees
+};
+const DEFAULT_ATMOSPHERE: Atmosphere = {
+  bg: "#0a1628", ambient: 0.6, sunColor: "#fff0d0", sunIntensity: 1.1,
+  sunAzimuth: 40, sunElevation: 55,
 };
 
 // Procedural textures the AI (or you) can apply — "AI makes textures" without
@@ -93,13 +113,39 @@ function makeTexture(kind: string, color = "#888888"): THREE.CanvasTexture | nul
   return tex;
 }
 
+// Position a directional light on a hemispherical dome relative to the scene
+// origin, parameterized by azimuth (compass) + elevation (above horizon).
+function placeSun(light: THREE.DirectionalLight, azDeg: number, elDeg: number) {
+  const r = 12;
+  const az = THREE.MathUtils.degToRad(azDeg);
+  const el = THREE.MathUtils.degToRad(elDeg);
+  light.position.set(
+    r * Math.cos(el) * Math.cos(az),
+    r * Math.sin(el),
+    r * Math.cos(el) * Math.sin(az)
+  );
+}
+
+// Project a 3D world position to canvas-relative pixel coordinates.
+function project(world: THREE.Vector3, cam: THREE.PerspectiveCamera, w: number, h: number) {
+  const p = world.clone().project(cam);
+  return {
+    x: (p.x * 0.5 + 0.5) * w,
+    y: (-p.y * 0.5 + 0.5) * h,
+    behind: p.z >= 1,
+  };
+}
+
 export function DigitalBlueprint() {
   const mount = useRef<HTMLDivElement>(null);
+  const overlay = useRef<HTMLDivElement>(null);
   const scene = useRef<THREE.Scene>();
   const renderer = useRef<THREE.WebGLRenderer>();
   const camera = useRef<THREE.PerspectiveCamera>();
   const objects = useRef<THREE.Mesh[]>([]);
   const selected = useRef<THREE.Mesh | null>(null);
+  const hemi = useRef<THREE.HemisphereLight>();
+  const sun = useRef<THREE.DirectionalLight>();
   const api = useRef<{ setWalk: (b: boolean) => void; importGlb: (f: File) => void }>({
     setWalk: () => {},
     importGlb: () => {},
@@ -108,6 +154,11 @@ export function DigitalBlueprint() {
   const [snap, setSnap] = useState<Snap | null>(null);
   const [prompt, setPrompt] = useState("a small sci-fi reactor: a glowing core sphere flanked by metal pillars");
   const [genStatus, setGenStatus] = useState<string | null>(null);
+  const [atmos, setAtmos] = useState<Atmosphere>(DEFAULT_ATMOSPHERE);
+  const [showAllLabels, setShowAllLabels] = useState(true);
+  // Re-renders the annotation overlay every animation frame so labels track
+  // the camera. Cheap: we cap labels at the object count.
+  const [, setTick] = useState(0);
 
   useEffect(() => {
     const el = mount.current!;
@@ -127,10 +178,13 @@ export function DigitalBlueprint() {
     const pmrem = new THREE.PMREMGenerator(rnd);
     sc.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
-    sc.add(new THREE.HemisphereLight(0xffffff, 0x152540, 0.6));
-    const dir = new THREE.DirectionalLight(0xfff0d0, 1.1);
-    dir.position.set(5, 8, 4);
+    const hemiL = new THREE.HemisphereLight(0xffffff, 0x152540, atmos.ambient);
+    sc.add(hemiL);
+    hemi.current = hemiL;
+    const dir = new THREE.DirectionalLight(new THREE.Color(atmos.sunColor), atmos.sunIntensity);
+    placeSun(dir, atmos.sunAzimuth, atmos.sunElevation);
     sc.add(dir);
+    sun.current = dir;
     const grid = new THREE.GridHelper(40, 40, 0xffb84d, 0x2a4268);
     (grid.material as THREE.Material).opacity = 0.4;
     (grid.material as THREE.Material).transparent = true;
@@ -195,6 +249,7 @@ export function DigitalBlueprint() {
     resize();
 
     let raf = 0;
+    let frame = 0;
     const loop = () => {
       const dt = clock.getDelta();
       if (pointer.isLocked) {
@@ -207,6 +262,10 @@ export function DigitalBlueprint() {
         controls.update();
       }
       rnd.render(sc, cam);
+      // Drive the annotation overlay at ~20 Hz so labels track the camera
+      // without re-rendering the React tree on every frame.
+      frame++;
+      if (frame % 3 === 0) setTick((t) => (t + 1) & 0x7fff);
       raf = requestAnimationFrame(loop);
     };
     loop();
@@ -226,9 +285,21 @@ export function DigitalBlueprint() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Re-apply atmosphere whenever its state changes.
+  useEffect(() => {
+    if (scene.current) scene.current.background = new THREE.Color(atmos.bg);
+    if (hemi.current) hemi.current.intensity = atmos.ambient;
+    if (sun.current) {
+      sun.current.color.set(atmos.sunColor);
+      sun.current.intensity = atmos.sunIntensity;
+      placeSun(sun.current, atmos.sunAzimuth, atmos.sunElevation);
+    }
+  }, [atmos]);
+
   function readSnap(m: THREE.Mesh): Snap {
     const mat = m.material as THREE.MeshPhysicalMaterial;
     const deg = (r: number) => Math.round(THREE.MathUtils.radToDeg(r));
+    const ann = (m.userData.annotation as { title?: string; body?: string } | undefined) || {};
     return {
       color: "#" + mat.color.getHexString(),
       metalness: mat.metalness, roughness: mat.roughness,
@@ -241,6 +312,7 @@ export function DigitalBlueprint() {
       px: m.position.x, py: m.position.y, pz: m.position.z,
       sx: m.scale.x, sy: m.scale.y, sz: m.scale.z,
       rx: deg(m.rotation.x), ry: deg(m.rotation.y), rz: deg(m.rotation.z),
+      annTitle: ann.title || "", annBody: ann.body || "",
     };
   }
 
@@ -313,6 +385,13 @@ export function DigitalBlueprint() {
       mat.map = makeTexture(p.texture, "#" + mat.color.getHexString());
       mat.needsUpdate = true;
     }
+    if (p.annTitle !== undefined || p.annBody !== undefined) {
+      const prev = (m.userData.annotation as { title?: string; body?: string } | undefined) || {};
+      m.userData.annotation = {
+        title: p.annTitle !== undefined ? p.annTitle : (prev.title || ""),
+        body:  p.annBody  !== undefined ? p.annBody  : (prev.body  || ""),
+      };
+    }
     mat.needsUpdate = true;
     setSnap(readSnap(m));
   }
@@ -384,10 +463,21 @@ export function DigitalBlueprint() {
           </g>
           <circle cx="16" cy="16" r="2" fill="url(#dbg)" />
         </svg>
-        DigitalBlueprint&nbsp;<span style={{ color: DB.accent }}>· 3D editor</span>
+        DigitalBlueprint
       </div>
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-        <div ref={mount} style={{ flex: 1, minWidth: 0, position: "relative", background: "#0a1628" }} />
+        <div style={{ flex: 1, minWidth: 0, position: "relative", background: atmos.bg }}>
+          <div ref={mount} style={{ position: "absolute", inset: 0 }} />
+          <div ref={overlay} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+            <AnnotationLayer
+              objects={objects.current}
+              camera={camera.current}
+              mount={mount.current}
+              selectedMesh={selected.current}
+              showAll={showAllLabels}
+            />
+          </div>
+        </div>
         <div className="db-paper" style={{ width: 300, borderLeft: `1px solid ${DB.ink}`, overflow: "auto", padding: 12 }}>
           <Label>Add</Label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
@@ -437,6 +527,19 @@ export function DigitalBlueprint() {
 
           <div style={{ height: 1, background: DB.rule, margin: "14px 0" }} />
 
+          <Label>Atmosphere</Label>
+          <Row l="sky"><input type="color" value={atmos.bg} onChange={(e) => setAtmos({ ...atmos, bg: e.target.value })} /></Row>
+          <Slider l="ambient" v={atmos.ambient} max={2} on={(v) => setAtmos({ ...atmos, ambient: v })} />
+          <Row l="sun color"><input type="color" value={atmos.sunColor} onChange={(e) => setAtmos({ ...atmos, sunColor: e.target.value })} /></Row>
+          <Slider l="sun intensity" v={atmos.sunIntensity} max={3} on={(v) => setAtmos({ ...atmos, sunIntensity: v })} />
+          <SliderInt l="sun azimuth°" v={atmos.sunAzimuth} min={0} max={360} on={(v) => setAtmos({ ...atmos, sunAzimuth: v })} />
+          <SliderInt l="sun elevation°" v={atmos.sunElevation} min={5} max={90} on={(v) => setAtmos({ ...atmos, sunElevation: v })} />
+          <Row l="show all labels">
+            <input type="checkbox" checked={showAllLabels} onChange={(e) => setShowAllLabels(e.target.checked)} />
+          </Row>
+
+          <div style={{ height: 1, background: DB.rule, margin: "14px 0" }} />
+
           {!snap && <div style={{ fontSize: 12, color: DB.inkLight }}>Click an object to edit its material + transform.</div>}
           {snap && (
             <>
@@ -453,6 +556,13 @@ export function DigitalBlueprint() {
               <Slider l="sheen (fabric)" v={snap.sheen} on={(v) => patch({ sheen: v })} />
               <Row l="wireframe"><input type="checkbox" checked={snap.wireframe} onChange={(e) => patch({ wireframe: e.target.checked })} /></Row>
               <Row l="flat shading"><input type="checkbox" checked={snap.flatShading} onChange={(e) => patch({ flatShading: e.target.checked })} /></Row>
+              <Label>Annotation</Label>
+              <input value={snap.annTitle} placeholder="label (shows above the object)" onChange={(e) => patch({ annTitle: e.target.value })}
+                style={{ width: "100%", padding: "6px 8px", fontSize: 11 }} />
+              <textarea value={snap.annBody} placeholder="explanation, lore, specs — shown next to the label in 3D space"
+                onChange={(e) => patch({ annBody: e.target.value })} rows={3}
+                style={{ width: "100%", padding: "6px 8px", fontSize: 11, marginTop: 6, resize: "vertical" }} />
+
               <Label>Texture URL</Label>
               <input value={snap.textureUrl} placeholder="https://…(jpg/png)" onChange={(e) => patch({ textureUrl: e.target.value })}
                 style={{ width: "100%", padding: "6px 8px", fontSize: 11 }} />
@@ -502,5 +612,86 @@ function Vec({ l, a, b, c, on, step = 0.25 }: { l: string; a: number; b: number;
         <input type="number" step={step} value={c} onChange={(e) => on(a, b, Number(e.target.value))} style={s} />
       </div>
     </div>
+  );
+}
+function SliderInt({ l, v, on, min = 0, max = 100 }: { l: string; v: number; on: (v: number) => void; min?: number; max?: number }) {
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: DB.inkSoft }}><span>{l}</span><span>{v}</span></div>
+      <input type="range" min={min} max={max} step={1} value={v} onChange={(e) => on(Number(e.target.value))} style={{ width: "100%" }} />
+    </div>
+  );
+}
+
+// Floating annotation labels — positioned by projecting each annotated
+// object's world position to canvas-relative pixels. Shows on selection,
+// and on every annotated object when "show all labels" is on.
+function AnnotationLayer({ objects, camera, mount, selectedMesh, showAll }: {
+  objects: THREE.Mesh[];
+  camera: THREE.PerspectiveCamera | undefined;
+  mount: HTMLDivElement | null;
+  selectedMesh: THREE.Mesh | null;
+  showAll: boolean;
+}) {
+  if (!camera || !mount) return null;
+  const w = mount.clientWidth, h = mount.clientHeight;
+  const eligible = objects.filter((o) => {
+    const ann = o.userData.annotation as { title?: string; body?: string } | undefined;
+    if (!ann || (!ann.title && !ann.body)) return false;
+    if (showAll) return true;
+    return o === selectedMesh;
+  });
+  return (
+    <>
+      {eligible.map((o, i) => {
+        const ann = o.userData.annotation as { title?: string; body?: string };
+        const world = new THREE.Vector3();
+        o.getWorldPosition(world);
+        // lift the label above the object using its scale.y as a rough height
+        world.y += (o.scale.y || 1) * 0.7 + 0.4;
+        const p = project(world, camera, w, h);
+        if (p.behind) return null;
+        return (
+          <div key={i} style={{
+            position: "absolute",
+            left: p.x, top: p.y,
+            transform: "translate(-50%, -100%)",
+            background: "rgba(10, 22, 40, 0.88)",
+            border: "1px solid #ffb84d",
+            borderRadius: 4,
+            color: "#a8d8ff",
+            padding: "4px 8px",
+            fontFamily: "'Courier New', monospace",
+            fontSize: 11,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            boxShadow: "0 0 14px rgba(255,184,77,0.25)",
+            pointerEvents: "auto",
+            maxWidth: 240,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+            title={ann.body}
+          >
+            {ann.title || "(no title)"}
+            {ann.body && (
+              <div style={{
+                marginTop: 4,
+                fontSize: 10,
+                color: "#7fb8e6",
+                textTransform: "none",
+                letterSpacing: "0.02em",
+                fontFamily: "Inter, system-ui, sans-serif",
+                whiteSpace: "normal",
+                lineHeight: 1.4,
+                maxHeight: 80,
+                overflow: "auto",
+              }}>{ann.body}</div>
+            )}
+          </div>
+        );
+      })}
+    </>
   );
 }
