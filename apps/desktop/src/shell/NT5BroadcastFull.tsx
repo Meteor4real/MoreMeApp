@@ -10,10 +10,10 @@ import { subscribeWire } from "../services/nt5Wire";
 type AnchorId = "voss" | "zara" | "dex" | "lena" | "orin";
 const ANCHOR: Record<AnchorId, { name: string; tag: string; color: string }> = {
   voss: { name: "Voss Calloway", tag: "Lead Anchor", color: "#d946ef" },
-  zara: { name: "Zara Kindle", tag: "Co-Anchor · Culture", color: "#22d3ee" },
+  zara: { name: "Zip Kindle", tag: "Co-Anchor · Culture", color: "#22d3ee" },
   dex:  { name: "Dex Morrow", tag: "Gaming Desk", color: "#3b82f6" },
   lena: { name: "Lena Faust", tag: "Field Reporter", color: "#ef4444" },
-  orin: { name: "Orin Vale", tag: "Tech & Space", color: "#a855f7" },
+  orin: { name: "Orion Vale", tag: "Tech & Space", color: "#a855f7" },
 };
 
 export function NT5BroadcastFull({ article, onClose }: { article: WireArticle; onClose: () => void }) {

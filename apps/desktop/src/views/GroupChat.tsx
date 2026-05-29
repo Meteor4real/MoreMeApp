@@ -51,6 +51,7 @@ export function GroupChat() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [showConfig, setShowConfig] = useState(false);
+  const [houseReady, setHouseReady] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
 
   // Persist on every change so the conversation survives tab switches and restarts.
@@ -62,8 +63,23 @@ export function GroupChat() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [msgs, busy]);
 
-  const available = useMemo(() => AGENTS.filter((a) => agentAvailable(a, cfg[a.id])), [cfg]);
-  const unavailable = useMemo(() => AGENTS.filter((a) => !agentAvailable(a, cfg[a.id])), [cfg]);
+  // The "online" dot has to mean something — house agents are only actually
+  // available once the local model has finished downloading.
+  useEffect(() => {
+    let cancelled = false;
+    async function tick() {
+      try {
+        const s = await window.hub.llm.status();
+        if (!cancelled) setHouseReady(!!s.ready);
+      } catch { /* ignore */ }
+    }
+    void tick();
+    const t = setInterval(tick, 4000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
+
+  const available = useMemo(() => AGENTS.filter((a) => agentAvailable(a, cfg[a.id], houseReady)), [cfg, houseReady]);
+  const unavailable = useMemo(() => AGENTS.filter((a) => !agentAvailable(a, cfg[a.id], houseReady)), [cfg, houseReady]);
 
   function push(m: Omit<Msg, "id">) {
     setMsgs((prev) => [...prev, { ...m, id: String(mid++) }]);
@@ -109,52 +125,84 @@ export function GroupChat() {
     });
   }
 
+  // Resolve who an @mention list targets — silent agents (NT5 anchors,
+  // BroBot) only join when their name is explicitly in the list, never via
+  // @Everyone or via the empty default.
+  function resolveTargets(rawText: string): AgentDef[] {
+    const mentions = (rawText.match(/@([A-Za-z]+)/g) || []).map((m) => m.slice(1).toLowerCase());
+    const everyone = mentions.length === 0 || mentions.includes("everyone");
+    const out: AgentDef[] = [];
+    if (everyone) {
+      for (const a of available) if (!a.silent) out.push(a);
+    }
+    for (const a of available) {
+      if (mentions.includes(a.name.toLowerCase()) && !out.includes(a)) out.push(a);
+    }
+    return out;
+  }
+
   async function send() {
     const task = input.trim();
     if (!task || busy) return;
     setInput("");
     push({ agentId: "meteor", name: "Meteor", kind: "user", content: task });
 
-    // @mention routing. @Everyone = every available agent. @Name targets the
-    // specific agent (also requires available). Empty mentions default to @Everyone.
-    const mentions = (task.match(/@([A-Za-z]+)/g) || []).map((m) => m.slice(1).toLowerCase());
-    const everyone = mentions.length === 0 || mentions.includes("everyone");
-    let targets: AgentDef[] = everyone ? [...available] : [];
-    for (const a of available) if (mentions.includes(a.name.toLowerCase()) && !targets.includes(a)) targets.push(a);
+    const targets = resolveTargets(task);
 
     if (targets.length === 0) {
-      push({ agentId: "system", name: "Hub", kind: "system", content: "No matching agent. Mention one by name, or @Everyone. (Connect more agents in Configure.)" });
+      push({ agentId: "system", name: "Hub", kind: "system", content: "No matching agent. Mention one by name (Voss, Zip, Dex, Lena, Orion, and BroBot only respond when called out directly), or @Everyone to ping the outside crew. (Connect more agents in Configure.)" });
       return;
     }
 
     try {
-      const single = targets.length === 1;
-      const coordinator = targets.find((a) => a.coordinator);
-      const others = targets.filter((a) => a !== coordinator);
-      if (coordinator) {
-        setBusy(coordinator.name);
-        await callAgent(coordinator, task, snapshot());
-      }
-      // Split workers by transport. CLI and API agents are independent
-      // processes/endpoints, so we fan them out in parallel. House-model
-      // agents share one local model and have to run one at a time.
-      const houseWorkers = others.filter((a) => effectiveTransport(a, cfg[a.id]) === "house");
-      const remoteWorkers = others.filter((a) => effectiveTransport(a, cfg[a.id]) !== "house");
-      if (remoteWorkers.length) {
-        setBusy(remoteWorkers.map((a) => a.name).join(", "));
-        await Promise.all(remoteWorkers.map((w) => callAgent(w, task, snapshot())));
-      }
-      for (const w of houseWorkers) {
-        setBusy(w.name);
-        await callAgent(w, task, snapshot());
-      }
-      if (!single) {
-        const reviewer = coordinator || targets.find((a) => a.id === "claude") || targets[0];
-        setBusy(`${reviewer.name} (review)`);
-        await callAgent(reviewer, "Review the crew's responses above for errors or hallucinations, keep everyone on track, then give Meteor the consolidated result.", snapshot());
+      await runTurn(targets, task);
+      // AI-to-AI chaining: scan the last few agent messages for @mentions of
+      // OTHER available agents (anchors / BroBot count here too — direct
+      // mention is exactly what they wait for). Cap chain depth so the
+      // crew can't accidentally talk forever.
+      for (let depth = 0; depth < 3; depth++) {
+        const recent = snapshot().slice(-targets.length).filter((m) => m.kind === "agent");
+        const chained = new Set<AgentDef>();
+        for (const m of recent) {
+          for (const a of available) {
+            if (m.agentId === a.id) continue;
+            const re = new RegExp(`@${a.name}\\b`, "i");
+            if (re.test(m.content)) chained.add(a);
+          }
+        }
+        if (chained.size === 0) break;
+        await runTurn([...chained], `[AI-to-AI · address the prior messages directly]`);
       }
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function runTurn(targets: AgentDef[], task: string) {
+    const single = targets.length === 1;
+    const coordinator = targets.find((a) => a.coordinator);
+    const others = targets.filter((a) => a !== coordinator);
+    if (coordinator) {
+      setBusy(coordinator.name);
+      await callAgent(coordinator, task, snapshot());
+    }
+    // Split workers by transport. CLI + API agents fan out in parallel
+    // (separate processes/endpoints). House-model agents share one local
+    // model and have to run one at a time.
+    const houseWorkers = others.filter((a) => effectiveTransport(a, cfg[a.id]) === "house");
+    const remoteWorkers = others.filter((a) => effectiveTransport(a, cfg[a.id]) !== "house");
+    if (remoteWorkers.length) {
+      setBusy(remoteWorkers.map((a) => a.name).join(", "));
+      await Promise.all(remoteWorkers.map((w) => callAgent(w, task, snapshot())));
+    }
+    for (const w of houseWorkers) {
+      setBusy(w.name);
+      await callAgent(w, task, snapshot());
+    }
+    if (!single) {
+      const reviewer = coordinator || targets.find((a) => a.id === "claude") || targets[0];
+      setBusy(`${reviewer.name} (review)`);
+      await callAgent(reviewer, "Review the crew's responses above for errors or hallucinations, keep everyone on track, then give Meteor the consolidated result.", snapshot());
     }
   }
 
@@ -226,17 +274,18 @@ export function GroupChat() {
         {showConfig ? (
           <ConfigPanel cfg={cfg} onChange={(next) => { setCfg(next); saveConfig(next); }} />
         ) : (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-            <div ref={scroller} style={{ flex: 1, overflow: "auto", padding: 16 }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
+            <div ref={scroller} style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 16 }}>
               {msgs.length === 0 && (
                 <div className="placeholder">
                   <div>
                     <div className="glow-text mono">Give the crew a task</div>
                     <p style={{ maxWidth: 460, fontSize: 13 }}>
                       e.g. “make a Pizza Tower mod that adds Pizzaface as a playable character.”
-                      @Everyone routes to every connected agent. Mention someone by name to
-                      target them specifically — BroBot and the NT5 anchors (Voss, Zara, Dex,
-                      Lena, Orin) all share the local brain and are always on call.
+                      @Everyone routes to the outside crew (Claude, Gemini, Codex, OpenCode,
+                      Hermes). Mention BroBot or an NT5 anchor (Voss, Zip, Dex, Lena, Orion)
+                      directly — they only chime in when called out. Agents can @mention each
+                      other to keep the conversation going.
                     </p>
                   </div>
                 </div>

@@ -260,8 +260,95 @@ const inp: React.CSSProperties = {
   outline: "none",
 };
 
+// In-app search-results page. Hits DuckDuckGo's HTML-only endpoint from the
+// main process (CORS-free), parses the result links out, and renders them
+// with the Hub's own chrome — the engine never sees our user, the user
+// never sees DuckDuckGo's page.
+type SearchHit = { title: string; url: string; snippet: string };
+export function SearchPanel({ query, onGo }: { query: string; onGo: (url: string) => void }) {
+  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [q, setQ] = useState(query);
+  useEffect(() => { setQ(query); void run(query); }, [query]);
+
+  async function run(text: string) {
+    setErr(null);
+    if (!text.trim()) { setHits([]); return; }
+    setBusy(true);
+    try {
+      const r = await window.hub.net({
+        method: "GET",
+        url: "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(text),
+        headers: { "User-Agent": "Mozilla/5.0 NetworkChuckHub/1.0" },
+      });
+      if (!r.ok) { setErr(`Search backend returned ${r.status}`); setHits([]); return; }
+      const html = typeof r.data === "string" ? r.data : "";
+      setHits(parseDdg(html));
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={wrap}>
+      <Header title={`Search · ${query}`} sub="Results fetched from DuckDuckGo's HTML endpoint and rendered with the Hub's own chrome — no third-party UI on screen." />
+      <div style={{ display: "flex", gap: 8 }}>
+        <input style={inp} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") onGo("about:search?q=" + encodeURIComponent(q)); }} placeholder="search again" />
+        <button className="btn" onClick={() => onGo("about:search?q=" + encodeURIComponent(q))}>Go</button>
+      </div>
+      {err && <div style={{ ...cardStyle, color: "var(--mute)" }}>Couldn&apos;t reach the engine: {err}</div>}
+      {!err && !busy && hits.length === 0 && <div style={{ ...cardStyle, color: "var(--mute)" }}>No results.</div>}
+      {busy && <div style={{ ...cardStyle, color: "var(--mute)" }}>Searching…</div>}
+      <div style={cardStyle}>
+        {hits.map((h, i) => (
+          <div key={i} style={{ ...rowStyle, alignItems: "flex-start" }}>
+            <div style={{ flex: 1, cursor: "pointer" }} onClick={() => onGo(h.url)}>
+              <div style={{ color: "var(--pink)", fontSize: 14, fontWeight: 600 }}>{h.title || h.url}</div>
+              <div style={{ fontSize: 11, color: "var(--mute)", marginTop: 2 }}>{h.url}</div>
+              {h.snippet && <div style={{ fontSize: 12, color: "var(--ink)", opacity: 0.85, marginTop: 6, lineHeight: 1.4 }}>{h.snippet}</div>}
+            </div>
+            <button className="btn" onClick={() => onGo(h.url)}>Open</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Parse DuckDuckGo's static HTML results — result links live at
+// .result__a wrapped in /l/?uddg=<encoded-url>&... links. Snippets are
+// in .result__snippet. Titles are the link text. Regex-light to avoid a
+// DOM parser dependency.
+function parseDdg(html: string): SearchHit[] {
+  const out: SearchHit[] = [];
+  const re = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>([\s\S]*?)(?:<a\s+class="result__snippet"[^>]*>([\s\S]*?)<\/a>)?/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) {
+    if (out.length >= 30) break;
+    const raw = m[1];
+    let url = raw;
+    // DDG wraps links in /l/?uddg=<encoded>; unwrap.
+    const enc = url.match(/[?&]uddg=([^&]+)/);
+    if (enc) {
+      try { url = decodeURIComponent(enc[1]); } catch { /* keep raw */ }
+    }
+    if (url.startsWith("//")) url = "https:" + url;
+    const title = stripTags(m[2]);
+    const snippet = m[4] ? stripTags(m[4]) : "";
+    if (!url || !title) continue;
+    out.push({ title, url, snippet });
+  }
+  return out;
+}
+function stripTags(s: string): string {
+  return s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ").trim();
+}
+
 // Help for the address bar to recognize internal pages.
-export const PANEL_KEYS = ["about:start", "about:bookmarks", "about:history", "about:downloads", "about:passwords", "about:groups", "about:extensions"] as const;
+export const PANEL_KEYS = ["about:start", "about:bookmarks", "about:history", "about:downloads", "about:passwords", "about:groups", "about:extensions", "about:search"] as const;
 export type PanelKey = (typeof PANEL_KEYS)[number];
 export const PANEL_NAMES: Record<PanelKey, string> = {
   "about:start": "New Tab",
@@ -271,9 +358,23 @@ export const PANEL_NAMES: Record<PanelKey, string> = {
   "about:passwords": "Passwords",
   "about:groups": "Tab Groups",
   "about:extensions": "Extensions",
+  "about:search": "Search",
 };
-export function isPanel(url: string): url is PanelKey {
-  return (PANEL_KEYS as readonly string[]).includes(url);
+// about:search carries a ?q= query string — treat any URL whose base path
+// matches a panel key as that panel.
+export function isPanel(url: string): boolean {
+  const base = url.split("?")[0];
+  return (PANEL_KEYS as readonly string[]).includes(base);
+}
+export function panelBase(url: string): PanelKey | null {
+  const base = url.split("?")[0] as PanelKey;
+  return (PANEL_KEYS as readonly string[]).includes(base) ? base : null;
+}
+export function panelQuery(url: string, key: string): string {
+  const q = url.split("?")[1];
+  if (!q) return "";
+  const params = new URLSearchParams(q);
+  return params.get(key) || "";
 }
 
 export function addBookmarkHelper(title: string, url: string) {

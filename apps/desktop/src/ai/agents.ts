@@ -15,6 +15,10 @@ export type AgentDef = {
   name: string;
   role: string;
   coordinator?: boolean;
+  // When true, this agent does NOT auto-join an @Everyone broadcast.
+  // The owner has to mention them by name. NT5 anchors + BroBot are silent
+  // by default — they have day jobs and only chime in when called.
+  silent?: boolean;
   defaultTransport: Transport;
   defaultProvider: ProviderType;
   defaultModel?: string;
@@ -95,6 +99,7 @@ export const AGENTS: AgentDef[] = [
     name: "BroBot",
     role: "Image curation · house brain",
     defaultTransport: "house",
+    silent: true,
     defaultProvider: "anthropic",
     system:
       "You are BroBot, the house image companion — a casual homie from high school " +
@@ -107,22 +112,25 @@ export const AGENTS: AgentDef[] = [
     name: "Voss",
     role: "NT5 lead anchor · house brain",
     defaultTransport: "house",
+    silent: true,
     defaultProvider: "anthropic",
     system: "You are Voss Calloway, NT5 lead anchor — authoritative, measured, declarative. Brief.",
   },
   {
     id: "zara",
-    name: "Zara",
+    name: "Zip",
     role: "NT5 culture · house brain",
     defaultTransport: "house",
+    silent: true,
     defaultProvider: "anthropic",
-    system: "You are Zara Kindle, NT5 co-anchor — warm, curious, light humor. Brief.",
+    system: "You are Zip Kindle, NT5 co-anchor — warm, curious, light humor. Brief.",
   },
   {
     id: "dex",
     name: "Dex",
     role: "NT5 gaming · house brain",
     defaultTransport: "house",
+    silent: true,
     defaultProvider: "anthropic",
     system: "You are Dex Morrow, NT5 gaming correspondent — hype, deeply knowledgeable about games (Minecraft, Origin Realms, Hypixel). Brief.",
   },
@@ -131,16 +139,18 @@ export const AGENTS: AgentDef[] = [
     name: "Lena",
     role: "NT5 field · house brain",
     defaultTransport: "house",
+    silent: true,
     defaultProvider: "anthropic",
     system: "You are Lena Faust, NT5 field reporter — sharp, fast, mid-action. Brief.",
   },
   {
     id: "orin",
-    name: "Orin",
+    name: "Orion",
     role: "NT5 tech & space · house brain",
     defaultTransport: "house",
+    silent: true,
     defaultProvider: "anthropic",
-    system: "You are Orin Vale, NT5 tech & space correspondent — nerdy, genuine enthusiasm. Brief.",
+    system: "You are Orion Vale, NT5 tech & space correspondent — nerdy, genuine enthusiasm. Brief.",
   },
 ];
 
@@ -151,11 +161,12 @@ export function effectiveTransport(a: AgentDef, c?: AgentConfig): Transport {
   return c?.transport ?? a.defaultTransport;
 }
 
-// Is this agent actually able to answer right now? House agents are always
-// available (the model auto-downloads). CLI/API agents need their config.
-export function agentAvailable(a: AgentDef, c?: AgentConfig): boolean {
+// Is this agent actually able to answer right now? House agents need the
+// local model to be ready (it auto-downloads but takes a few minutes on
+// first launch). CLI/API agents need their config.
+export function agentAvailable(a: AgentDef, c?: AgentConfig, houseReady = true): boolean {
   const t = effectiveTransport(a, c);
-  if (t === "house") return true;
+  if (t === "house") return houseReady;
   if (t === "cli") return !!(c?.cmd?.trim() || a.defaultCmd?.trim());
   if (t === "api") return c?.provider === "http" ? !!c?.endpoint : !!c?.apiKey;
   return false;

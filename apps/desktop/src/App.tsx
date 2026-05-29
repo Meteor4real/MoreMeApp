@@ -110,7 +110,7 @@ export function App() {
         <button
           onClick={() => setRailOpen(true)}
           title="Show sidebar"
-          style={{ position: "fixed", left: 10, top: 10, zIndex: 10001, width: 34, height: 34, borderRadius: 8, border: "1px solid rgba(255,87,119,0.6)", background: "#111114", color: "var(--pink)", cursor: "pointer", boxShadow: "0 0 14px var(--glow)" }}
+          style={{ position: "fixed", left: 10, bottom: 90, zIndex: 10001, width: 34, height: 34, borderRadius: 8, border: "1px solid rgba(255,87,119,0.6)", background: "#111114", color: "var(--pink)", cursor: "pointer", boxShadow: "0 0 14px var(--glow)" }}
         >
           ⊞
         </button>

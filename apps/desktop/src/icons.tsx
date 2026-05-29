@@ -40,7 +40,8 @@ export const ICON: Record<string, ReactNode> = {
   // Hub panels
   control: hubSvg(<><circle cx="12" cy="13" r="7" /><path d="M12 13 L15.5 9.5" /><path d="M5 13h1M18 13h1M12 6v1" /></>),
   terminal: hubSvg(<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 9l3 3-3 3M13 15h4" /></>),
-  ai: hubSvg(<><path d="M3 6a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H8l-4 3v-3a2 2 0 0 1-1-2z" /><circle cx="7" cy="8.5" r="0.6" fill="url(#nchg)" /><circle cx="10" cy="8.5" r="0.6" fill="url(#nchg)" /></>),
+  // Plain speech-bubble mark — matches the rest of the rail's stroke style.
+  ai: hubSvg(<path d="M4 5h13a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7l-4 3v-3H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />),
   browser: hubSvg(<><circle cx="12" cy="12" r="8" /><path d="M4 12h16M12 4c2.5 2.5 2.5 13 0 16M12 4c-2.5 2.5-2.5 13 0 16" /></>),
   library: hubSvg(<><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M10 9l5 3-5 3z" fill="url(#nchg)" /></>),
   settings: hubSvg(<><circle cx="12" cy="12" r="3" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4" /></>),
@@ -93,20 +94,22 @@ export const ICON: Record<string, ReactNode> = {
     </svg>
   ),
 
-  // DigitalBlueprint: blueprint paper with the dotted line, plumb-bob mark, and amber frame.
+  // DigitalBlueprint: matches the in-tab header — amber techy hex frame with
+  // a dotted arc and a center hub.
   blueprint: (
-    <svg width={S} height={S} viewBox="0 0 64 64" className="rail-ico">
-      <rect width="64" height="64" rx="8" fill="#f3ecd6" />
-      <g stroke="#1a3866" strokeWidth="2" fill="none" strokeLinecap="round">
-        <line x1="6" y1="14" x2="58" y2="14" strokeWidth="2.4" />
-        <line x1="32" y1="14" x2="32" y2="22" />
-        <circle cx="32" cy="26" r="2.5" />
-        <line x1="32" y1="28.5" x2="16" y2="54" />
-        <line x1="32" y1="28.5" x2="48" y2="54" />
-        <line x1="16" y1="54" x2="48" y2="54" />
-        <line x1="24" y1="42" x2="40" y2="42" strokeWidth="1.2" />
+    <svg width={S} height={S} viewBox="0 0 32 32" className="rail-ico">
+      <defs>
+        <linearGradient id="dbg-rail" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#ffb84d" />
+          <stop offset="1" stopColor="#ff7a4a" />
+        </linearGradient>
+      </defs>
+      <path d="M3 16 A13 13 0 0 1 29 16" fill="none" stroke="url(#dbg-rail)" strokeWidth="1" strokeDasharray="2 3" opacity="0.7" />
+      <g fill="none" stroke="url(#dbg-rail)" strokeWidth="1.6" strokeLinejoin="round">
+        <path d="M16 4 L27 10 L27 22 L16 28 L5 22 L5 10 Z" />
+        <path d="M16 4 L16 16 M16 16 L27 10 M16 16 L5 10 M16 16 L16 28" />
       </g>
-      <rect x="2" y="2" width="60" height="60" rx="7" fill="none" stroke="#e89c00" strokeWidth="1" />
+      <circle cx="16" cy="16" r="2" fill="url(#dbg-rail)" />
     </svg>
   ),
 
