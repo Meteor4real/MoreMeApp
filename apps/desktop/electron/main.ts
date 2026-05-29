@@ -273,7 +273,7 @@ type Pty = {
   onExit: (cb: () => void) => void;
 };
 
-const terminals = new Map<number, Pty>();
+const terminals = new Map<string, Pty>();
 
 // Split a command line into argv, honoring single/double quotes. A "{prompt}"
 // token is replaced by the prompt; if none is present the prompt is appended.
@@ -438,8 +438,10 @@ function registerIpc() {
   });
   ipcMain.handle("bg:quit", () => { quitting = true; app.quit(); });
 
-  // --- Terminal (PowerShell on Windows) via node-pty ---
-  ipcMain.handle("term:start", (e, cols: number, rows: number) => {
+  // --- Terminal (PowerShell on Windows) via node-pty. Sessions are keyed by
+  //     a caller-provided string ID so the renderer can run multiple shells
+  //     in parallel and keep them alive across React tab switches.
+  ipcMain.handle("term:start", (e, sessionId: string, cols: number, rows: number) => {
     let pty: {
       spawn: (
         file: string,
@@ -454,13 +456,11 @@ function registerIpc() {
       };
     };
     try {
-      // Lazy require so a missing module doesn't crash startup. Prebuilt pty
-      // (multiarch) ships binaries per Electron ABI — no native rebuild needed.
       pty = require("@homebridge/node-pty-prebuilt-multiarch");
     } catch (err) {
       return { ok: false, error: "pty unavailable: " + String(err) };
     }
-    const id = e.sender.id;
+    if (terminals.has(sessionId)) return { ok: true }; // already running
     const { file, args } = defaultShell();
     const proc = pty.spawn(file, args, {
       name: "xterm-color",
@@ -476,25 +476,26 @@ function registerIpc() {
       onData: (cb) => proc.onData(cb),
       onExit: (cb) => proc.onExit(() => cb()),
     };
-    wrapped.onData((d) => e.sender.send("term:data", d));
+    wrapped.onData((d) => e.sender.send("term:data", sessionId, d));
     wrapped.onExit(() => {
-      e.sender.send("term:exit");
-      terminals.delete(id);
+      e.sender.send("term:exit", sessionId);
+      terminals.delete(sessionId);
     });
-    terminals.set(id, wrapped);
+    terminals.set(sessionId, wrapped);
     return { ok: true };
   });
 
-  ipcMain.on("term:input", (e, data: string) => {
-    terminals.get(e.sender.id)?.write(data);
+  ipcMain.on("term:input", (_e, sessionId: string, data: string) => {
+    terminals.get(sessionId)?.write(data);
   });
-  ipcMain.on("term:resize", (e, cols: number, rows: number) => {
-    terminals.get(e.sender.id)?.resize(cols, rows);
+  ipcMain.on("term:resize", (_e, sessionId: string, cols: number, rows: number) => {
+    terminals.get(sessionId)?.resize(cols, rows);
   });
-  ipcMain.on("term:kill", (e) => {
-    terminals.get(e.sender.id)?.kill();
-    terminals.delete(e.sender.id);
+  ipcMain.on("term:kill", (_e, sessionId: string) => {
+    terminals.get(sessionId)?.kill();
+    terminals.delete(sessionId);
   });
+  ipcMain.handle("term:list", () => [...terminals.keys()]);
 
   // --- Local LLM (node-llama-cpp) — powers the house AIs (Tom/NT5/BroBot),
   //     no API key. Model downloads once on first use. ---
