@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { subscribeWire, type WireArticle } from "../services/nt5Wire";
+import { NT5BroadcastFull } from "./NT5BroadcastFull";
 
 // NT5 Broadcast bar — the "radio" side of the news. Uses the browser's
 // built-in Web Speech API (SpeechSynthesis) to read the current lead story
@@ -42,6 +43,7 @@ export function NT5Broadcast() {
   const [arts, setArts] = useState<WireArticle[]>([]);
   const [playing, setPlaying] = useState(false);
   const [_voicesTick, setVoicesTick] = useState(0);
+  const [full, setFull] = useState(false);
   const uttRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => subscribeWire(setArts), []);
@@ -107,6 +109,24 @@ export function NT5Broadcast() {
       {/* live waveform */}
       <Wave active={playing} accent={anchor.accent} />
 
+      {/* expand to broadcast */}
+      <button
+        onClick={() => setFull(true)}
+        title="Open the full broadcast view"
+        style={{
+          width: 38, height: 38, borderRadius: "50%",
+          border: `1.5px solid ${anchor.accent}`,
+          background: "rgba(0,0,0,0.45)",
+          color: "#fff",
+          cursor: "pointer",
+          display: "grid", placeItems: "center",
+          fontSize: 13,
+          fontFamily: "ui-monospace, monospace",
+        }}
+      >
+        ⛶
+      </button>
+
       {/* play / stop */}
       <button
         onClick={play}
@@ -125,6 +145,7 @@ export function NT5Broadcast() {
       >
         {playing ? "■" : "▶"}
       </button>
+      {full && <NT5BroadcastFull article={lead} onClose={() => setFull(false)} />}
     </div>
   );
 }

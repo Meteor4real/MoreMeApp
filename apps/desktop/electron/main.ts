@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, session, safeStorage } from "electron";
+import { app, BrowserWindow, ipcMain, shell, session, safeStorage, Tray, Menu, nativeImage } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,24 @@ const dir =
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
 
 let win: BrowserWindow | null = null;
+let tray: Tray | null = null;
+let quitting = false;
+
+// Background prefs — stored on disk so the user's choices survive restarts.
+type BgPrefs = { minimizeToTray: boolean; runOnStartup: boolean };
+function bgPrefsPath() { return path.join(app.getPath("userData"), "bg-prefs.json"); }
+function readBgPrefs(): BgPrefs {
+  try { return { minimizeToTray: false, runOnStartup: false, ...JSON.parse(fs.readFileSync(bgPrefsPath(), "utf8")) }; }
+  catch { return { minimizeToTray: false, runOnStartup: false }; }
+}
+function writeBgPrefs(p: BgPrefs) {
+  try { fs.mkdirSync(path.dirname(bgPrefsPath()), { recursive: true }); fs.writeFileSync(bgPrefsPath(), JSON.stringify(p)); } catch { /* ignore */ }
+}
+function applyBgPrefs(p: BgPrefs) {
+  if (process.platform !== "linux") {
+    try { app.setLoginItemSettings({ openAtLogin: !!p.runOnStartup, openAsHidden: true }); } catch { /* ignore */ }
+  }
+}
 
 function createWindow() {
   win = new BrowserWindow({
@@ -47,19 +65,54 @@ function createWindow() {
     win.loadFile(path.join(dir, "../dist/index.html"));
   }
 
-  win.on("closed", () => {
-    win = null;
+  // When the user closes the window AND they've opted into "minimize to tray",
+  // hide instead of destroy — the renderer keeps running so the NT5 wire
+  // scheduler + Origin Realms poll + AI session stay alive in the background.
+  win.on("close", (e) => {
+    if (quitting) return;
+    if (readBgPrefs().minimizeToTray) {
+      e.preventDefault();
+      win?.hide();
+    }
   });
+  win.on("closed", () => { win = null; });
+}
+
+function ensureTray() {
+  if (tray) return tray;
+  const iconPath = path.join(dir, "../build/icon.png");
+  let img = nativeImage.createFromPath(iconPath);
+  if (img.isEmpty()) img = nativeImage.createEmpty();
+  tray = new Tray(img);
+  tray.setToolTip("NetworkChuck Hub — running in the background");
+  refreshTrayMenu();
+  tray.on("click", () => { if (win) { win.show(); win.focus(); } else createWindow(); });
+  return tray;
+}
+function refreshTrayMenu() {
+  if (!tray) return;
+  const p = readBgPrefs();
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Show NetworkChuck Hub", click: () => { if (win) { win.show(); win.focus(); } else createWindow(); } },
+    { type: "separator" },
+    { label: "Run on system startup", type: "checkbox", checked: p.runOnStartup, click: (m) => { const next = { ...p, runOnStartup: !!m.checked }; writeBgPrefs(next); applyBgPrefs(next); refreshTrayMenu(); } },
+    { label: "Close button hides to tray (background NT5 wire)", type: "checkbox", checked: p.minimizeToTray, click: (m) => { const next = { ...p, minimizeToTray: !!m.checked }; writeBgPrefs(next); refreshTrayMenu(); } },
+    { type: "separator" },
+    { label: "Quit", click: () => { quitting = true; app.quit(); } },
+  ]));
 }
 
 app.whenReady().then(() => {
   configureSecurity();
   registerIpc();
+  ensureTray();
+  applyBgPrefs(readBgPrefs());
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+app.on("before-quit", () => { quitting = true; });
 
 // Harden every webview the renderer creates: no node, context-isolated, no
 // extra preload, external links to the OS browser.
@@ -199,7 +252,13 @@ function attachDownloads(ses: Electron.Session) {
 }
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  // If the user explicitly chose Quit (from tray or menu), let it through.
+  // Otherwise — when we run in tray mode — staying alive is the point.
+  if (quitting) { app.quit(); return; }
+  if (process.platform === "darwin") return;
+  // Non-mac: only quit if there's no tray running OR the user hasn't opted into
+  // background mode. Tray + minimizeToTray means stay alive.
+  if (!tray || !readBgPrefs().minimizeToTray) app.quit();
 });
 
 // ---------------------------------------------------------------------------
@@ -367,6 +426,17 @@ function registerIpc() {
   ipcMain.handle("downloads:remove", (_e, id: string) => { writeDownloads(readDownloads().filter((d) => d.id !== id)); broadcastDownloads(); return { ok: true }; });
   ipcMain.handle("downloads:open", (_e, p: string) => shell.openPath(p));
   ipcMain.handle("downloads:reveal", (_e, p: string) => { shell.showItemInFolder(p); return { ok: true }; });
+
+  // --- Background / Tray prefs — drives true cross-reboot "24/7" mode ---
+  ipcMain.handle("bg:get", () => readBgPrefs());
+  ipcMain.handle("bg:set", (_e, p: Partial<{ minimizeToTray: boolean; runOnStartup: boolean }>) => {
+    const next = { ...readBgPrefs(), ...p };
+    writeBgPrefs(next);
+    applyBgPrefs(next);
+    refreshTrayMenu();
+    return next;
+  });
+  ipcMain.handle("bg:quit", () => { quitting = true; app.quit(); });
 
   // --- Terminal (PowerShell on Windows) via node-pty ---
   ipcMain.handle("term:start", (e, cols: number, rows: number) => {

@@ -135,7 +135,16 @@ export function GroupChat() {
         setBusy(coordinator.name);
         await callAgent(coordinator, task, snapshot());
       }
-      for (const w of others) {
+      // Split workers by transport. CLI and API agents are independent
+      // processes/endpoints, so we fan them out in parallel. House-model
+      // agents share one local model and have to run one at a time.
+      const houseWorkers = others.filter((a) => effectiveTransport(a, cfg[a.id]) === "house");
+      const remoteWorkers = others.filter((a) => effectiveTransport(a, cfg[a.id]) !== "house");
+      if (remoteWorkers.length) {
+        setBusy(remoteWorkers.map((a) => a.name).join(", "));
+        await Promise.all(remoteWorkers.map((w) => callAgent(w, task, snapshot())));
+      }
+      for (const w of houseWorkers) {
         setBusy(w.name);
         await callAgent(w, task, snapshot());
       }

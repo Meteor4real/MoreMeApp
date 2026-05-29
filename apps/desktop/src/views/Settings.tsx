@@ -15,12 +15,19 @@ export function Settings({ onSignOut }: { onSignOut: () => void }) {
   const [fb, setFb] = useState("");
   const [llm, setLlm] = useState<{ ready: boolean; downloading: boolean; progress: number }>({ ready: false, downloading: false, progress: 0 });
   const [llmBusy, setLlmBusy] = useState(false);
+  const [bg, setBg] = useState<{ minimizeToTray: boolean; runOnStartup: boolean }>({ minimizeToTray: false, runOnStartup: false });
   const session = getSession();
 
   useEffect(() => {
     if (cloudConfigured()) void getData<FeedbackItem[]>(FKEY, []).then(setFeedback);
+    void window.hub.bg.get().then(setBg);
     return subscribePrefs(setPrefs);
   }, []);
+
+  async function setBgPref(k: keyof typeof bg, v: boolean) {
+    const next = await window.hub.bg.set({ [k]: v });
+    setBg(next);
+  }
   useEffect(() => {
     let cancelled = false;
     async function tick() {
@@ -126,6 +133,21 @@ export function Settings({ onSignOut }: { onSignOut: () => void }) {
             <label style={{ display: "block", fontSize: 11, color: "var(--mute)", letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 }}>News wire interval (min)</label>
             <input type="number" min={2} max={240} value={prefs.wireMinutes} onChange={(e) => set("wireMinutes", Math.max(2, Math.min(240, Number(e.target.value) || 20)))}
               style={inp} />
+          </div>
+        </section>
+
+        {/* Background mode — true 24/7 across reboots */}
+        <section className="panel" style={{ padding: 16 }}>
+          <div className="sec-title">Background mode · always-on</div>
+          <p style={{ fontSize: 12, color: "var(--mute)", marginTop: 6 }}>
+            Keep the Hub running in the tray so the NT5 wire, Origin Realms pulse,
+            and floating info stay alive even when the window is closed. Optionally
+            start with the system so the wire is always on.
+          </p>
+          <Toggle label="Close button hides to the tray (don't quit)" checked={bg.minimizeToTray} onChange={(v) => void setBgPref("minimizeToTray", v)} />
+          <Toggle label="Run on system startup (open hidden)" checked={bg.runOnStartup} onChange={(v) => void setBgPref("runOnStartup", v)} />
+          <div style={{ fontSize: 11, color: "var(--mute)", marginTop: 6 }}>
+            Quit from the tray icon's menu when you want the app to actually stop.
           </div>
         </section>
 

@@ -66,6 +66,12 @@ const api = {
   agentRun: (cmd: string, prompt: string): Promise<{ ok: boolean; text?: string; error?: string }> =>
     ipcRenderer.invoke("agent:run", cmd, prompt),
 
+  bg: {
+    get: (): Promise<{ minimizeToTray: boolean; runOnStartup: boolean }> => ipcRenderer.invoke("bg:get"),
+    set: (p: Partial<{ minimizeToTray: boolean; runOnStartup: boolean }>): Promise<{ minimizeToTray: boolean; runOnStartup: boolean }> => ipcRenderer.invoke("bg:set", p),
+    quit: (): Promise<void> => ipcRenderer.invoke("bg:quit"),
+  },
+
   downloads: {
     list: (): Promise<Array<{ id: string; filename: string; path: string; url: string; bytes: number; state: string; ts: number }>> =>
       ipcRenderer.invoke("downloads:list"),
