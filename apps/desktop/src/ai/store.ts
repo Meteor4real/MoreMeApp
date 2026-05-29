@@ -1,16 +1,16 @@
 import type { ProviderType } from "./agents";
 
-// Per-agent provider config. Stored locally for now; a later slice moves the
-// keys into the encrypted Control Panel token vault (Supabase-backed).
-// "cli" = the agent is a command-line tool launched in the Terminal (Claude
-// Code, Gemini CLI, Codex, OpenCode, or an ssh to Hermes on Hostinger); the
-// app runs it non-interactively and shows the output in chat. "api" = direct
-// HTTP to a provider with a key.
-export type Transport = "cli" | "api";
+// Per-agent transport. "house" = the bundled local model (no key, downloaded
+// on first launch) — used by BroBot, the NT5 anchors, and any other in-app
+// persona. "cli" = a command-line tool you launch in the Terminal (Claude
+// Code, Gemini CLI, Codex, OpenCode, an ssh to Hermes on Hostinger…). "api" =
+// direct HTTP to a provider with a key. Agents default to whichever transport
+// makes sense for them; users can flip any of them to a different one.
+export type Transport = "house" | "cli" | "api";
 
 export type AgentConfig = {
   enabled: boolean;
-  transport?: Transport; // default "cli" for external agents
+  transport?: Transport;
   cmd?: string;          // CLI command; {prompt} is substituted, else appended
   provider: ProviderType;
   endpoint?: string;
@@ -39,8 +39,15 @@ export function saveConfig(cfg: ConfigMap): void {
 }
 
 export function isWired(c?: AgentConfig): boolean {
-  if (!c || !c.enabled) return false;
+  // No config object yet: the agent's default transport is consulted by the
+  // caller (see effectiveTransport in agents.ts). We treat "no entry" as
+  // wired-if-house-default, handled by the caller.
+  if (!c) return false;
+  if (c.enabled === false) return false;
+  if (c.transport === "house") return true;
   if (c.transport === "cli") return !!(c.cmd && c.cmd.trim());
+  if (c.transport === "api") return c.provider === "http" ? !!c.endpoint : !!c.apiKey;
+  // legacy entries with no transport set: fall back to api-style checks
   if (c.provider === "http") return !!c.endpoint;
   return !!c.apiKey;
 }

@@ -1,42 +1,36 @@
 import { useEffect, useRef, useState } from "react";
 import { houseChat, llmStatus } from "../houseLLM";
 import { getData, setData, whoAmI, cloudConfigured } from "../embedded/haloscloud";
+import { TOUR_STEPS, TourOverlay } from "./TourOverlay";
 
-// Tutorial Tom — app-wide guide. Brief tour of everything, Q&A about the app
-// (via Claude, with full app knowledge baked in), and a shared feedback feed
-// everyone can see.
+// Tutorial Tom — app-wide guide. A real guided tour (highlight + Prev/Next),
+// Q&A about the app powered by the bundled local model, and a shared feedback
+// feed everyone can see.
 
 const APP_GUIDE =
   "You are Tutorial Tom, the friendly in-app guide for NetworkChuck Hub — a dark, " +
   "glowing-red desktop command center. Answer questions about the app concisely and " +
   "help users find things. What the app contains: " +
-  "LEFT RAIL — Control Panel (connect your own services: GitHub, Vercel, Supabase, " +
-  "Cloudflare, Tailscale, Twingate, n8n, YouTube, Home Assistant, Proxmox, Portainer, " +
-  "Pi-hole, Frigate, ZimaCube, Hermes, Hostinger; tokens are stored encrypted on-device; " +
-  "GitHub/Vercel/Cloudflare/Tailscale/n8n show live data). Terminal (real Windows " +
-  "PowerShell). AI Group Chat (Hermes the co-boss + Claude/Gemini/Codex; @mention an " +
-  "agent like @Claude or @Everyone; NT5 anchors and BroBot are on-call bots you @mention " +
-  "by name; configure keys under Configure). Browser (tabbed, sandboxed, tracker-blocking, " +
-  "HTTPS-upgrade) with ~20 silly house Extensions. Library (launch your Steam games, " +
-  "Modrinth, Blockbench). " +
-  "EMBEDDED APPS — MoreMe (daily time-blocked checklist driven by a year Calendar of " +
-  "weekends/vacation/exam/travel/events; XP/levels/tiers/streak). SignalFinder (opportunity " +
-  "CRM that scores targets and drafts outreach). NT5 (always-on sci-fi news wire driven by " +
-  "your topics). HALOS (Azulbright telemetry, alien Andromadean codex, Stocks, Roster, and " +
-  "realtime Chat/Projects/Workspace/Meet). DigitalBlueprint (3D editor with Blender-grade " +
-  "materials + an AI scene generator). BroBot (image gallery + search). " +
-  "There's a bottom ticker + notifications, an OST player, accounts (sign in), and you can " +
-  "leave feedback in Tom's Feedback tab. Keep answers short and practical.";
-
-const TOUR: { area: string; text: string }[] = [
-  { area: "Control Panel", text: "Front-and-center. Connect your own services — tokens are encrypted on your device. GitHub/Vercel/Cloudflare/Tailscale/n8n show live data with 'Load live'." },
-  { area: "Terminal", text: "A real Windows PowerShell, right in the app." },
-  { area: "AI Group Chat", text: "Talk to the crew. @mention who answers — @Claude, @Hermes, or @Everyone. NT5 anchors + BroBot are @mentioned by name. Add keys under Configure." },
-  { area: "Browser + Extensions", text: "Tabs, any site, DuckDuckGo-grade privacy. Toggle ~20 deliberately-silly house extensions." },
-  { area: "Library", text: "Launch your Steam games (auto-detected), Modrinth, and Blockbench." },
-  { area: "Your apps (rail)", text: "MoreMe, SignalFinder, NT5, HALOS, DigitalBlueprint, BroBot — embedded right here, not just links." },
-  { area: "Bottom bar", text: "An OST player + a live ticker of news/gallery/reminders. Toasts pop in for fresh items." },
-];
+  "LEFT RAIL — Browser (the default canvas; tabs that survive restarts, address bar " +
+  "with bookmarks, extensions dropdown, more-menu for History/Downloads/Passwords/" +
+  "TabGroups; configurable search engine + home page). Control Panel (connect your " +
+  "own services: GitHub, Vercel, Supabase, Cloudflare, Tailscale, Twingate, n8n, " +
+  "YouTube, Home Assistant, Proxmox, Portainer, Pi-hole, Frigate, ZimaCube, Hermes, " +
+  "Hostinger; tokens encrypted on-device via OS keychain). Terminal (real Windows " +
+  "PowerShell via node-pty). AI Group Chat (BroBot + NT5 anchors run on the bundled " +
+  "local model and are always on call; outside crew — Claude, Gemini, Codex, " +
+  "OpenCode, Hermes — connect via their CLI tools in Configure). Library (Steam " +
+  "auto-detect + Modrinth + Blockbench). " +
+  "EMBEDDED APPS (all real, bundled offline): MoreMe (DP-mint daily checklist + " +
+  "calendar), SignalFinder (opportunity-scoring CRM), NT5 (S.P.A.C.E. News carbon " +
+  "copy with an in-app wire scheduler that posts fresh anchor articles into the " +
+  "bundled site every few minutes), HALOS (telemetry + alien codex + stocks + " +
+  "roster, Polar Cosmos Crew renamed), DigitalBlueprint (three.js editor + PBR " +
+  "materials + house-model scene generator), BroBot (the real BroBot app, " +
+  "windowed in, running on the same local brain BroBot uses in the group chat). " +
+  "Plus floating info widgets (NT5 breaking, Origin Realms server pulse), a " +
+  "bottom ticker + notifications, OST player, accounts via Supabase, and feedback " +
+  "in Tom's Feedback tab. Keep answers short and practical.";
 
 type FeedbackItem = { id: string; author: string; text: string; ts: number };
 const FKEY = "hub:feedback";
@@ -49,6 +43,7 @@ export function TutorialTom() {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
   const [fbText, setFbText] = useState("");
+  const [tourStep, setTourStep] = useState<number | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -83,9 +78,21 @@ export function TutorialTom() {
     await setData(FKEY, next);
   }
 
+  function startTour() { setOpen(false); setTourStep(0); }
+  function endTour() { setTourStep(null); }
+  function nextStep() {
+    setTourStep((n) => {
+      if (n == null) return null;
+      if (n >= TOUR_STEPS.length - 1) return null;
+      return n + 1;
+    });
+  }
+  function prevStep() { setTourStep((n) => (n == null ? null : Math.max(0, n - 1))); }
+
   return (
     <>
       <button
+        data-tour="tom-button"
         onClick={() => setOpen((o) => !o)}
         title="Tutorial Tom"
         style={{ position: "fixed", left: 74, bottom: 38, zIndex: 10000, width: 44, height: 44, borderRadius: "50%", border: "1px solid rgba(255,87,119,0.6)", background: "#111114", color: "var(--pink)", cursor: "pointer", boxShadow: "0 0 16px rgba(255,51,85,0.4)", fontFamily: "ui-monospace, monospace", fontWeight: 900 }}
@@ -106,14 +113,18 @@ export function TutorialTom() {
           </div>
 
           {tab === "tour" && (
-            <div style={{ flex: 1, overflow: "auto", padding: 12 }}>
-              <p style={{ fontSize: 12, color: "var(--mute)", marginTop: 0 }}>Hi — I&apos;m Tom. The quick tour:</p>
-              {TOUR.map((s) => (
-                <div key={s.area} style={{ marginBottom: 10 }}>
-                  <div className="mono glow-text" style={{ fontSize: 12 }}>{s.area}</div>
-                  <div style={{ fontSize: 12, color: "var(--mute)", lineHeight: 1.45 }}>{s.text}</div>
-                </div>
-              ))}
+            <div style={{ flex: 1, overflow: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+              <p style={{ fontSize: 13, color: "var(--ink)", marginTop: 0, lineHeight: 1.5 }}>
+                Hi — I&apos;m Tom. I&apos;ll walk you around the app: one step at a time,
+                highlighting whatever I&apos;m talking about, with <em>Next</em> / <em>Back</em>
+                to control the pace.
+              </p>
+              <button className="btn" style={{ color: "var(--pink)", borderColor: "rgba(255,87,119,0.6)" }} onClick={startTour}>
+                Start the guided tour →
+              </button>
+              <div style={{ fontSize: 11, color: "var(--mute)", marginTop: 6 }}>
+                {TOUR_STEPS.length} steps. Press → / Enter for next, ← for back, Esc to stop.
+              </div>
             </div>
           )}
 
@@ -155,6 +166,10 @@ export function TutorialTom() {
             </>
           )}
         </div>
+      )}
+
+      {tourStep !== null && (
+        <TourOverlay stepIndex={tourStep} onPrev={prevStep} onNext={nextStep} onSkip={endTour} />
       )}
     </>
   );

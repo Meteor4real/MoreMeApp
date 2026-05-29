@@ -67,13 +67,30 @@ export function ControlPanel() {
         const repos = Array.isArray(r.data) ? (r.data as { full_name: string; stargazers_count: number }[]) : [];
         setLive((p) => ({ ...p, github: [`${repos.length} repositories`, ...repos.slice(0, 8).map((x) => `★ ${x.stargazers_count}  ${x.full_name}`)] }));
       } else if (id === "vercel") {
-        const r = await window.hub.net({
-          method: "GET",
-          url: "https://api.vercel.com/v6/deployments?limit=8",
-          headers: { Authorization: `Bearer ${token}` },
+        // Vercel scopes deployments by team. A bare /v6/deployments call only
+        // sees the token's PERSONAL scope, which is why many users see "no
+        // recent deployments". Fix: list teams first, then fetch deployments
+        // for the personal scope AND each team, merge, sort by createdAt desc.
+        const auth = { Authorization: `Bearer ${token}` };
+        type Dep = { name: string; url: string; state?: string; readyState?: string; created?: number; createdAt?: number; teamLabel?: string };
+        const all: Dep[] = [];
+        async function pullDeps(label: string, qs: string) {
+          const r = await window.hub.net({ method: "GET", url: `https://api.vercel.com/v6/deployments?limit=8${qs}`, headers: auth });
+          const deps = ((r.data as { deployments?: Dep[] })?.deployments) || [];
+          for (const d of deps) all.push({ ...d, teamLabel: label });
+        }
+        await pullDeps("personal", "");
+        const teamsRes = await window.hub.net({ method: "GET", url: "https://api.vercel.com/v2/teams?limit=20", headers: auth });
+        const teams = ((teamsRes.data as { teams?: { id: string; name: string; slug: string }[] })?.teams) || [];
+        for (const t of teams) await pullDeps(t.slug || t.name, `&teamId=${encodeURIComponent(t.id)}`);
+        all.sort((a, b) => (b.created ?? b.createdAt ?? 0) - (a.created ?? a.createdAt ?? 0));
+        const lines = all.slice(0, 12).map((d) => {
+          const state = (d.state || d.readyState || "?").toLowerCase();
+          return `${state.padEnd(10)} · ${d.teamLabel} · ${d.name}`;
         });
-        const deps = ((r.data as { deployments?: { name: string; url: string; state?: string; readyState?: string }[] })?.deployments) || [];
-        setLive((p) => ({ ...p, vercel: deps.length ? deps.map((d) => `${(d.state || d.readyState || "?").toLowerCase()} · ${d.name} · ${d.url}`) : ["no recent deployments"] }));
+        if (!lines.length && teams.length === 0) lines.push("no deployments and no teams reachable — token may be too narrow");
+        else if (!lines.length) lines.push(`scopes seen: personal, ${teams.map((t) => t.slug || t.name).join(", ")} — none have recent deployments`);
+        setLive((p) => ({ ...p, vercel: lines }));
       } else if (id === "cloudflare") {
         const r = await window.hub.net({
           method: "GET",
@@ -140,7 +157,7 @@ export function ControlPanel() {
   return (
     <div className="stage">
       <div className="mono" style={{ padding: "10px 14px", borderBottom: "1px solid var(--line)", fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: "var(--mute)", display: "flex", justifyContent: "space-between" }}>
-        <span>The Control Panel <span className="glow-text">· personal-ops</span></span>
+        <span>The Control Panel <span className="glow-text">· everything in one place</span></span>
         <span style={{ color: "var(--pink)" }}>{connected} / {SERVICES.length} connected</span>
       </div>
 

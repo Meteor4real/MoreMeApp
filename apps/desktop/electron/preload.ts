@@ -66,6 +66,26 @@ const api = {
   agentRun: (cmd: string, prompt: string): Promise<{ ok: boolean; text?: string; error?: string }> =>
     ipcRenderer.invoke("agent:run", cmd, prompt),
 
+  bg: {
+    get: (): Promise<{ minimizeToTray: boolean; runOnStartup: boolean }> => ipcRenderer.invoke("bg:get"),
+    set: (p: Partial<{ minimizeToTray: boolean; runOnStartup: boolean }>): Promise<{ minimizeToTray: boolean; runOnStartup: boolean }> => ipcRenderer.invoke("bg:set", p),
+    quit: (): Promise<void> => ipcRenderer.invoke("bg:quit"),
+  },
+
+  downloads: {
+    list: (): Promise<Array<{ id: string; filename: string; path: string; url: string; bytes: number; state: string; ts: number }>> =>
+      ipcRenderer.invoke("downloads:list"),
+    clear: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("downloads:clear"),
+    remove: (id: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("downloads:remove", id),
+    open: (p: string): Promise<string> => ipcRenderer.invoke("downloads:open", p),
+    reveal: (p: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("downloads:reveal", p),
+    onUpdated: (cb: (arr: Array<{ id: string; filename: string; path: string; url: string; bytes: number; state: string; ts: number }>) => void) => {
+      const fn = (_e: unknown, arr: Array<{ id: string; filename: string; path: string; url: string; bytes: number; state: string; ts: number }>) => cb(arr);
+      ipcRenderer.on("downloads:updated", fn);
+      return () => ipcRenderer.removeListener("downloads:updated", fn);
+    },
+  },
+
   terminal: {
     start: (cols: number, rows: number): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("term:start", cols, rows),

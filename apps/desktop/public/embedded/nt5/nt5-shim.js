@@ -46,6 +46,21 @@
     try { localStorage.setItem(KEY, JSON.stringify(seed)); } catch (e) {}
     return seed;
   }
+  // The Hub's in-app wire posts fresh items in here on each scheduler tick.
+  // Merge them (newest first, dedup by title) so the bundled NT5 stays live.
+  window.addEventListener("message", function (ev) {
+    var m = ev.data || {};
+    if (m && m.type === "nt5-add-articles" && Array.isArray(m.articles)) {
+      var have = articles();
+      var seen = {};
+      have.forEach(function (a) { seen[(a.title || "").toLowerCase()] = true; });
+      var add = m.articles.filter(function (a) { return a && a.title && !seen[a.title.toLowerCase()]; });
+      if (add.length) {
+        var merged = add.concat(have).slice(0, 80);
+        try { localStorage.setItem(KEY, JSON.stringify(merged)); } catch (e) {}
+      }
+    }
+  });
   function ok(obj) {
     return Promise.resolve(new Response(JSON.stringify(obj), { status: 200, headers: { "Content-Type": "application/json" } }));
   }

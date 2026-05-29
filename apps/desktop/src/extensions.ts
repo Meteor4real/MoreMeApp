@@ -192,21 +192,22 @@ export const EXTENSIONS: Extension[] = [
 ];
 
 const LS_KEY = "nchub.extensions.enabled.v1";
+const subs = new Set<(ids: Set<string>) => void>();
 
 export function loadEnabled(): Set<string> {
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) return new Set(JSON.parse(raw) as string[]);
-  } catch {
-    /* ignore */
-  }
+  } catch { /* ignore */ }
   return new Set();
 }
 
 export function saveEnabled(ids: Set<string>): void {
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify([...ids]));
-  } catch {
-    /* ignore */
-  }
+  try { localStorage.setItem(LS_KEY, JSON.stringify([...ids])); } catch { /* ignore */ }
+  subs.forEach((fn) => fn(new Set(ids)));
+}
+
+export function subscribeEnabled(fn: (ids: Set<string>) => void): () => void {
+  subs.add(fn);
+  return () => subs.delete(fn);
 }

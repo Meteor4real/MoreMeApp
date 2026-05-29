@@ -15,6 +15,8 @@ declare global {
     loadURL: (url: string) => void;
     getURL: () => string;
     executeJavaScript: (code: string) => Promise<unknown>;
+    getZoomLevel: () => number;
+    setZoomLevel: (level: number) => void;
   };
 }
 
