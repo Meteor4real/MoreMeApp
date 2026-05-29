@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AGENTS, type AgentDef, agentAvailable, effectiveTransport } from "../ai/agents";
 import { loadConfig, saveConfig, type ConfigMap, type AgentConfig } from "../ai/store";
+import { ProjectsView } from "./groupchat/Projects";
 
 type Msg = {
   id: string;
@@ -45,12 +46,14 @@ function saveMsgs(arr: Msg[]) {
   try { localStorage.setItem(CHAT_KEY, JSON.stringify(arr.slice(-400))); } catch { /* ignore */ }
 }
 
+type View = "chat" | "config" | "projects";
+
 export function GroupChat() {
   const [cfg, setCfg] = useState<ConfigMap>(() => loadConfig());
   const [msgs, setMsgs] = useState<Msg[]>(loadMsgs);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
-  const [showConfig, setShowConfig] = useState(false);
+  const [view, setView] = useState<View>("chat");
   const [houseReady, setHouseReady] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
 
@@ -229,8 +232,11 @@ export function GroupChat() {
       >
         <span>AI Group Chat</span>
         <div style={{ display: "flex", gap: 6 }}>
-          <button className="btn" onClick={clearChat} title="Clear chat history">Clear</button>
-          <button className="btn" onClick={() => setShowConfig((s) => !s)}>{showConfig ? "Done" : "Configure"}</button>
+          {(["chat", "projects"] as const).map((v) => (
+            <button key={v} className="btn" style={{ padding: "2px 12px", color: view === v ? "var(--pink)" : undefined, borderColor: view === v ? "rgba(255,87,119,0.6)" : undefined }} onClick={() => setView(v)}>{v}</button>
+          ))}
+          {view === "chat" && <button className="btn" onClick={clearChat} title="Clear chat history">Clear</button>}
+          <button className="btn" onClick={() => setView(view === "config" ? "chat" : "config")}>{view === "config" ? "Done" : "Configure"}</button>
         </div>
       </div>
 
@@ -266,13 +272,15 @@ export function GroupChat() {
                   </div>
                 </div>
               ))}
-              <button className="btn" style={{ marginTop: 10, width: "100%", justifyContent: "center" }} onClick={() => setShowConfig(true)}>Connect more</button>
+              <button className="btn" style={{ marginTop: 10, width: "100%", justifyContent: "center" }} onClick={() => setView("config")}>Connect more</button>
             </>
           )}
         </div>
 
-        {showConfig ? (
+        {view === "config" ? (
           <ConfigPanel cfg={cfg} onChange={(next) => { setCfg(next); saveConfig(next); }} />
+        ) : view === "projects" ? (
+          <ProjectsView availableIds={available.map((a) => a.id)} onBackToChat={() => setView("chat")} />
         ) : (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
             <div ref={scroller} style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 16 }}>

@@ -20,6 +20,7 @@ import { ICON } from "./icons";
 import { applyAccent, loadAccent } from "./theme-accent";
 import { startWireScheduler } from "./services/nt5Wire";
 import { startOriginPolling } from "./services/originRealms";
+import { registerNavSetter } from "./navBridge";
 import { loadPrefs, subscribePrefs } from "./uiPrefs";
 import logoUrl from "./assets/logo.png";
 
@@ -53,7 +54,10 @@ export function App() {
     startOriginPolling();
     const offP = subscribePrefs(setPrefs);
     const offE = subscribeEnabled((s) => setEnabledExt(new Set(s)));
-    return () => { offP(); offE(); };
+    // Register Hub nav with the tour bridge so Tutorial Tom can drive the
+    // canvas while it's walking the user around.
+    const offN = registerNavSetter((n) => setNav(n));
+    return () => { offP(); offE(); offN(); };
   }, []);
 
   const injectables = useMemo(
