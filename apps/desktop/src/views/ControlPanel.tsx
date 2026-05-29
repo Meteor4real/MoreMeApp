@@ -39,6 +39,8 @@ const SERVICES: Service[] = [
   { id: "zimacube", name: "ZimaCube", group: "Homelab", tokenLabel: "SSH host/token", needsBaseUrl: true, hint: "disks & SMART health" },
   { id: "hermes", name: "Hermes", group: "AI & Hosting", tokenLabel: "Bearer (optional)", needsBaseUrl: true, hint: "co-boss AI on Hostinger — also in the group chat" },
   { id: "hostinger", name: "Hostinger", group: "AI & Hosting", tokenLabel: "API token", hint: "VPS / hosting inventory" },
+  { id: "elevenlabs", name: "ElevenLabs", group: "Media", tokenLabel: "API key", console: "https://elevenlabs.io/app/settings/api-keys", hint: "real anchor voices for NT5 broadcasts" },
+  { id: "pexels", name: "Pexels", group: "Media", tokenLabel: "API key", console: "https://www.pexels.com/api/new/", hint: "stock video B-roll for NT5 broadcasts" },
   { id: "modrinth", name: "Modrinth", group: "Local Apps", launcher: "modrinth", noAuth: true, hint: "launch the Modrinth desktop client" },
   { id: "blockbench", name: "Blockbench", group: "Local Apps", launcher: "blockbench", noAuth: true, hint: "launch Blockbench for low-poly modeling" },
 ];

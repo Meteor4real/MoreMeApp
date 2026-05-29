@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { WireArticle } from "../services/nt5Wire";
 import { subscribeWire } from "../services/nt5Wire";
+import { loadPrefs } from "../uiPrefs";
 
 // NT5 Broadcast — fullscreen "studio" view. Animated set + lower-third + a
 // big caption rail that highlights along with the TTS read-out using the
@@ -20,20 +21,76 @@ export function NT5BroadcastFull({ article, onClose }: { article: WireArticle; o
   const [arts, setArts] = useState<WireArticle[]>([]);
   const [playing, setPlaying] = useState(false);
   const [caret, setCaret] = useState(0);
+  const [bRollUrl, setBRollUrl] = useState<string | null>(null);
   const uttRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const prefs = loadPrefs();
 
   useEffect(() => subscribeWire(setArts), []);
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
     window.addEventListener("keydown", onKey);
-    return () => { window.removeEventListener("keydown", onKey); window.speechSynthesis.cancel(); };
+    return () => { window.removeEventListener("keydown", onKey); window.speechSynthesis.cancel(); if (audioRef.current) { try { audioRef.current.pause(); } catch { /* ignore */ } } };
   }, [onClose]);
+
+  // Pull a Pexels stock clip relevant to the article and use it as a B-roll
+  // background. Category + topic of the article form the query. Falls back
+  // to the starfield when Pexels isn't connected or returns nothing.
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      if (!prefs.brollEnabled || prefs.blueprintBackdrop) return;
+      const q = [article.category, ...article.title.split(/\s+/).slice(0, 4)].join(" ");
+      const r = await window.hub.media.pexelsVideo({ query: q, perPage: 4 });
+      if (cancelled) return;
+      if (r.ok && r.videos.length) setBRollUrl(r.videos[0].url);
+    }
+    void load();
+    return () => { cancelled = true; };
+  }, [article.id]);
 
   const anchor = ANCHOR[(article.anchor_id as AnchorId)] || ANCHOR.voss;
   const fullText = `${article.title}. ${article.body}`;
 
-  function play() {
-    if (playing) { window.speechSynthesis.cancel(); setPlaying(false); setCaret(0); return; }
+  function stop() {
+    window.speechSynthesis.cancel();
+    if (audioRef.current) { try { audioRef.current.pause(); audioRef.current.src = ""; } catch { /* ignore */ } audioRef.current = null; }
+    setPlaying(false); setCaret(0);
+  }
+  function b64toBlob(b64: string, mime: string): Blob {
+    const bin = atob(b64);
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    return new Blob([buf], { type: mime });
+  }
+  async function play() {
+    if (playing) { stop(); return; }
+    const voiceId = prefs.anchorVoices[article.anchor_id as AnchorId];
+    if (voiceId) {
+      setPlaying(true);
+      const res = await window.hub.media.tts({ voiceId, text: fullText });
+      if (res.ok) {
+        const blob = b64toBlob(res.base64, res.mime);
+        const url = URL.createObjectURL(blob);
+        const a = new Audio(url);
+        audioRef.current = a;
+        // Approximate caret tracking: divide the text evenly across the
+        // audio's reported duration once it's known.
+        a.onloadedmetadata = () => {
+          const dur = a.duration;
+          a.ontimeupdate = () => {
+            if (!dur) return;
+            const ratio = Math.min(1, a.currentTime / dur);
+            setCaret(Math.floor(fullText.length * ratio));
+          };
+        };
+        a.onended = () => { setPlaying(false); setCaret(fullText.length); URL.revokeObjectURL(url); };
+        a.onerror = () => { setPlaying(false); URL.revokeObjectURL(url); };
+        try { await a.play(); } catch { setPlaying(false); }
+        return;
+      }
+      // fall through
+    }
     const u = new SpeechSynthesisUtterance(fullText);
     u.rate = 1.0;
     u.pitch = anchor.color === ANCHOR.zara.color || anchor.color === ANCHOR.lena.color ? 1.05 : 0.95;
@@ -56,6 +113,13 @@ export function NT5BroadcastFull({ article, onClose }: { article: WireArticle; o
       display: "grid", gridTemplateRows: "1fr 200px 56px",
       overflow: "hidden",
     }}>
+      {bRollUrl && prefs.brollEnabled && !prefs.blueprintBackdrop && (
+        <video
+          src={bRollUrl}
+          autoPlay loop muted playsInline
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.35, zIndex: 0, pointerEvents: "none" }}
+        />
+      )}
       <Starfield />
 
       {/* Stage: anchor avatar + headline + scrolling captions */}

@@ -2,10 +2,36 @@
 // The real site fetches /api/articles, /api/ticker, /api/stats, /api/broadcast
 // from a server. Inside the Hub there is no server, so we serve the wire from
 // an on-device store (localStorage), seeded with a starter set on first run.
+//
+// The shim also rewires anchor renames (Zara->Zip, Orin->Orion) and forces
+// full-page reloads on internal navigation so each subpage loads with the
+// correct relative asset paths (Next's client-side router used the wrong
+// assetPrefix under file://).
 (function () {
   const realFetch = window.fetch.bind(window);
   const KEY = "nt5wire.articles";
-  const ANCH = { voss: "Voss Calloway", zara: "Zara Kindle", dex: "Dex Morrow", lena: "Lena Faust", orin: "Orin Vale" };
+  const ANCH = { voss: "Voss Calloway", zara: "Zip Kindle", dex: "Dex Morrow", lena: "Lena Faust", orin: "Orion Vale" };
+
+  // Force full-page reloads on internal link clicks so each subpage gets the
+  // correct per-depth asset paths. Without this, Next's client-side router
+  // would try to fetch ./_next/... chunks from a subpage URL and 404 the tab
+  // into a white screen.
+  document.addEventListener("click", function (e) {
+    let el = e.target;
+    while (el && el.nodeType === 1 && el.tagName !== "A") el = el.parentNode;
+    if (!el || el.tagName !== "A") return;
+    if (el.target === "_blank") return;
+    const href = el.getAttribute("href");
+    if (!href) return;
+    if (href.startsWith("http://") || href.startsWith("https://") || href.startsWith("mailto:") || href.startsWith("#")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const u = new URL(href, location.href);
+      location.href = u.href;
+    } catch (err) { /* fall through */ }
+  }, true);
+
   const H = (h) => new Date(Date.now() - h * 3600e3).toISOString();
   const slug = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
 

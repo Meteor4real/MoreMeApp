@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { subscribeWire, type WireArticle } from "../services/nt5Wire";
 import { NT5BroadcastFull } from "./NT5BroadcastFull";
+import { loadPrefs } from "../uiPrefs";
 
 // NT5 Broadcast bar — the "radio" side of the news. Uses the browser's
 // built-in Web Speech API (SpeechSynthesis) to read the current lead story
@@ -67,9 +68,34 @@ export function NT5Broadcast() {
   }
   const anchor = ANCHOR_BIO[(lead.anchor_id as AnchorId)] || ANCHOR_BIO.voss;
 
-  function play() {
-    if (playing) { window.speechSynthesis.cancel(); setPlaying(false); return; }
-    const u = new SpeechSynthesisUtterance(`${lead.title}. ${lead.body}`);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  function stop() {
+    window.speechSynthesis.cancel();
+    if (audioRef.current) { try { audioRef.current.pause(); audioRef.current.src = ""; } catch { /* ignore */ } audioRef.current = null; }
+    setPlaying(false);
+  }
+  async function play() {
+    if (playing) { stop(); return; }
+    const text = `${lead.title}. ${lead.body}`;
+    const voiceId = loadPrefs().anchorVoices[lead.anchor_id as AnchorId];
+    // Try ElevenLabs (real voice) first if the owner mapped a voice for this
+    // anchor. Fall back to the OS's Web Speech voices otherwise.
+    if (voiceId) {
+      setPlaying(true);
+      const res = await window.hub.media.tts({ voiceId, text });
+      if (res.ok) {
+        const blob = b64toBlob(res.base64, res.mime);
+        const url = URL.createObjectURL(blob);
+        const a = new Audio(url);
+        audioRef.current = a;
+        a.onended = () => { setPlaying(false); URL.revokeObjectURL(url); };
+        a.onerror = () => { setPlaying(false); URL.revokeObjectURL(url); };
+        try { await a.play(); } catch { setPlaying(false); }
+        return;
+      }
+      // fall through to Web Speech on failure
+    }
+    const u = new SpeechSynthesisUtterance(text);
     const v = pickVoice(anchor.voiceHint);
     if (v) u.voice = v;
     u.rate = 1.0; u.pitch = anchor.voiceHint.includes("female") ? 1.05 : 0.95;
@@ -79,6 +105,14 @@ export function NT5Broadcast() {
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(u);
     setPlaying(true);
+  }
+
+  function b64toBlob(b64: string, mime: string): Blob {
+    const bin = atob(b64);
+    const len = bin.length;
+    const buf = new Uint8Array(len);
+    for (let i = 0; i < len; i++) buf[i] = bin.charCodeAt(i);
+    return new Blob([buf], { type: mime });
   }
 
   return (
