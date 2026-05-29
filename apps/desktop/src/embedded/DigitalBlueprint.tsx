@@ -343,7 +343,29 @@ export function DigitalBlueprint() {
       m.rotation.set(THREE.MathUtils.degToRad(opts.rx || 0), THREE.MathUtils.degToRad(opts.ry || 0), THREE.MathUtils.degToRad(opts.rz || 0));
     scene.current!.add(m);
     objects.current.push(m);
+    saveSceneSnapshot();
     return m;
+  }
+
+  // Persist the current scene as a compact JSON snapshot so the NT5 broadcast
+  // backdrop (and anyone else) can render it. Called on every mutation.
+  function saveSceneSnapshot() {
+    try {
+      const snap = objects.current.map((m) => {
+        const mat = m.material as THREE.MeshPhysicalMaterial;
+        return {
+          shape: m.userData.shape || "box",
+          pos: [m.position.x, m.position.y, m.position.z],
+          scale: [m.scale.x, m.scale.y, m.scale.z],
+          color: "#" + mat.color.getHexString(),
+          metal: mat.metalness,
+          rough: mat.roughness,
+          glow: "#" + mat.emissive.getHexString(),
+          glowI: mat.emissiveIntensity,
+        };
+      });
+      localStorage.setItem("nchub.digitalblueprint.scene.v1", JSON.stringify(snap));
+    } catch { /* ignore */ }
   }
 
   function patch(p: Partial<Snap>) {
@@ -394,6 +416,7 @@ export function DigitalBlueprint() {
     }
     mat.needsUpdate = true;
     setSnap(readSnap(m));
+    saveSceneSnapshot();
   }
 
   function del() {
@@ -404,6 +427,7 @@ export function DigitalBlueprint() {
     m.geometry.dispose();
     (m.material as THREE.Material).dispose();
     select(null);
+    saveSceneSnapshot();
   }
 
   async function generate() {

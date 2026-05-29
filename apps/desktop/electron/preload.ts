@@ -72,6 +72,10 @@ const api = {
     quit: (): Promise<void> => ipcRenderer.invoke("bg:quit"),
   },
 
+  sys: {
+    pulse: (): Promise<{ cpuPct: number; memPct: number; memFreeGb: number; diskFreeGb: number; diskTotalGb: number }> => ipcRenderer.invoke("sys:pulse"),
+  },
+
   media: {
     tts: (opts: { voiceId: string; text: string; model?: string }): Promise<{ ok: true; mime: string; base64: string } | { ok: false; error: string }> =>
       ipcRenderer.invoke("media:tts", opts),

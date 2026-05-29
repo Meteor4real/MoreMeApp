@@ -15,12 +15,41 @@ export function FloatingInfo() {
   const [origin, setOrigin] = useState<OriginPulse | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [tick, setTick] = useState(0);
+  const [sys, setSys] = useState<{ cpuPct: number; memPct: number; memFreeGb: number; diskFreeGb: number; diskTotalGb: number } | null>(null);
+  const [crew, setCrew] = useState<{ name: string; content: string } | null>(null);
 
   useEffect(() => subscribePrefs(setPrefs), []);
   useEffect(() => subscribeWire(setArts), []);
   useEffect(() => subscribeOriginPulse(setOrigin), []);
   useEffect(() => {
     const t = setInterval(() => setTick((n) => n + 1), 11000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Poll the system pulse every 6 s.
+  useEffect(() => {
+    let cancelled = false;
+    async function tickSys() {
+      try { const s = await window.hub.sys.pulse(); if (!cancelled) setSys(s); } catch { /* ignore */ }
+    }
+    void tickSys();
+    const t = setInterval(tickSys, 6000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
+
+  // Sample the last group-chat message every 8 s — drives the Crew widget.
+  useEffect(() => {
+    function readLatest() {
+      try {
+        const raw = localStorage.getItem("nchub.chat.v2");
+        if (!raw) return;
+        const msgs = JSON.parse(raw) as Array<{ name?: string; content?: string; kind?: string }>;
+        const last = msgs[msgs.length - 1];
+        if (last && last.kind !== "system") setCrew({ name: last.name || "—", content: last.content || "" });
+      } catch { /* ignore */ }
+    }
+    readLatest();
+    const t = setInterval(readLatest, 8000);
     return () => clearInterval(t);
   }, []);
 
@@ -60,6 +89,33 @@ export function FloatingInfo() {
         <InfoCard key="origin" tag="Origin Realms · live" color="#22c55e">
           <div className="mono" style={{ fontSize: 13, color: "#dbffe7", lineHeight: 1.35 }}>{origin.online ? `${origin.players} / ${origin.max} online` : "server offline"}</div>
           <div style={{ fontSize: 11, color: "#9bd4ad", marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{origin.motd}</div>
+        </InfoCard>
+      ),
+    });
+  }
+  if (prefs.infoSystem && sys) {
+    cards.push({
+      id: "system", show: true,
+      node: (
+        <InfoCard key="system" tag="System pulse" color="#22d3ee">
+          <div className="mono" style={{ fontSize: 12, color: "#dbf6ff", lineHeight: 1.4 }}>
+            CPU {sys.cpuPct}%  ·  MEM {sys.memPct}%
+          </div>
+          <div style={{ fontSize: 11, color: "#a3d7e5", marginTop: 3 }}>
+            {sys.memFreeGb.toFixed(1)} GB free RAM  ·  {sys.diskFreeGb.toFixed(1)} GB free disk
+          </div>
+        </InfoCard>
+      ),
+    });
+  }
+  if (prefs.infoCrew && crew) {
+    cards.push({
+      id: "crew", show: true,
+      node: (
+        <InfoCard key="crew" tag={`Crew · ${crew.name}`} color="#ff7a2d">
+          <div style={{ fontSize: 12, color: "#ffe5d4", lineHeight: 1.4, maxHeight: 64, overflow: "hidden" }}>
+            {crew.content.slice(0, 180)}{crew.content.length > 180 ? "…" : ""}
+          </div>
         </InfoCard>
       ),
     });
