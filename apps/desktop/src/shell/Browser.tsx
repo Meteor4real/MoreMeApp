@@ -5,8 +5,8 @@ import {
   navigateTab, recordHistory, removeBookmark, setActiveTab, setTabGroup, setTabTitle,
   subscribeBookmarks, subscribeTabs, getBookmarks, getGroups, pinTab,
 } from "../browser/store";
-import { BookmarksPanel, DownloadsPanel, ExtensionsPanel, GroupsPanel, HistoryPanel, isPanel, PasswordsPanel, PANEL_NAMES } from "../browser/panels";
-import { loadPrefs, SEARCH_ENGINES, subscribePrefs } from "../uiPrefs";
+import { BookmarksPanel, DownloadsPanel, ExtensionsPanel, GroupsPanel, HistoryPanel, isPanel, PANEL_NAMES, panelBase, panelQuery, PasswordsPanel, SearchPanel } from "../browser/panels";
+import { loadPrefs, subscribePrefs } from "../uiPrefs";
 import { EXTENSIONS, loadEnabled, saveEnabled, subscribeEnabled } from "../extensions";
 
 function normalize(input: string): string {
@@ -15,8 +15,11 @@ function normalize(input: string): string {
   if (v.startsWith("about:")) return v;
   if (/^https?:\/\//i.test(v)) return v;
   if (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(v)) return "https://" + v;
-  const engine = SEARCH_ENGINES[loadPrefs().searchEngine];
-  return engine.url(v);
+  // Anything else is a query — route through our own search-results page
+  // (about:search) instead of redirecting to the engine's site. The chrome
+  // stays ours; the results come from the configured engine over their
+  // HTML endpoint.
+  return "about:search?q=" + encodeURIComponent(v);
 }
 
 function StartPage({ onGo }: { onGo: (v: string) => void }) {
@@ -220,15 +223,17 @@ export function Browser({
         {tabs.map((t) => {
           const show = t.id === activeId;
           if (isPanel(t.url)) {
+            const key = panelBase(t.url);
             return (
               <div key={t.id} style={{ position: "absolute", inset: 0, display: show ? "flex" : "none", flexDirection: "column", overflow: "auto" }}>
-                {t.url === "about:start" && <StartPage onGo={go} />}
-                {t.url === "about:bookmarks" && <BookmarksPanel onGo={go} />}
-                {t.url === "about:history" && <HistoryPanel onGo={go} />}
-                {t.url === "about:downloads" && <DownloadsPanel />}
-                {t.url === "about:passwords" && <PasswordsPanel />}
-                {t.url === "about:groups" && <GroupsPanel />}
-                {t.url === "about:extensions" && <ExtensionsPanel />}
+                {key === "about:start" && <StartPage onGo={go} />}
+                {key === "about:bookmarks" && <BookmarksPanel onGo={go} />}
+                {key === "about:history" && <HistoryPanel onGo={go} />}
+                {key === "about:downloads" && <DownloadsPanel />}
+                {key === "about:passwords" && <PasswordsPanel />}
+                {key === "about:groups" && <GroupsPanel />}
+                {key === "about:extensions" && <ExtensionsPanel />}
+                {key === "about:search" && <SearchPanel query={panelQuery(t.url, "q")} onGo={go} />}
               </div>
             );
           }
@@ -295,7 +300,14 @@ export function Browser({
 }
 
 function titleOf(t: Tab): string {
-  if (isPanel(t.url)) return PANEL_NAMES[t.url as keyof typeof PANEL_NAMES];
+  if (isPanel(t.url)) {
+    const key = panelBase(t.url);
+    if (key === "about:search") {
+      const q = panelQuery(t.url, "q");
+      return q ? `Search · ${q}` : "Search";
+    }
+    return key ? PANEL_NAMES[key] : "New Tab";
+  }
   return t.title || "Loading…";
 }
 

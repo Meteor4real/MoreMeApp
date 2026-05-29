@@ -12,10 +12,10 @@ import { NT5BroadcastFull } from "./NT5BroadcastFull";
 type AnchorId = "voss" | "zara" | "dex" | "lena" | "orin";
 const ANCHOR_BIO: Record<AnchorId, { name: string; tag: string; accent: string; voiceHint: "deep-male" | "warm-female" | "energetic-male" | "field-female" | "nerd-male" }> = {
   voss: { name: "Voss Calloway", tag: "Lead Anchor", accent: "#d946ef", voiceHint: "deep-male" },
-  zara: { name: "Zara Kindle", tag: "Co-Anchor · Culture", accent: "#22d3ee", voiceHint: "warm-female" },
+  zara: { name: "Zip Kindle", tag: "Co-Anchor · Culture", accent: "#22d3ee", voiceHint: "warm-female" },
   dex:  { name: "Dex Morrow", tag: "Gaming Desk", accent: "#3b82f6", voiceHint: "energetic-male" },
   lena: { name: "Lena Faust", tag: "Field Reporter", accent: "#ef4444", voiceHint: "field-female" },
-  orin: { name: "Orin Vale", tag: "Tech & Space", accent: "#a855f7", voiceHint: "nerd-male" },
+  orin: { name: "Orion Vale", tag: "Tech & Space", accent: "#a855f7", voiceHint: "nerd-male" },
 };
 
 function pickVoice(hint: ANCHOR_VoiceHint): SpeechSynthesisVoice | null {

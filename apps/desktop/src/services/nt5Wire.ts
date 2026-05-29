@@ -28,7 +28,7 @@ export type WireArticle = {
 };
 
 const ANCHORS: Record<string, string> = {
-  voss: "Voss Calloway", zara: "Zara Kindle", dex: "Dex Morrow", lena: "Lena Faust", orin: "Orin Vale",
+  voss: "Voss Calloway", zara: "Zip Kindle", dex: "Dex Morrow", lena: "Lena Faust", orin: "Orion Vale",
 };
 const slugify = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70);
 
