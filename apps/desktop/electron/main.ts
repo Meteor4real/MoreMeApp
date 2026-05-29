@@ -438,6 +438,50 @@ function registerIpc() {
   });
   ipcMain.handle("bg:quit", () => { quitting = true; app.quit(); });
 
+  // --- Media (ElevenLabs TTS + Pexels video) — uses the user's own keys.
+  //     Returns audio bytes / video metadata so the renderer can play / show.
+  ipcMain.handle("media:tts", async (_e, opts: { voiceId: string; text: string; model?: string }) => {
+    const cred = vaultGet("elevenlabs");
+    if (!cred.token) return { ok: false, error: "Connect ElevenLabs in the Control Panel first." };
+    try {
+      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(opts.voiceId)}`, {
+        method: "POST",
+        headers: { "xi-api-key": cred.token, "Content-Type": "application/json", "Accept": "audio/mpeg" },
+        body: JSON.stringify({ text: opts.text, model_id: opts.model || "eleven_turbo_v2_5", voice_settings: { stability: 0.45, similarity_boost: 0.75 } }),
+      });
+      if (!r.ok) return { ok: false, error: `ElevenLabs ${r.status}: ${await r.text()}` };
+      const buf = Buffer.from(await r.arrayBuffer());
+      return { ok: true, mime: "audio/mpeg", base64: buf.toString("base64") };
+    } catch (err) { return { ok: false, error: String(err) }; }
+  });
+  ipcMain.handle("media:voices", async () => {
+    const cred = vaultGet("elevenlabs");
+    if (!cred.token) return { ok: false, error: "Connect ElevenLabs in the Control Panel first." };
+    try {
+      const r = await fetch("https://api.elevenlabs.io/v1/voices", { headers: { "xi-api-key": cred.token } });
+      if (!r.ok) return { ok: false, error: `ElevenLabs ${r.status}` };
+      const j = await r.json() as { voices?: { voice_id: string; name: string; labels?: Record<string, string> }[] };
+      return { ok: true, voices: (j.voices || []).map((v) => ({ id: v.voice_id, name: v.name, labels: v.labels || {} })) };
+    } catch (err) { return { ok: false, error: String(err) }; }
+  });
+  ipcMain.handle("media:pexelsVideo", async (_e, opts: { query: string; perPage?: number }) => {
+    const cred = vaultGet("pexels");
+    if (!cred.token) return { ok: false, error: "Connect Pexels in the Control Panel first." };
+    try {
+      const r = await fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(opts.query)}&per_page=${opts.perPage || 6}&orientation=landscape`, {
+        headers: { Authorization: cred.token },
+      });
+      if (!r.ok) return { ok: false, error: `Pexels ${r.status}` };
+      const j = await r.json() as { videos?: { id: number; image: string; duration: number; video_files: { link: string; quality: string; width: number; height: number }[] }[] };
+      const videos = (j.videos || []).map((v) => {
+        // Pick the best HD-or-smaller file (avoid massive 4K bytes inside the iframe).
+        const file = v.video_files.find((f) => f.quality === "hd" && f.width <= 1920) || v.video_files[0];
+        return { id: v.id, poster: v.image, duration: v.duration, url: file?.link };
+      }).filter((v) => v.url);
+      return { ok: true, videos };
+    } catch (err) { return { ok: false, error: String(err) }; }
+  });
+
   // --- Terminal (PowerShell on Windows) via node-pty. Sessions are keyed by
   //     a caller-provided string ID so the renderer can run multiple shells
   //     in parallel and keep them alive across React tab switches.

@@ -8,6 +8,8 @@ export type UiPrefs = {
   infoBreaking: boolean;       // NT5 "Breaking" cards
   infoNextUp: boolean;         // MoreMe "next up" reminder
   infoOrigin: boolean;         // Origin Realms server pulse
+  infoSystem: boolean;         // CPU/mem/disk pulse
+  infoCrew: boolean;           // recent group-chat activity
   // Ticker
   tickerEnabled: boolean;
   // Browser
@@ -16,17 +18,28 @@ export type UiPrefs = {
   homePage: string;            // empty = the hub's own start page
   // NT5 wire
   wireMinutes: number;         // how often the in-app wire generates articles
+  // NT5 broadcast — ElevenLabs voice per anchor (empty = Web Speech)
+  anchorVoices: { voss: string; zara: string; dex: string; lena: string; orin: string };
+  // NT5 broadcast — Pexels B-roll on the full broadcast view
+  brollEnabled: boolean;
+  // NT5 broadcast — use a DigitalBlueprint scene as a 3D B-roll backdrop
+  blueprintBackdrop: boolean;
 };
 
 export const DEFAULT_PREFS: UiPrefs = {
   infoBreaking: true,
   infoNextUp: true,
   infoOrigin: true,
+  infoSystem: true,
+  infoCrew: true,
   tickerEnabled: true,
   searchEngine: "duckduckgo",
   showBookmarksBar: true,
   homePage: "",
   wireMinutes: 20,
+  anchorVoices: { voss: "", zara: "", dex: "", lena: "", orin: "" },
+  brollEnabled: true,
+  blueprintBackdrop: false,
 };
 
 const KEY = "nchub.uiprefs.v1";

@@ -128,6 +128,8 @@ export function Settings({ onSignOut }: { onSignOut: () => void }) {
           <Toggle label="NT5 breaking & filed updates" checked={prefs.infoBreaking} onChange={(v) => set("infoBreaking", v)} />
           <Toggle label="Latest stories from the anchor desk" checked={prefs.infoNextUp} onChange={(v) => set("infoNextUp", v)} />
           <Toggle label="Origin Realms server pulse" checked={prefs.infoOrigin} onChange={(v) => set("infoOrigin", v)} />
+          <Toggle label="System pulse (CPU / mem / free disk)" checked={prefs.infoSystem} onChange={(v) => set("infoSystem", v)} />
+          <Toggle label="Crew chatter (recent group-chat activity)" checked={prefs.infoCrew} onChange={(v) => set("infoCrew", v)} />
           <Toggle label="Bottom ticker" checked={prefs.tickerEnabled} onChange={(v) => set("tickerEnabled", v)} />
           <div style={{ marginTop: 10 }}>
             <label style={{ display: "block", fontSize: 11, color: "var(--mute)", letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 }}>News wire interval (min)</label>
@@ -135,6 +137,9 @@ export function Settings({ onSignOut }: { onSignOut: () => void }) {
               style={inp} />
           </div>
         </section>
+
+        {/* NT5 broadcast (real voice + B-roll) */}
+        <NT5BroadcastSettings prefs={prefs} set={set} />
 
         {/* Background mode — true 24/7 across reboots */}
         <section className="panel" style={{ padding: 16 }}>
@@ -186,6 +191,60 @@ export function Settings({ onSignOut }: { onSignOut: () => void }) {
         </section>
       </div>
     </div>
+  );
+}
+
+function NT5BroadcastSettings({ prefs, set }: { prefs: ReturnType<typeof loadPrefs>; set: <K extends keyof ReturnType<typeof loadPrefs>>(k: K, v: ReturnType<typeof loadPrefs>[K]) => void }) {
+  const [voices, setVoices] = useState<{ id: string; name: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function loadVoices() {
+    setLoading(true); setErr(null);
+    const r = await window.hub.media.voices();
+    setLoading(false);
+    if (!r.ok) { setErr(r.error); return; }
+    setVoices(r.voices.map((v) => ({ id: v.id, name: v.name })));
+  }
+  function patchVoice(anchor: keyof typeof prefs.anchorVoices, id: string) {
+    set("anchorVoices", { ...prefs.anchorVoices, [anchor]: id });
+  }
+
+  const anchors: { id: keyof typeof prefs.anchorVoices; name: string }[] = [
+    { id: "voss", name: "Voss Calloway" },
+    { id: "zara", name: "Zip Kindle" },
+    { id: "dex",  name: "Dex Morrow" },
+    { id: "lena", name: "Lena Faust" },
+    { id: "orin", name: "Orion Vale" },
+  ];
+  return (
+    <section className="panel" style={{ padding: 16 }}>
+      <div className="sec-title">NT5 broadcast</div>
+      <p style={{ fontSize: 12, color: "var(--mute)", marginTop: 6 }}>
+        Real anchor voices via ElevenLabs and stock B-roll via Pexels. Connect both in the
+        Control Panel; the broadcast bar falls back to the OS's built-in voices and a
+        starfield backdrop when keys aren't set.
+      </p>
+      <button className="btn" style={{ marginTop: 8 }} onClick={() => void loadVoices()} disabled={loading}>{loading ? "Loading…" : voices.length ? "Reload voices" : "Load ElevenLabs voices"}</button>
+      {err && <div style={{ fontSize: 11, color: "var(--mute)", marginTop: 6 }}>{err}</div>}
+      {voices.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          {anchors.map((a) => (
+            <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <span style={{ fontSize: 12, width: 110, color: "var(--ink)" }}>{a.name}</span>
+              <select value={prefs.anchorVoices[a.id]} onChange={(e) => patchVoice(a.id, e.target.value)} style={{ flex: 1, ...inp }}>
+                <option value="">(OS voice fallback)</option>
+                {voices.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </select>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ marginTop: 14 }}>
+        <Toggle label="Use Pexels video as B-roll backdrop on the full broadcast view" checked={prefs.brollEnabled} onChange={(v) => set("brollEnabled", v)} />
+        <Toggle label="Use a DigitalBlueprint scene as a 3D backdrop instead" checked={prefs.blueprintBackdrop} onChange={(v) => set("blueprintBackdrop", v)} />
+      </div>
+    </section>
   );
 }
 

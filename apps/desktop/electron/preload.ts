@@ -72,6 +72,15 @@ const api = {
     quit: (): Promise<void> => ipcRenderer.invoke("bg:quit"),
   },
 
+  media: {
+    tts: (opts: { voiceId: string; text: string; model?: string }): Promise<{ ok: true; mime: string; base64: string } | { ok: false; error: string }> =>
+      ipcRenderer.invoke("media:tts", opts),
+    voices: (): Promise<{ ok: true; voices: { id: string; name: string; labels: Record<string, string> }[] } | { ok: false; error: string }> =>
+      ipcRenderer.invoke("media:voices"),
+    pexelsVideo: (opts: { query: string; perPage?: number }): Promise<{ ok: true; videos: { id: number; poster: string; duration: number; url: string }[] } | { ok: false; error: string }> =>
+      ipcRenderer.invoke("media:pexelsVideo", opts),
+  },
+
   downloads: {
     list: (): Promise<Array<{ id: string; filename: string; path: string; url: string; bytes: number; state: string; ts: number }>> =>
       ipcRenderer.invoke("downloads:list"),
