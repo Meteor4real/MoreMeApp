@@ -438,6 +438,28 @@ function registerIpc() {
   });
   ipcMain.handle("bg:quit", () => { quitting = true; app.quit(); });
 
+  // --- System pulse — CPU load + free memory + free disk for the user's
+  //     home volume. Used by the floating info widget. ---
+  ipcMain.handle("sys:pulse", async () => {
+    const cpus = os.cpus();
+    let total = 0, idle = 0;
+    for (const c of cpus) {
+      idle += c.times.idle;
+      total += c.times.user + c.times.nice + c.times.sys + c.times.irq + c.times.idle;
+    }
+    const cpuPct = total ? Math.round(100 * (1 - idle / total)) : 0;
+    const memTotal = os.totalmem();
+    const memFree = os.freemem();
+    const memPct = Math.round(100 * (1 - memFree / memTotal));
+    let diskFree = 0, diskTotal = 0;
+    try {
+      const stats = fs.statfsSync(os.homedir());
+      diskTotal = Number(stats.blocks) * Number(stats.bsize);
+      diskFree = Number(stats.bfree) * Number(stats.bsize);
+    } catch { /* not all platforms */ }
+    return { cpuPct, memPct, memFreeGb: memFree / 1024 / 1024 / 1024, diskFreeGb: diskFree / 1024 / 1024 / 1024, diskTotalGb: diskTotal / 1024 / 1024 / 1024 };
+  });
+
   // --- Media (ElevenLabs TTS + Pexels video) — uses the user's own keys.
   //     Returns audio bytes / video metadata so the renderer can play / show.
   ipcMain.handle("media:tts", async (_e, opts: { voiceId: string; text: string; model?: string }) => {

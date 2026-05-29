@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { WireArticle } from "../services/nt5Wire";
 import { subscribeWire } from "../services/nt5Wire";
 import { loadPrefs } from "../uiPrefs";
+import { BlueprintBackdrop } from "./BlueprintBackdrop";
 
 // NT5 Broadcast — fullscreen "studio" view. Animated set + lower-third + a
 // big caption rail that highlights along with the TTS read-out using the
@@ -113,13 +114,15 @@ export function NT5BroadcastFull({ article, onClose }: { article: WireArticle; o
       display: "grid", gridTemplateRows: "1fr 200px 56px",
       overflow: "hidden",
     }}>
-      {bRollUrl && prefs.brollEnabled && !prefs.blueprintBackdrop && (
+      {prefs.blueprintBackdrop ? (
+        <BlueprintBackdrop />
+      ) : bRollUrl && prefs.brollEnabled ? (
         <video
           src={bRollUrl}
           autoPlay loop muted playsInline
           style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.35, zIndex: 0, pointerEvents: "none" }}
         />
-      )}
+      ) : null}
       <Starfield />
 
       {/* Stage: anchor avatar + headline + scrolling captions */}

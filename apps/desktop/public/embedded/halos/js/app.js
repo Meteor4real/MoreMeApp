@@ -4382,33 +4382,36 @@ function pickWeighted(arr) {
 // Each glyph is a non-Latin alien sigil unique among the 26.
 // Common style: 16x16 viewBox, 1.4 stroke, currentColor.
 const AZ_GLYPH_STYLE = 'viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"';
+// Richer Andromadean alphabet — each sigil now uses 3-4 strokes (curves +
+// dots + asymmetric ticks) so they read as actual alien writing instead of
+// simple geometric primitives.
 const AZ_ANDROMADEAN_ALPHABET = [
-  { en: 'A', svg: `<svg ${AZ_GLYPH_STYLE}><circle cx="8" cy="8" r="5.5"/><line x1="8" y1="2.5" x2="8" y2="13.5"/><circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none"/></svg>` },
-  { en: 'B', svg: `<svg ${AZ_GLYPH_STYLE}><polygon points="8,2 14,8 8,14 2,8"/><circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/></svg>` },
-  { en: 'C', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 3 L8 8 L3 13"/><path d="M13 3 L8 8 L13 13"/></svg>` },
-  { en: 'D', svg: `<svg ${AZ_GLYPH_STYLE}><circle cx="8" cy="8" r="5.5"/><line x1="3" y1="3" x2="13" y2="13"/></svg>` },
-  { en: 'E', svg: `<svg ${AZ_GLYPH_STYLE}><line x1="3" y1="13" x2="13" y2="3"/><circle cx="13" cy="3" r="1.5" fill="currentColor" stroke="none"/><circle cx="3" cy="13" r="1.5" fill="currentColor" stroke="none"/></svg>` },
-  { en: 'F', svg: `<svg ${AZ_GLYPH_STYLE}><polygon points="8,3 13,11 3,11"/><line x1="8" y1="11" x2="8" y2="14"/></svg>` },
-  { en: 'G', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 8 Q8 2 13 8"/><path d="M3 8 Q8 14 13 8"/><line x1="3" y1="8" x2="13" y2="8" stroke-dasharray="0.1 2"/></svg>` },
-  { en: 'H', svg: `<svg ${AZ_GLYPH_STYLE}><circle cx="5" cy="5" r="2"/><circle cx="11" cy="11" r="2"/><line x1="6.5" y1="6.5" x2="9.5" y2="9.5"/></svg>` },
-  { en: 'I', svg: `<svg ${AZ_GLYPH_STYLE}><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/><line x1="8" y1="2" x2="8" y2="14"/></svg>` },
-  { en: 'J', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 5 Q8 1 13 5"/><path d="M3 11 Q8 15 13 11"/></svg>` },
-  { en: 'K', svg: `<svg ${AZ_GLYPH_STYLE}><polyline points="3,8 6,3 10,13 13,8"/></svg>` },
-  { en: 'L', svg: `<svg ${AZ_GLYPH_STYLE}><polygon points="8,2 13,5 13,11 8,14 3,11 3,5"/></svg>` },
-  { en: 'M', svg: `<svg ${AZ_GLYPH_STYLE}><line x1="2" y1="2" x2="14" y2="14"/><line x1="14" y1="2" x2="2" y2="14"/><circle cx="8" cy="8" r="3"/></svg>` },
-  { en: 'N', svg: `<svg ${AZ_GLYPH_STYLE}><circle cx="8" cy="5" r="2.5"/><line x1="8" y1="7.5" x2="8" y2="14"/><line x1="5" y1="11" x2="11" y2="11"/></svg>` },
-  { en: 'O', svg: `<svg ${AZ_GLYPH_STYLE}><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="3"/></svg>` },
-  { en: 'P', svg: `<svg ${AZ_GLYPH_STYLE}><line x1="2" y1="8" x2="14" y2="8"/><line x1="8" y1="2" x2="8" y2="14"/><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>` },
-  { en: 'Q', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 11 Q8 5 13 11 Z"/><line x1="8" y1="11" x2="8" y2="14"/></svg>` },
-  { en: 'R', svg: `<svg ${AZ_GLYPH_STYLE}><circle cx="5" cy="8" r="2.5"/><circle cx="11" cy="8" r="2.5"/></svg>` },
-  { en: 'S', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M2 8 Q5 4 8 8 Q11 12 14 8"/></svg>` },
-  { en: 'T', svg: `<svg ${AZ_GLYPH_STYLE}><polygon points="8,3 13,13 3,13"/><circle cx="8" cy="3" r="1.5" fill="currentColor" stroke="none"/></svg>` },
-  { en: 'U', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 5 L8 10 L13 5 L8 14 Z"/></svg>` },
-  { en: 'V', svg: `<svg ${AZ_GLYPH_STYLE}><line x1="3" y1="3" x2="13" y2="3"/><line x1="3" y1="13" x2="13" y2="13"/><circle cx="8" cy="8" r="2.5"/></svg>` },
-  { en: 'W', svg: `<svg ${AZ_GLYPH_STYLE}><polygon points="3,3 13,3 8,11"/><line x1="8" y1="11" x2="8" y2="14"/></svg>` },
-  { en: 'X', svg: `<svg ${AZ_GLYPH_STYLE}><circle cx="8" cy="5" r="2"/><circle cx="5" cy="11" r="2"/><circle cx="11" cy="11" r="2"/></svg>` },
-  { en: 'Y', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 8 Q3 3 8 3 Q13 3 13 8 Q13 13 8 13"/><line x1="8" y1="13" x2="3" y2="13"/></svg>` },
-  { en: 'Z', svg: `<svg ${AZ_GLYPH_STYLE}><polyline points="3,3 13,3 3,13 13,13"/><circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/></svg>` },
+  { en: 'A', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M2 13 Q4 4 8 4 Q12 4 14 13"/><line x1="5.5" y1="9" x2="10.5" y2="9"/><circle cx="8" cy="4" r="1.2" fill="currentColor" stroke="none"/></svg>` },
+  { en: 'B', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M4 2 L4 14"/><path d="M4 3 Q11 4 11 7 Q11 9 4 8"/><path d="M4 8 Q12 9 12 12 Q12 14 4 14"/><circle cx="4" cy="2" r="1.1" fill="currentColor" stroke="none"/></svg>` },
+  { en: 'C', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M13 4 Q3 4 3 8 Q3 12 13 12"/><path d="M9 8 L13 8"/><circle cx="13" cy="4" r="1.1" fill="currentColor" stroke="none"/></svg>` },
+  { en: 'D', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 2 L3 14"/><path d="M3 3 Q13 4 13 8 Q13 12 3 13"/><line x1="3" y1="8" x2="8" y2="8"/></svg>` },
+  { en: 'E', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M13 3 Q3 3 3 6 Q3 9 13 9 Q3 9 3 12 Q3 15 13 14"/></svg>` },
+  { en: 'F', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 2 L3 14"/><path d="M3 3 Q12 3 12 6"/><path d="M3 8 Q9 8 9 10"/><circle cx="12" cy="6" r="1" fill="currentColor" stroke="none"/></svg>` },
+  { en: 'G', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M13 4 Q3 4 3 8 Q3 13 8 13 Q13 13 13 9 L9 9 L11 11"/></svg>` },
+  { en: 'H', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 2 Q3 14 5 14 Q7 14 7 8 Q9 8 9 14 Q11 14 13 14 Q13 2 13 2"/></svg>` },
+  { en: 'I', svg: `<svg ${AZ_GLYPH_STYLE}><circle cx="8" cy="3" r="1.2" fill="currentColor" stroke="none"/><path d="M8 5 Q4 8 8 11 Q12 14 8 14"/></svg>` },
+  { en: 'J', svg: `<svg ${AZ_GLYPH_STYLE}><circle cx="11" cy="3" r="1.1" fill="currentColor" stroke="none"/><path d="M11 4 L11 11 Q11 14 7 14 Q3 14 3 11"/></svg>` },
+  { en: 'K', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 2 L3 14"/><path d="M3 8 Q9 8 13 3"/><path d="M3 8 Q9 8 13 13"/><circle cx="9" cy="8" r="1" fill="currentColor" stroke="none"/></svg>` },
+  { en: 'L', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 2 Q3 14 13 14"/><path d="M6 8 Q9 8 9 11"/><circle cx="13" cy="14" r="1.1" fill="currentColor" stroke="none"/></svg>` },
+  { en: 'M', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 14 Q3 4 5 4 Q7 4 8 9 Q9 4 11 4 Q13 4 13 14"/><line x1="8" y1="9" x2="8" y2="14"/></svg>` },
+  { en: 'N', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 14 L3 4 L13 14 L13 4"/><circle cx="3" cy="4" r="1.1" fill="currentColor" stroke="none"/></svg>` },
+  { en: 'O', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 8 Q3 3 8 3 Q13 3 13 8 Q13 13 8 13 Q3 13 3 8 Z"/><path d="M5 8 Q5 5 8 5 Q11 5 11 8"/></svg>` },
+  { en: 'P', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 14 L3 2"/><path d="M3 2 Q13 2 13 6 Q13 9 3 9"/><line x1="3" y1="14" x2="6" y2="11"/></svg>` },
+  { en: 'Q', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 8 Q3 3 8 3 Q13 3 13 8 Q13 13 8 13 Q3 13 3 8"/><path d="M9 11 L14 14"/><circle cx="14" cy="14" r="1" fill="currentColor" stroke="none"/></svg>` },
+  { en: 'R', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 14 L3 2 Q11 2 11 5 Q11 8 3 8"/><path d="M3 8 L13 14"/></svg>` },
+  { en: 'S', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M13 3 Q3 3 3 6 Q3 8 8 8 Q13 8 13 11 Q13 14 3 13"/><circle cx="13" cy="3" r="1" fill="currentColor" stroke="none"/></svg>` },
+  { en: 'T', svg: `<svg ${AZ_GLYPH_STYLE}><line x1="2" y1="3" x2="14" y2="3"/><line x1="8" y1="3" x2="8" y2="14"/><path d="M5 14 Q8 11 11 14"/></svg>` },
+  { en: 'U', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 2 Q3 14 8 14 Q13 14 13 2"/><line x1="8" y1="14" x2="8" y2="9"/><circle cx="8" cy="9" r="1.2" fill="currentColor" stroke="none"/></svg>` },
+  { en: 'V', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M2 3 L8 14 L14 3"/><path d="M5 7 L11 7"/></svg>` },
+  { en: 'W', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M2 3 L5 14 L8 6 L11 14 L14 3"/></svg>` },
+  { en: 'X', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 3 Q8 8 13 13"/><path d="M13 3 Q8 8 3 13"/><circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/></svg>` },
+  { en: 'Y', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 3 Q8 8 8 14"/><path d="M13 3 Q8 8 8 14"/><line x1="5" y1="6" x2="11" y2="6"/></svg>` },
+  { en: 'Z', svg: `<svg ${AZ_GLYPH_STYLE}><path d="M3 3 Q14 3 3 14 Q14 14 14 14"/><circle cx="3" cy="3" r="1" fill="currentColor" stroke="none"/></svg>` },
 ];
 
 const AZ_QUOTE_POOL = [
@@ -5076,8 +5079,8 @@ function renderAzulbrightStats() {
         </div>
       </div>
 
-      <!-- ANDROMADEAN TRANSLATION KEY -->
-      <div class="az-card az-card-wide az-card-lex">
+      <!-- ANDROMADEAN TRANSLATION KEY (placeholder — re-emitted below the quote) -->
+      <div class="az-card az-card-wide az-card-lex" data-az-lex-hidden style="display:none">
         <div class="az-card-title">ANDROMADEAN TRANSLATION KEY</div>
         <div class="az-lex-grid" id="az-lex-grid">
           ${AZ_ANDROMADEAN_ALPHABET.map(g => `
@@ -5183,6 +5186,19 @@ function renderAzulbrightStats() {
       <!-- QUOTE -->
       <div class="az-card az-card-wide az-quote">
         ${escHtml(s.quote)}
+      </div>
+
+      <!-- ANDROMADEAN TRANSLATION KEY (re-rendered below the quote bar per spec) -->
+      <div class="az-card az-card-wide az-card-lex">
+        <div class="az-card-title">ANDROMADEAN TRANSLATION KEY</div>
+        <div class="az-lex-grid">
+          ${AZ_ANDROMADEAN_ALPHABET.map(g => `
+            <div class="az-lex-cell">
+              <div class="az-lex-glyph">${g.svg}</div>
+              <div class="az-lex-en">${escHtml(g.en)}</div>
+            </div>
+          `).join('')}
+        </div>
       </div>
     </div>
   `;
