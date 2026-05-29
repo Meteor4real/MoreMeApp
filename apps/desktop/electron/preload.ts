@@ -87,19 +87,20 @@ const api = {
   },
 
   terminal: {
-    start: (cols: number, rows: number): Promise<{ ok: boolean; error?: string }> =>
-      ipcRenderer.invoke("term:start", cols, rows),
-    input: (data: string) => ipcRenderer.send("term:input", data),
-    resize: (cols: number, rows: number) =>
-      ipcRenderer.send("term:resize", cols, rows),
-    kill: () => ipcRenderer.send("term:kill"),
-    onData: (cb: (data: string) => void) => {
-      const fn = (_e: unknown, d: string) => cb(d);
+    start: (sessionId: string, cols: number, rows: number): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("term:start", sessionId, cols, rows),
+    input: (sessionId: string, data: string) => ipcRenderer.send("term:input", sessionId, data),
+    resize: (sessionId: string, cols: number, rows: number) =>
+      ipcRenderer.send("term:resize", sessionId, cols, rows),
+    kill: (sessionId: string) => ipcRenderer.send("term:kill", sessionId),
+    list: (): Promise<string[]> => ipcRenderer.invoke("term:list"),
+    onData: (cb: (sessionId: string, data: string) => void) => {
+      const fn = (_e: unknown, id: string, d: string) => cb(id, d);
       ipcRenderer.on("term:data", fn);
       return () => ipcRenderer.removeListener("term:data", fn);
     },
-    onExit: (cb: () => void) => {
-      const fn = () => cb();
+    onExit: (cb: (sessionId: string) => void) => {
+      const fn = (_e: unknown, id: string) => cb(id);
       ipcRenderer.on("term:exit", fn);
       return () => ipcRenderer.removeListener("term:exit", fn);
     },
