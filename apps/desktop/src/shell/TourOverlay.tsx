@@ -18,49 +18,108 @@ export type TourStep = {
 export const TOUR_STEPS: TourStep[] = [
   {
     title: "Welcome to NetworkChuck Hub",
-    body: "I'll actually walk you around the app — not just point at icons. Hit Next and I'll take you to each surface. Skip bails any time. Press the arrow keys to step.",
+    body: "I'll walk you through the whole app — every surface, every shortcut, every gotcha. Arrow keys to step, Enter for next, Esc to skip. Hit Next when you're ready.",
   },
+  // Browser — overview + chrome detail + search detail
   {
     nav: { kind: "browser" },
     selector: '[data-tour="rail-browser"]',
     side: "right",
     title: "Browser — the default canvas",
-    body: "Our own chrome: persistent tabs, address bar with bookmarks, extensions dropdown, more-menu for history / downloads / passwords / tab groups. Typing a search runs through about:search instead of redirecting to the engine's site — chrome stays ours.",
+    body: "The Hub opens here. Our own chrome — tabs, address bar, bookmarks, extensions, history, downloads, passwords, tab groups. Nothing is loading inside someone else's UI.",
   },
+  {
+    nav: { kind: "browser" },
+    title: "Persistent tabs + zoom",
+    body: "Tabs survive Hub tab switches AND app restarts. Right-click any tab to pin it, assign it to a group, or close it. The more-menu (⋮) has per-tab zoom (−/100%/+) so you can resize a page without affecting the rest.",
+  },
+  {
+    nav: { kind: "browser" },
+    title: "Our own search results",
+    body: "Type a query in the address bar and you land on about:search — our page, our chrome. Results come from DuckDuckGo's HTML endpoint (zero-track, no key) via the main process and render with Hub styling. You never see the engine's site.",
+  },
+  {
+    nav: { kind: "browser" },
+    title: "Extensions in the address bar",
+    body: "The ⊞ button is the extensions dropdown — quick on/off for every house extension. The full manager lives at about:extensions (more-menu → Manage Extensions). Toggles re-inject on every navigation, not just dom-ready.",
+  },
+
+  // Control Panel — overview + Connect detail + Manage detail
   {
     nav: { kind: "control" },
     selector: '[data-tour="rail-control"]',
     side: "right",
-    title: "Control Panel · Connect + Manage",
-    body: "Two subtabs. Connect plugs in your tokens (encrypted via the OS keychain — never bundled, never sent anywhere except to that service). Manage pulls live stats across everything you've connected: repos, deployments, zones, devices, workflows.",
+    title: "Control Panel",
+    body: "Where you plug in your accounts. Two subtabs: Connect and Manage. Every token is encrypted with the OS keychain (Electron safeStorage) and only ever sent to that service — never bundled with the app, never relayed through us.",
   },
+  {
+    nav: { kind: "control" },
+    title: "Connect — credentials + launchers",
+    body: "Each service has a card: token field, optional base URL, deep-link to the provider's token page. ElevenLabs + Pexels live here for NT5 broadcasts. Modrinth and Blockbench are launcher cards — no auth, just a Launch button.",
+  },
+  {
+    nav: { kind: "control" },
+    title: "Manage — the live stat-board",
+    body: "Once a service is connected, Manage pulls real data in parallel: GitHub repo count + top 5 stars, Vercel deployments across personal + every team scope, Cloudflare zones (active/total), Tailscale device count + last-24h online, n8n workflows (active/total). Refresh-all hits every backend at once.",
+  },
+
+  // Terminal — overview + multi-shell
   {
     nav: { kind: "terminal" },
     selector: '[data-tour="rail-terminal"]',
     side: "right",
-    title: "Terminal · multi-shell",
-    body: "Real PowerShell sessions over node-pty. Tab strip at the top — open as many shells as you want, switch between them, they survive Hub tab switches and keep accumulating output.",
+    title: "Terminal",
+    body: "Real PowerShell on Windows; your default shell elsewhere. Backed by node-pty so colors, control codes, and tab completion all work.",
   },
+  {
+    nav: { kind: "terminal" },
+    title: "Multi-shell tabs",
+    body: "+ new shell opens as many parallel sessions as you want. Each PTY is keyed by ID in the main process, so switching to another Hub tab does NOT kill it — the shell keeps running. Comes back with the same scrollback.",
+  },
+
+  // AI Group Chat — overview + chat + projects
   {
     nav: { kind: "ai" },
     selector: '[data-tour="rail-ai"]',
     side: "right",
-    title: "AI Group Chat + Projects",
-    body: "BroBot and the NT5 anchors (Voss, Zip, Dex, Lena, Orion) are house-model agents and only chime in when you @mention them. @Everyone routes to the outside crew (Claude, Gemini, Codex, OpenCode, Hermes) you wire via CLI. Agents @mention each other to coordinate. The Projects tab lets you assign a goal + tasks + deadline to a specific subset of the crew.",
+    title: "AI Group Chat",
+    body: "Three sub-views: chat, projects, configure. House-model agents (BroBot, Voss, Zip, Dex, Lena, Orion) are silent — they only chime in when you @mention them. @Everyone routes to the outside crew (Claude, Gemini, Codex, OpenCode, Hermes) you wire via CLI.",
   },
+  {
+    nav: { kind: "ai" },
+    title: "AI-to-AI mentions",
+    body: "After every turn we scan the agent's reply for @mentions of OTHER agents and chain another round. Capped at 3 hops so they can't talk forever. Lets the crew actually coordinate instead of just answering you in isolation.",
+  },
+  {
+    nav: { kind: "ai" },
+    title: "Projects subtab",
+    body: "Hit the projects pill at the top. + New project lets you set a title, end goal, assigned agents, task checklist, owner preferences, and an optional deadline. The crew sees that context on every turn. Kickoff has every assigned agent file an opening plan.",
+  },
+
+  // Library
   {
     nav: { kind: "library" },
     selector: '[data-tour="rail-library"]',
     side: "right",
     title: "Library",
-    body: "Your Steam games auto-detected. Hover any game to customize its name, banner art, icon size, pin, or hide it. Modrinth and Blockbench moved to the Control Panel.",
+    body: "Steam-only now (Modrinth + Blockbench moved to the Control Panel). Auto-detected from your Steam install. Edit any tile: rename it, swap the banner URL, change icon size (S / M / L), pin, hide.",
   },
   {
     nav: { kind: "app", id: "nt5" },
     selector: '[data-tour="rail-app-nt5"]',
     side: "right",
     title: "NT5 · S.P.A.C.E. News",
-    body: "The actual NT5 site bundled offline. The Hub runs a background wire that generates fresh anchor articles via the local brain — Dex's gaming coverage tracks the live Origin Realms server pulse. Tap ⛶ on the broadcast bar to open the full studio view.",
+    body: "The actual NT5 site bundled offline. The Hub runs a background wire scheduler that calls the local model every N minutes (Settings → wire interval) and posts fresh anchor articles into the bundled site.",
+  },
+  {
+    nav: { kind: "app", id: "nt5" },
+    title: "Broadcast bar + full studio",
+    body: "The bar above the iframe is the on-air feed. Tap ▶ to hear the lead story — if you've connected ElevenLabs and mapped a voice per anchor (Settings → NT5 broadcast), you get a real anchor voice. Otherwise the OS's Web Speech voices, heuristic-matched. ⛶ opens the full studio: caption rail synced to audio, lower-third chyron, live ticker, and optional Pexels B-roll or DigitalBlueprint 3D backdrop.",
+  },
+  {
+    nav: { kind: "app", id: "nt5" },
+    title: "Dex's Origin Realms beat",
+    body: "Every wire run, we poll mcstatus.io for play.originrealms.com (current players / max / MOTD) and pipe it into the prompt before Dex files. His gaming articles actually reference what's happening on the server right now.",
   },
   {
     nav: { kind: "app", id: "halos" },
@@ -81,7 +140,12 @@ export const TOUR_STEPS: TourStep[] = [
     selector: '[data-tour="rail-app-blueprint"]',
     side: "right",
     title: "Digital Blueprint",
-    body: "three.js editor with full PBR materials, an LLM scene generator, per-object annotations that float over the model in 3D space, and a real-time atmosphere panel (sun azimuth + elevation, ambient, sky).",
+    body: "three.js editor with full PBR materials (metals / glass / glow / sheen / clearcoat), an LLM scene generator, walk-mode (WASD + mouse-look), and a real-time atmosphere panel — sun azimuth + elevation, ambient, sky color.",
+  },
+  {
+    nav: { kind: "app", id: "blueprint" },
+    title: "Annotations + scene persistence",
+    body: "Each object can carry a title + body in mesh.userData.annotation — they float in 3D space above the object via projected HTML labels. Toggle 'show all labels' or only-on-selection. The whole scene auto-saves to localStorage, so it shows up as a 3D backdrop on the NT5 broadcast if you enable that.",
   },
   {
     nav: { kind: "app", id: "brobot" },
@@ -95,21 +159,36 @@ export const TOUR_STEPS: TourStep[] = [
     selector: '[data-tour="rail-app-signalfinder"]',
     side: "right",
     title: "SignalFinder",
-    body: "Strategic-networking CRM. Pick your active goals (creator collabs / career / startup / community / mentorship / recruitment) and the scoring + LLM drafts weight everything toward what you're actually pursuing.",
+    body: "Strategic-networking CRM. Add targets (creators, devs, communities, mentors…). Pick your active goals (creator collabs / career / startup / community / mentorship / recruitment) and the scoring + LLM drafts weight everything toward what you're actually pursuing.",
+  },
+  {
+    nav: { kind: "app", id: "signalfinder" },
+    title: "Research before drafting",
+    body: "Hit Research on any target to pull a quick web snippet (DuckDuckGo HTML, no key) and pin it as visible context. The draft outreach prompt is required to reference ONE concrete thing from that research instead of inventing specifics. Style adapts per target — every responded outreach shifts the personalization engine.",
   },
   {
     nav: { kind: "settings" },
     selector: '[data-tour="rail-settings"]',
     side: "right",
     title: "Settings",
-    body: "Account, theme accents, the house-AI brain (status + redownload), background mode (Tray + run-on-startup for true 24/7), info widget toggles, search engine, home page. Most of the Hub's behavior lives here.",
+    body: "Account, theme picker (8 looks including animated vibes), house-AI brain status + redownload, background mode (Tray + run-on-startup for true 24/7), info widget toggles, NT5 broadcast voice mapping + B-roll, search engine, home page. Most of the Hub's behavior is configurable here.",
+  },
+  {
+    nav: { kind: "settings" },
+    title: "Themes — vibes, not just colors",
+    body: "Eight themes: Crimson, Cyber, Toxic, Royal, Midnight, Rose, Retro (CRT scanlines + VT323 display font), Futuristic (holographic shimmer + Orbitron), Prehistoric (parchment overlay + Cormorant serif), Oddball (hue-cycling glow + Comic Sans). Each one drops accent colors, a display font, and an animated body vibe layer.",
   },
   {
     nav: { kind: "browser" },
     selector: '[data-tour="floating-info"]',
     side: "left",
     title: "Floating info",
-    body: "On-screen cards: NT5 breaking, the anchor desk's latest, Origin Realms server pulse. Right-click any card to dismiss it; toggle per-type in Settings.",
+    body: "Five card types that rotate every 11s: NT5 Breaking, Anchor-desk Filed, Origin Realms live pulse, System pulse (CPU / mem / free disk), and Crew chatter (last group-chat speaker + snippet). Right-click any card to dismiss it for the session; per-type Settings toggles.",
+  },
+  {
+    nav: { kind: "browser" },
+    title: "OST player",
+    body: "Bottom-left corner of the ticker. 18 procedural tracks — open the dropdown to pick. Distinct drum patterns (house / trip / hard / soft / tribal / off), arpeggios, and brand-color tiles. Volume slider, ‹ / ▶ / ›.",
   },
   {
     title: "That's the tour",
