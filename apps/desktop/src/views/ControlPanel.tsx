@@ -157,7 +157,7 @@ export function ControlPanel() {
   return (
     <div className="stage">
       <div className="mono" style={{ padding: "10px 14px", borderBottom: "1px solid var(--line)", fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: "var(--mute)", display: "flex", justifyContent: "space-between" }}>
-        <span>The Control Panel <span className="glow-text">· everything in one place</span></span>
+        <span>Control Panel</span>
         <span style={{ color: "var(--pink)" }}>{connected} / {SERVICES.length} connected</span>
       </div>
 

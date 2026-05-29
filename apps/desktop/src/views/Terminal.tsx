@@ -69,7 +69,7 @@ export function TerminalView() {
           color: "var(--mute)",
         }}
       >
-        The Terminal <span className="glow-text">· PowerShell</span>
+        Terminal
       </div>
       {err && (
         <div className="placeholder">

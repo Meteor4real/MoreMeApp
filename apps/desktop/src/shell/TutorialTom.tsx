@@ -103,7 +103,7 @@ export function TutorialTom() {
       {open && (
         <div className="panel" style={{ position: "fixed", left: 74, bottom: 92, zIndex: 10000, width: 380, maxWidth: "85vw", height: 460, maxHeight: "75vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div className="mono" style={{ padding: "10px 12px", borderBottom: "1px solid var(--line)", fontSize: 12, letterSpacing: 1, color: "var(--mute)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span>Tutorial Tom <span className="glow-text">· your guide</span></span>
+            <span>Tutorial Tom</span>
             <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", color: "var(--mute)", cursor: "pointer" }}>✕</button>
           </div>
           <div style={{ display: "flex", gap: 6, padding: 8, borderBottom: "1px solid var(--line)" }}>
