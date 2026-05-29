@@ -53,6 +53,9 @@ resolve. `main` should always be releasable.
 
 - **NO EMOJIS.** Anywhere in the UI. Use the theme's geometric marks
   (◆ ◈ › ◇ ▲ etc.) or text monograms instead.
+- **Direct-to-main, always.** Don't open PRs for review; commit on the
+  working branch, push, and merge to `main` so the owner can cut a release.
+  No "ready-for-review" gate, no waiting on CI to be reviewed — just ship.
 - **No shells, no "first prototype", no fake data.** Real or an honest
   "needs setup" state. "THIS IS THE REAL DAMN THING." No cutting corners.
 - **Implement the "coming soon" items**, don't leave them as placeholders.
