@@ -407,40 +407,89 @@ export function DigitalBlueprint() {
   }
 
   async function generate() {
-    setGenStatus("Generating…");
-    const res = await houseChat(
-      "You are the DigitalBlueprint scene generator — like Blender, assembling complex models, textures, and shaders from primitives. Reply ONLY with a JSON array, no prose: " +
-        '[{"shape":"box|sphere|cylinder|cone|torus|plane","position":[x,y,z],"scale":[x,y,z],"rotation":[degX,degY,degZ],"color":"#hex","metalness":0-1,"roughness":0-1,"clearcoat":0-1,"ior":1-2.5,"sheen":0-1,"transmission":0-1,"opacity":0-1,"emissive":"#hex","emissiveIntensity":0-4,"texture":"none|checker|grid|stripes|noise|dots"}]. ' +
-        "Compose MANY primitives (up to 24) into one detailed model — assemble parts (legs, panels, rings, cores, struts) using rotation + scale. Use rich PBR: metals (metalness≈1, low roughness, some clearcoat), glass (transmission≈1, ior≈1.5, opacity<1), glowing cores (emissive + intensity), fabric (sheen). y>=0. Be ambitious and detailed.",
-      `Build: ${prompt}`
-    );
-    if (!res.ok) { setGenStatus(res.error || "Generation failed."); return; }
-    let t = (res.text || "").trim().replace(/^```(json)?/i, "").replace(/```$/, "");
-    const a = t.indexOf("["), b = t.lastIndexOf("]");
-    if (a >= 0 && b > a) t = t.slice(a, b + 1);
-    try {
-      const spec = JSON.parse(t) as Array<Record<string, unknown>>;
-      let n = 0;
-      for (const o of spec.slice(0, 24)) {
-        const shape = (o.shape as Shape) || "box";
-        const pos = (o.position as number[]) || [0, 0.6, 0];
-        const scl = (o.scale as number[]) || [1, 1, 1];
-        const rot = (o.rotation as number[]) || [0, 0, 0];
-        addShape(shape, {
-          color: o.color as string, metalness: o.metalness as number, roughness: o.roughness as number,
-          clearcoat: o.clearcoat as number, ior: o.ior as number, sheen: o.sheen as number,
-          emissive: o.emissive as string, emissiveIntensity: o.emissiveIntensity as number,
-          opacity: o.opacity as number, transmission: o.transmission as number,
-          texture: o.texture as string,
-          px: pos[0], py: pos[1], pz: pos[2], sx: scl[0], sy: scl[1], sz: scl[2],
-          rx: rot[0], ry: rot[1], rz: rot[2],
-        });
-        n++;
+    setGenStatus("Checking the local brain…");
+    const st = await window.hub.llm.status();
+    if (!st.ready) {
+      if (st.downloading) {
+        setGenStatus(`Local brain is still downloading (${Math.round(st.progress || 0)}%). Try again once it finishes; it's a one-time download.`);
+      } else {
+        setGenStatus("Local brain isn't ready yet. Open Settings → House AI brain → Download now, then retry.");
       }
-      setGenStatus(`Generated ${n} object(s).`);
-    } catch {
-      setGenStatus("Could not parse the generated scene.");
+      return;
     }
+    setGenStatus("Generating…");
+    // Smaller schema = a 3B model can actually produce valid JSON. Shape +
+    // position + color is the floor; metalness / roughness / emissive are
+    // optional knobs. The inspector lets the user dial materials further.
+    const system =
+      "You compose 3D scenes by emitting a JSON array of primitives. " +
+      'Reply with ONLY a JSON array, no prose, no markdown fences. Each item: ' +
+      '{"shape":"box"|"sphere"|"cylinder"|"cone"|"torus"|"plane","pos":[x,y,z],"scale":[sx,sy,sz],"color":"#rrggbb","metal":0-1,"rough":0-1,"glow":"#rrggbb","glowI":0-3}. ' +
+      "Use 6-18 primitives. Stack them to suggest a real object. y>=0. metal+rough optional. glow optional. " +
+      "Example: [{\"shape\":\"box\",\"pos\":[0,0.5,0],\"scale\":[2,1,1],\"color\":\"#888888\",\"metal\":0.6,\"rough\":0.4}]";
+
+    let raw = "";
+    let parsed: unknown[] | null = null;
+    for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
+      const res = await houseChat(system, `Build: ${prompt}\n\nRespond with the JSON array only.`);
+      if (!res.ok) { setGenStatus(`Local brain error: ${res.error}`); return; }
+      raw = res.text || "";
+      parsed = extractJsonArray(raw);
+      if (!parsed && attempt === 0) {
+        setGenStatus("First pass wasn't valid JSON. Retrying…");
+      }
+    }
+    if (!parsed) {
+      setGenStatus(`Local brain produced something we couldn't parse as a scene. Raw output: ${raw.slice(0, 200)}…`);
+      return;
+    }
+    let n = 0;
+    for (const o of (parsed as Array<Record<string, unknown>>).slice(0, 24)) {
+      const shape = (o.shape as Shape) || "box";
+      const pos = (Array.isArray(o.pos) ? o.pos : Array.isArray(o.position) ? o.position : [0, 0.6, 0]) as number[];
+      const scl = (Array.isArray(o.scale) ? o.scale : [1, 1, 1]) as number[];
+      const rot = (Array.isArray(o.rotation) ? o.rotation : [0, 0, 0]) as number[];
+      addShape(shape, {
+        color: (o.color as string) || "#9ca3af",
+        metalness: numOr(o.metal ?? o.metalness, 0.2),
+        roughness: numOr(o.rough ?? o.roughness, 0.5),
+        emissive: (o.glow as string) ?? (o.emissive as string) ?? "#000000",
+        emissiveIntensity: numOr(o.glowI ?? o.emissiveIntensity, 0),
+        px: numOr(pos[0], 0), py: Math.max(0, numOr(pos[1], 0.5)), pz: numOr(pos[2], 0),
+        sx: numOr(scl[0], 1), sy: numOr(scl[1], 1), sz: numOr(scl[2], 1),
+        rx: numOr(rot[0], 0), ry: numOr(rot[1], 0), rz: numOr(rot[2], 0),
+      });
+      n++;
+    }
+    setGenStatus(n > 0 ? `Generated ${n} object${n === 1 ? "" : "s"}.` : "No usable primitives in the parsed JSON.");
+  }
+  function numOr(v: unknown, fallback: number): number {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  // Resilient JSON-array extractor: strips ```code fences```, finds the first
+  // balanced [...] pair (so trailing text doesn't trip JSON.parse), and tries
+  // a couple of fix-ups (trailing commas, single-quoted strings).
+  function extractJsonArray(text: string): unknown[] | null {
+    let t = text.trim().replace(/^```(json)?/i, "").replace(/```$/i, "").trim();
+    const start = t.indexOf("[");
+    if (start === -1) return null;
+    let depth = 0;
+    let end = -1;
+    for (let i = start; i < t.length; i++) {
+      const c = t[i];
+      if (c === "[") depth++;
+      else if (c === "]") { depth--; if (depth === 0) { end = i; break; } }
+    }
+    if (end === -1) return null;
+    let body = t.slice(start, end + 1);
+    // common LLM goofs
+    body = body.replace(/,\s*([\]}])/g, "$1"); // trailing commas
+    body = body.replace(/([{,]\s*)([a-zA-Z_]+)(\s*:)/g, '$1"$2"$3'); // bare keys
+    try { const v = JSON.parse(body); return Array.isArray(v) ? v : null; }
+    catch { /* try once more with single→double quotes */ }
+    try { const v = JSON.parse(body.replace(/'([^']*)'/g, '"$1"')); return Array.isArray(v) ? v : null; }
+    catch { return null; }
   }
 
   const shapes: Shape[] = ["box", "sphere", "cylinder", "cone", "torus", "plane"];

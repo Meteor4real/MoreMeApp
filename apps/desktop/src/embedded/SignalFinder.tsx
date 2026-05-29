@@ -353,6 +353,33 @@ function Detail({
   const fu = nextFollowup(t);
   const [draft, setDraft] = useState("");
   const [drafting, setDrafting] = useState(false);
+  const [research, setResearch] = useState<{ summary: string; sources: { title: string; url: string }[] } | null>(null);
+  const [researching, setResearching] = useState(false);
+
+  // Pull a quick research snippet from the web so the local model isn't
+  // guessing who this person is. DDG HTML endpoint via the main process
+  // (CORS-free, no key). The first ~3 result titles + snippets are summarized
+  // and fed as context into the draft prompt.
+  async function pullResearch() {
+    setResearching(true);
+    try {
+      const q = `${t.name}${t.platform ? " " + t.platform : ""}${t.niche ? " " + t.niche : ""}`;
+      const r = await window.hub.net({
+        method: "GET",
+        url: "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(q),
+        headers: { "User-Agent": "Mozilla/5.0 NetworkChuckHub/1.0" },
+      });
+      if (!r.ok) { setResearch({ summary: "(search backend unreachable)", sources: [] }); return; }
+      const html = typeof r.data === "string" ? r.data : "";
+      const hits = parseDdgLite(html).slice(0, 4);
+      const summary = hits.map((h, i) => `${i + 1}. ${h.title} — ${h.snippet}`).join("\n");
+      setResearch({ summary: summary || "(no relevant results)", sources: hits.map((h) => ({ title: h.title, url: h.url })) });
+    } catch (e) {
+      setResearch({ summary: `(research failed: ${String(e)})`, sources: [] });
+    } finally {
+      setResearching(false);
+    }
+  }
 
   async function draftOutreach() {
     setDrafting(true);
@@ -367,16 +394,35 @@ function Detail({
       ? activeGoals.map((g) => goalLabel(g)).join(", ")
       : "general networking";
     const targetGoalText = t.goalAlignment.length > 0 ? t.goalAlignment.map(goalLabel).join(" + ") : "open";
+    const researchBlock = research?.summary
+      ? `\nResearch on this person (recent web hits — use to pick ONE specific reference, don't fabricate):\n${research.summary}`
+      : "\nNo web research yet — be careful not to invent specifics about them.";
     const res = await houseChat(
-      "You are SignalFinder's outreach assistant. Write one short, high-response-likelihood opening message to reach a target. Reply with ONLY the message — no preamble, no quotes, no signature.",
+      "You are SignalFinder's outreach assistant. Write one short, high-response-likelihood opening message to reach a target. Reply with ONLY the message — no preamble, no quotes, no signature. Reference one CONCRETE thing about them (from the research if available); never invent specifics.",
       `My active networking goals: ${goalContext}.
 Target: ${t.name} (${t.type})${t.niche ? ", niche: " + t.niche : ""}${t.platform ? ", on " + t.platform : ""}.
 What this target offers me: ${targetGoalText}.
 Specific context: ${t.goal || "(none)"}.
-Style: ${styleHint}.`
+Style: ${styleHint}.${researchBlock}`
     );
     setDrafting(false);
     setDraft(res.ok ? res.text || "" : `[model error] ${res.error}`);
+  }
+
+  function parseDdgLite(html: string): { title: string; url: string; snippet: string }[] {
+    const out: { title: string; url: string; snippet: string }[] = [];
+    const re = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:<a\s+class="result__snippet"[^>]*>([\s\S]*?)<\/a>)?/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html))) {
+      if (out.length >= 6) break;
+      let url = m[1];
+      const enc = url.match(/[?&]uddg=([^&]+)/);
+      if (enc) { try { url = decodeURIComponent(enc[1]); } catch { /* keep raw */ } }
+      const title = m[2].replace(/<[^>]+>/g, "").trim();
+      const snippet = (m[3] || "").replace(/<[^>]+>/g, "").trim().slice(0, 220);
+      if (title && url) out.push({ title, url, snippet });
+    }
+    return out;
   }
 
   const bars: [string, number][] = [
@@ -440,13 +486,31 @@ Style: ${styleHint}.`
       </div>
 
       <div className="panel" style={{ padding: 12, marginTop: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <div className="mono" style={{ fontSize: 12, letterSpacing: 1, color: "var(--mute)" }}>
             AI ASSISTANT
             {styleRecommend && <span className="glow-text"> · {styleRecommend} recommended</span>}
           </div>
-          <button className="btn" disabled={drafting} onClick={() => void draftOutreach()}>{drafting ? "…" : "Draft outreach"}</button>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button className="btn" disabled={researching} onClick={() => void pullResearch()} title="Pull a quick web snippet about this person — fed into the draft so the model isn't guessing">
+              {researching ? "…" : research ? "Refresh research" : "Research"}
+            </button>
+            <button className="btn" disabled={drafting} onClick={() => void draftOutreach()}>{drafting ? "…" : "Draft outreach"}</button>
+          </div>
         </div>
+        {research && (
+          <div style={{ marginTop: 10, fontSize: 11, color: "var(--mute)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+            <div className="mono" style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 }}>Research context</div>
+            {research.summary}
+            {research.sources.length > 0 && (
+              <div style={{ marginTop: 6 }}>
+                {research.sources.map((s, i) => (
+                  <a key={i} href={s.url} target="_blank" rel="noreferrer" style={{ display: "block", fontSize: 11, color: "var(--pink)", textDecoration: "none", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>↗ {s.title}</a>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {draft && (
           <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={5}
             style={{ width: "100%", marginTop: 10, background: "rgba(0,0,0,0.5)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink)", padding: 10, fontSize: 13, fontFamily: "inherit", resize: "vertical", outline: "none" }} />
