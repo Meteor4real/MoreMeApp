@@ -214,17 +214,13 @@ export function SignalFinder() {
 
   return (
     <div className="stage">
-      <div
-        className="mono"
-        style={{
-          padding: "10px 14px", borderBottom: "1px solid var(--line)", fontSize: 12,
-          letterSpacing: 2, textTransform: "uppercase", color: "var(--mute)",
-          display: "flex", justifyContent: "space-between", alignItems: "center",
-        }}
-      >
-        <span>SignalFinder</span>
-        <button className="btn" onClick={() => setAdding((a) => !a)}>{adding ? "Close" : "+ Target"}</button>
-      </div>
+      <SignalHeader
+        total={targets.length}
+        warm={targets.filter((t) => t.outreach.some((o) => o.responded)).length}
+        topScore={ranked.length ? score(ranked[0], prefs.goals).overall : 0}
+        adding={adding}
+        onToggleAdd={() => setAdding((a) => !a)}
+      />
 
       {/* Networking goals (top-level state — drives scoring + LLM drafts) */}
       <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--line)" }}>
@@ -524,6 +520,63 @@ Style: ${styleHint}.${researchBlock}`
 
 function goalLabel(g: NetworkGoalId): string {
   return NETWORK_GOALS.find((x) => x.id === g)?.label ?? g;
+}
+
+// Branded, hub-themed header with the SignalFinder radar glyph, an animated
+// sweep, and a live stat strip — replaces the old plain text label.
+function SignalHeader({ total, warm, topScore, adding, onToggleAdd }: { total: number; warm: number; topScore: number; adding: boolean; onToggleAdd: () => void }) {
+  return (
+    <div
+      style={{
+        display: "flex", alignItems: "center", gap: 14, padding: "10px 16px",
+        borderBottom: "1px solid rgba(255,87,119,0.35)",
+        background: "linear-gradient(90deg, #160a10 0%, #1a0c12 30%, #120a10 75%, #0c0810 100%)",
+        position: "relative", overflow: "hidden",
+      }}
+    >
+      <svg width={42} height={42} viewBox="0 0 64 64" aria-label="SignalFinder">
+        <defs>
+          <radialGradient id="sf-grad" cx="50%" cy="50%" r="50%">
+            <stop offset="0" stopColor="#ff7a2d" />
+            <stop offset="0.6" stopColor="#ff3355" />
+            <stop offset="1" stopColor="#7c1d2e" />
+          </radialGradient>
+        </defs>
+        <circle cx="32" cy="32" r="28" fill="#0c0608" stroke="url(#sf-grad)" strokeWidth="2" />
+        {[20, 13, 6].map((r, i) => (
+          <circle key={i} cx="32" cy="32" r={r} fill="none" stroke="#ff5577" strokeWidth="1" opacity={0.25 + i * 0.18} />
+        ))}
+        <circle cx="32" cy="32" r="3" fill="url(#sf-grad)" />
+        {/* sweeping radar arm */}
+        <g style={{ transformOrigin: "32px 32px", animation: "sf-sweep 3.2s linear infinite" }}>
+          <line x1="32" y1="32" x2="32" y2="6" stroke="#ff7a2d" strokeWidth="2" />
+          <circle cx="48" cy="18" r="2.4" fill="#ffd166" />
+        </g>
+      </svg>
+      <div style={{ lineHeight: 1.15 }}>
+        <div className="glow-text" style={{ fontSize: 16, letterSpacing: 3, textTransform: "uppercase", fontWeight: 800 }}>SignalFinder</div>
+        <div className="mono" style={{ fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "var(--mute)", marginTop: 2 }}>
+          Opportunity radar · personalized outreach
+        </div>
+      </div>
+      <div style={{ flex: 1 }} />
+      <div style={{ display: "flex", gap: 18, marginRight: 8 }}>
+        <Stat label="targets" value={total} />
+        <Stat label="warm" value={warm} />
+        <Stat label="top score" value={topScore} />
+      </div>
+      <button className="btn" onClick={onToggleAdd}>{adding ? "Close" : "+ Target"}</button>
+      <style>{`@keyframes sf-sweep { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div style={{ textAlign: "right" }}>
+      <div className="mono glow-text" style={{ fontSize: 18, lineHeight: 1 }}>{value}</div>
+      <div className="mono" style={{ fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: "var(--mute)" }}>{label}</div>
+    </div>
+  );
 }
 
 const inp: React.CSSProperties = {
