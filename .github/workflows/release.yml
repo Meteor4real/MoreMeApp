@@ -1,9 +1,17 @@
 name: Release
 
 on:
+  # Fires when a tag is pushed via git.
   push:
     tags:
       - "v*"
+  # Fires when a release is created/published through the GitHub web UI.
+  # This is the important one: creating a release in the UI does NOT
+  # reliably fire the push-tag event above, which is why earlier releases
+  # ended up with zero attached installers.
+  release:
+    types: [published]
+  # Manual run from the Actions tab.
   workflow_dispatch:
     inputs:
       tag:
@@ -90,7 +98,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          tag_name: ${{ github.event.inputs.tag || github.event.release.tag_name || github.ref_name }}
           draft: false
           prerelease: false
           # Don't fail the whole job if a glob is empty — let other globs
@@ -105,7 +113,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          tag_name: ${{ github.event.inputs.tag || github.event.release.tag_name || github.ref_name }}
           draft: false
           prerelease: false
           fail_on_unmatched_files: false
@@ -117,7 +125,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          tag_name: ${{ github.event.inputs.tag || github.event.release.tag_name || github.ref_name }}
           draft: false
           prerelease: false
           fail_on_unmatched_files: false
