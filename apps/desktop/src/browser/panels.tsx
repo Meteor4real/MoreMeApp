@@ -265,55 +265,161 @@ const inp: React.CSSProperties = {
 // with the Hub's own chrome — the engine never sees our user, the user
 // never sees DuckDuckGo's page.
 type SearchHit = { title: string; url: string; snippet: string };
+type SearchMode = "web" | "images" | "videos" | "news" | "shopping";
+
+const SEARCH_TABS: { id: SearchMode; label: string }[] = [
+  { id: "web",      label: "Web" },
+  { id: "images",   label: "Images" },
+  { id: "videos",   label: "Videos" },
+  { id: "news",     label: "News" },
+  { id: "shopping", label: "Shopping" },
+];
+
+type ImgHit = { thumb: string; image: string; source: string; title: string };
+type VidHit = { url: string; title: string; thumb: string; duration: string; source: string };
+type ShopHit = { title: string; price: string; source: string; url: string; thumb?: string };
+
 export function SearchPanel({ query, onGo }: { query: string; onGo: (url: string) => void }) {
+  const [mode, setMode] = useState<SearchMode>("web");
   const [hits, setHits] = useState<SearchHit[]>([]);
+  const [news, setNews] = useState<SearchHit[]>([]);
+  const [images, setImages] = useState<ImgHit[]>([]);
+  const [videos, setVideos] = useState<VidHit[]>([]);
+  const [shopping, setShopping] = useState<ShopHit[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState(query);
-  useEffect(() => { setQ(query); void run(query); }, [query]);
+  useEffect(() => { setQ(query); void run(query, mode); }, [query, mode]);
 
-  async function run(text: string) {
+  async function run(text: string, m: SearchMode) {
     setErr(null);
-    if (!text.trim()) { setHits([]); return; }
+    if (!text.trim()) { setHits([]); setImages([]); setVideos([]); setNews([]); setShopping([]); return; }
     setBusy(true);
     try {
-      const r = await window.hub.net({
-        method: "GET",
-        url: "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(text),
-        headers: { "User-Agent": "Mozilla/5.0 NetworkChuckHub/1.0" },
-      });
-      if (!r.ok) { setErr(`Search backend returned ${r.status}`); setHits([]); return; }
-      const html = typeof r.data === "string" ? r.data : "";
-      setHits(parseDdg(html));
-    } catch (e) {
-      setErr(String(e));
-    } finally {
-      setBusy(false);
-    }
+      if (m === "web") {
+        const r = await window.hub.net({ method: "GET", url: "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(text), headers: { "User-Agent": "Mozilla/5.0 NetworkChuckHub/1.0" } });
+        if (!r.ok) { setErr(`Search backend returned ${r.status}`); setHits([]); return; }
+        setHits(parseDdg(typeof r.data === "string" ? r.data : ""));
+      } else if (m === "news") {
+        const r = await window.hub.net({ method: "GET", url: "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(text + " news") + "&iar=news", headers: { "User-Agent": "Mozilla/5.0 NetworkChuckHub/1.0" } });
+        if (!r.ok) { setErr(`News backend returned ${r.status}`); setNews([]); return; }
+        setNews(parseDdg(typeof r.data === "string" ? r.data : ""));
+      } else if (m === "images") {
+        // DDG image search: hit i.js for JSON results (needs a vqd token from the HTML page first).
+        const tok = await window.hub.net({ method: "GET", url: "https://duckduckgo.com/?q=" + encodeURIComponent(text) + "&t=h_&iax=images&ia=images", headers: { "User-Agent": "Mozilla/5.0 NetworkChuckHub/1.0" } });
+        const html = typeof tok.data === "string" ? tok.data : "";
+        const v = html.match(/vqd=['"]?([\d-]+)['"]?/) || html.match(/vqd=([\d-]+)&/);
+        const vqd = v ? v[1] : "";
+        if (!vqd) { setErr("Couldn't initialise image search."); setImages([]); return; }
+        const r = await window.hub.net({ method: "GET", url: `https://duckduckgo.com/i.js?q=${encodeURIComponent(text)}&o=json&vqd=${vqd}&l=us-en&p=-1`, headers: { "User-Agent": "Mozilla/5.0 NetworkChuckHub/1.0", Referer: "https://duckduckgo.com/" } });
+        const j = (typeof r.data === "object" ? r.data : null) as { results?: { thumbnail: string; image: string; url: string; title: string }[] } | null;
+        const items = (j?.results || []).slice(0, 40).map((x): ImgHit => ({ thumb: x.thumbnail, image: x.image, source: x.url, title: x.title }));
+        setImages(items);
+      } else if (m === "videos") {
+        const tok = await window.hub.net({ method: "GET", url: "https://duckduckgo.com/?q=" + encodeURIComponent(text) + "&iax=videos&ia=videos", headers: { "User-Agent": "Mozilla/5.0 NetworkChuckHub/1.0" } });
+        const html = typeof tok.data === "string" ? tok.data : "";
+        const v = html.match(/vqd=['"]?([\d-]+)['"]?/) || html.match(/vqd=([\d-]+)&/);
+        const vqd = v ? v[1] : "";
+        if (!vqd) { setErr("Couldn't initialise video search."); setVideos([]); return; }
+        const r = await window.hub.net({ method: "GET", url: `https://duckduckgo.com/v.js?q=${encodeURIComponent(text)}&o=json&vqd=${vqd}&l=us-en`, headers: { "User-Agent": "Mozilla/5.0 NetworkChuckHub/1.0", Referer: "https://duckduckgo.com/" } });
+        const j = (typeof r.data === "object" ? r.data : null) as { results?: { content: string; title: string; images?: { medium?: string; small?: string }; duration?: string; publisher?: string }[] } | null;
+        setVideos((j?.results || []).slice(0, 24).map((x) => ({ url: x.content, title: x.title, thumb: x.images?.medium || x.images?.small || "", duration: x.duration || "", source: x.publisher || "" })));
+      } else if (m === "shopping") {
+        // No first-party shopping API on DDG; use a web-style search with a shopping qualifier.
+        const r = await window.hub.net({ method: "GET", url: "https://html.duckduckgo.com/html/?q=" + encodeURIComponent("buy " + text + " price"), headers: { "User-Agent": "Mozilla/5.0 NetworkChuckHub/1.0" } });
+        if (!r.ok) { setErr(`Shopping backend returned ${r.status}`); setShopping([]); return; }
+        const raw = parseDdg(typeof r.data === "string" ? r.data : "");
+        // Heuristic: pull a $-marked price from the snippet if present.
+        const items: ShopHit[] = raw.slice(0, 24).map((h) => {
+          const pm = (h.snippet || "").match(/\$[\d.,]+(?:\.\d+)?/);
+          return { title: h.title, price: pm ? pm[0] : "", source: new URL(h.url, "https://x.x").hostname.replace(/^www\./, ""), url: h.url };
+        });
+        setShopping(items);
+      }
+    } catch (e) { setErr(String(e)); } finally { setBusy(false); }
   }
 
   return (
     <div style={wrap}>
-      <Header title={`Search · ${query}`} sub="Results fetched from DuckDuckGo's HTML endpoint and rendered with the Hub's own chrome — no third-party UI on screen." />
+      <Header title={`Search · ${query}`} sub="Web, Images, Videos, News, and Shopping — all rendered with the Hub's own chrome on top of DuckDuckGo. No third-party UI on screen." />
       <div style={{ display: "flex", gap: 8 }}>
         <input style={inp} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") onGo("about:search?q=" + encodeURIComponent(q)); }} placeholder="search again" />
         <button className="btn" onClick={() => onGo("about:search?q=" + encodeURIComponent(q))}>Go</button>
       </div>
-      {err && <div style={{ ...cardStyle, color: "var(--mute)" }}>Couldn&apos;t reach the engine: {err}</div>}
-      {!err && !busy && hits.length === 0 && <div style={{ ...cardStyle, color: "var(--mute)" }}>No results.</div>}
-      {busy && <div style={{ ...cardStyle, color: "var(--mute)" }}>Searching…</div>}
-      <div style={cardStyle}>
-        {hits.map((h, i) => (
-          <div key={i} style={{ ...rowStyle, alignItems: "flex-start" }}>
-            <div style={{ flex: 1, cursor: "pointer" }} onClick={() => onGo(h.url)}>
-              <div style={{ color: "var(--pink)", fontSize: 14, fontWeight: 600 }}>{h.title || h.url}</div>
-              <div style={{ fontSize: 11, color: "var(--mute)", marginTop: 2 }}>{h.url}</div>
-              {h.snippet && <div style={{ fontSize: 12, color: "var(--ink)", opacity: 0.85, marginTop: 6, lineHeight: 1.4 }}>{h.snippet}</div>}
-            </div>
-            <button className="btn" onClick={() => onGo(h.url)}>Open</button>
-          </div>
+      <div style={{ display: "flex", gap: 6, margin: "8px 0 0" }}>
+        {SEARCH_TABS.map((t) => (
+          <button key={t.id} className="btn" style={{ padding: "4px 12px", color: mode === t.id ? "var(--pink)" : undefined, borderColor: mode === t.id ? "rgba(255,87,119,0.6)" : undefined }} onClick={() => setMode(t.id)}>{t.label}</button>
         ))}
       </div>
+      {err && <div style={{ ...cardStyle, color: "var(--mute)" }}>Couldn&apos;t reach the engine: {err}</div>}
+      {busy && <div style={{ ...cardStyle, color: "var(--mute)" }}>Searching…</div>}
+      {!busy && !err && mode === "web" && (
+        <div style={cardStyle}>
+          {hits.length === 0 ? <div style={{ color: "var(--mute)" }}>No results.</div> : hits.map((h, i) => (
+            <div key={i} style={{ ...rowStyle, alignItems: "flex-start" }}>
+              <div style={{ flex: 1, cursor: "pointer" }} onClick={() => onGo(h.url)}>
+                <div style={{ color: "var(--pink)", fontSize: 14, fontWeight: 600 }}>{h.title || h.url}</div>
+                <div style={{ fontSize: 11, color: "var(--mute)", marginTop: 2 }}>{h.url}</div>
+                {h.snippet && <div style={{ fontSize: 12, color: "var(--ink)", opacity: 0.85, marginTop: 6, lineHeight: 1.4 }}>{h.snippet}</div>}
+              </div>
+              <button className="btn" onClick={() => onGo(h.url)}>Open</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {!busy && !err && mode === "news" && (
+        <div style={cardStyle}>
+          {news.length === 0 ? <div style={{ color: "var(--mute)" }}>No news results.</div> : news.map((h, i) => (
+            <div key={i} style={{ ...rowStyle, alignItems: "flex-start" }}>
+              <div style={{ flex: 1, cursor: "pointer" }} onClick={() => onGo(h.url)}>
+                <div style={{ color: "var(--pink)", fontSize: 14, fontWeight: 600 }}>{h.title || h.url}</div>
+                <div style={{ fontSize: 11, color: "var(--mute)", marginTop: 2 }}>{h.url}</div>
+                {h.snippet && <div style={{ fontSize: 12, color: "var(--ink)", opacity: 0.85, marginTop: 6, lineHeight: 1.4 }}>{h.snippet}</div>}
+              </div>
+              <button className="btn" onClick={() => onGo(h.url)}>Open</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {!busy && !err && mode === "images" && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 8, padding: 14 }}>
+          {images.length === 0 ? <div style={{ color: "var(--mute)" }}>No image results.</div> : images.map((h, i) => (
+            <div key={i} onClick={() => onGo(h.image)} style={{ cursor: "pointer", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", background: "rgba(0,0,0,0.4)" }} title={h.title}>
+              <div style={{ aspectRatio: "1 / 1", background: `center / cover no-repeat url("${h.thumb}")` }} />
+              <div className="mono" style={{ fontSize: 10, color: "var(--mute)", padding: "4px 6px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(() => { try { return new URL(h.source).hostname.replace(/^www\./, ""); } catch { return ""; } })()}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {!busy && !err && mode === "videos" && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10, padding: 14 }}>
+          {videos.length === 0 ? <div style={{ color: "var(--mute)" }}>No video results.</div> : videos.map((v, i) => (
+            <div key={i} onClick={() => onGo(v.url)} style={{ cursor: "pointer", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", background: "rgba(0,0,0,0.4)" }}>
+              <div style={{ aspectRatio: "16 / 9", background: v.thumb ? `center / cover no-repeat url("${v.thumb}")` : "rgba(0,0,0,0.6)", position: "relative" }}>
+                {v.duration && <span style={{ position: "absolute", right: 4, bottom: 4, fontSize: 10, padding: "1px 4px", background: "rgba(0,0,0,0.7)", color: "white" }}>{v.duration}</span>}
+              </div>
+              <div style={{ padding: "6px 8px" }}>
+                <div style={{ fontSize: 12, color: "var(--ink)", lineHeight: 1.3, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const }}>{v.title}</div>
+                <div className="mono" style={{ fontSize: 10, color: "var(--mute)", marginTop: 3 }}>{v.source}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {!busy && !err && mode === "shopping" && (
+        <div style={cardStyle}>
+          {shopping.length === 0 ? <div style={{ color: "var(--mute)" }}>No shopping results.</div> : shopping.map((s, i) => (
+            <div key={i} style={{ ...rowStyle, alignItems: "flex-start" }}>
+              <div style={{ flex: 1, cursor: "pointer" }} onClick={() => onGo(s.url)}>
+                <div style={{ color: "var(--pink)", fontSize: 14, fontWeight: 600 }}>{s.title}</div>
+                <div style={{ fontSize: 11, color: "var(--mute)", marginTop: 2 }}>{s.source}</div>
+              </div>
+              {s.price && <div className="mono glow-text" style={{ fontSize: 16, marginLeft: 8 }}>{s.price}</div>}
+              <button className="btn" onClick={() => onGo(s.url)}>Open</button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

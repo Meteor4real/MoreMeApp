@@ -460,30 +460,31 @@ function registerIpc() {
     return { cpuPct, memPct, memFreeGb: memFree / 1024 / 1024 / 1024, diskFreeGb: diskFree / 1024 / 1024 / 1024, diskTotalGb: diskTotal / 1024 / 1024 / 1024 };
   });
 
-  // --- Media (ElevenLabs TTS + Pexels video) — uses the user's own keys.
-  //     Returns audio bytes / video metadata so the renderer can play / show.
+  // --- Media: anchor voices via the Hub voice service.
+  //     The Hub ships with its OWN voices — end users never plug in their
+  //     own ElevenLabs key. The desktop client calls a hosted proxy that
+  //     holds the key server-side; the proxy URL is configurable via env
+  //     so the owner can repoint it without shipping a new binary. If the
+  //     proxy is unreachable, the renderer falls back to Web Speech.
+  const VOICE_PROXY_BASE = process.env.NCHUB_VOICE_PROXY || "https://voice.networkchuckhub.app";
   ipcMain.handle("media:tts", async (_e, opts: { voiceId: string; text: string; model?: string }) => {
-    const cred = vaultGet("elevenlabs");
-    if (!cred.token) return { ok: false, error: "Connect ElevenLabs in the Control Panel first." };
     try {
-      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(opts.voiceId)}`, {
+      const r = await fetch(`${VOICE_PROXY_BASE}/tts`, {
         method: "POST",
-        headers: { "xi-api-key": cred.token, "Content-Type": "application/json", "Accept": "audio/mpeg" },
-        body: JSON.stringify({ text: opts.text, model_id: opts.model || "eleven_turbo_v2_5", voice_settings: { stability: 0.45, similarity_boost: 0.75 } }),
+        headers: { "Content-Type": "application/json", "Accept": "audio/mpeg" },
+        body: JSON.stringify({ voiceId: opts.voiceId, text: opts.text, model: opts.model || "eleven_turbo_v2_5" }),
       });
-      if (!r.ok) return { ok: false, error: `ElevenLabs ${r.status}: ${await r.text()}` };
+      if (!r.ok) return { ok: false, error: `Voice proxy ${r.status}` };
       const buf = Buffer.from(await r.arrayBuffer());
       return { ok: true, mime: "audio/mpeg", base64: buf.toString("base64") };
     } catch (err) { return { ok: false, error: String(err) }; }
   });
   ipcMain.handle("media:voices", async () => {
-    const cred = vaultGet("elevenlabs");
-    if (!cred.token) return { ok: false, error: "Connect ElevenLabs in the Control Panel first." };
     try {
-      const r = await fetch("https://api.elevenlabs.io/v1/voices", { headers: { "xi-api-key": cred.token } });
-      if (!r.ok) return { ok: false, error: `ElevenLabs ${r.status}` };
-      const j = await r.json() as { voices?: { voice_id: string; name: string; labels?: Record<string, string> }[] };
-      return { ok: true, voices: (j.voices || []).map((v) => ({ id: v.voice_id, name: v.name, labels: v.labels || {} })) };
+      const r = await fetch(`${VOICE_PROXY_BASE}/voices`);
+      if (!r.ok) return { ok: false, error: `Voice proxy ${r.status}` };
+      const j = await r.json() as { voices?: { id: string; name: string; labels?: Record<string, string> }[] };
+      return { ok: true, voices: (j.voices || []).map((v) => ({ id: v.id, name: v.name, labels: v.labels || {} })) };
     } catch (err) { return { ok: false, error: String(err) }; }
   });
   ipcMain.handle("media:pexelsVideo", async (_e, opts: { query: string; perPage?: number }) => {

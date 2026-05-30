@@ -179,6 +179,10 @@ export function Browser({
             placeholder="Search the web or enter a URL"
             spellCheck={false} />
           <button className="btn" title={starred ? "Remove bookmark" : "Add bookmark"} onClick={toggleBookmark} style={starred ? { color: "var(--orange)", borderColor: "rgba(255,122,45,0.6)" } : undefined}>★</button>
+          <button className="btn" title="Bookmarks" onClick={() => newTab("about:bookmarks")}>◇</button>
+          <button className="btn" title="History" onClick={() => newTab("about:history")}>↺</button>
+          <button className="btn" title="Downloads" onClick={() => newTab("about:downloads")}>▼</button>
+          <button className="btn" title="Passwords" onClick={() => newTab("about:passwords")}>◈</button>
           <button className="btn" title="Extensions" onClick={() => setMenuOpen((m) => m === "ext" ? null : "ext")}>⊞</button>
           <button className="btn" title="More" onClick={() => setMenuOpen((m) => m === "menu" ? null : "menu")}>⋮</button>
         </div>

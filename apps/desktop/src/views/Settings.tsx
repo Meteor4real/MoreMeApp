@@ -79,6 +79,33 @@ export function Settings({ onSignOut }: { onSignOut: () => void }) {
           <button className="btn" style={{ marginTop: 12 }} onClick={onSignOut}>Sign out</button>
         </section>
 
+        {/* Owner profile — fed into every AI prompt so the model knows the user. */}
+        <section className="panel" style={{ padding: 16 }}>
+          <div className="sec-title">About you</div>
+          <p style={{ fontSize: 12, color: "var(--mute)", marginTop: 6 }}>
+            Anything you put here is fed into every AI call as context. The bundled
+            local model is small — it doesn't always know who you are or what you're
+            into until you tell it. The more specific you are, the better the drafts
+            (SignalFinder outreach, BroBot chat, NT5 wire) will read.
+          </p>
+          <div style={{ marginTop: 10 }}>
+            <label style={lbl}>Your name</label>
+            <input value={prefs.ownerName} onChange={(e) => set("ownerName", e.target.value)} style={inp} placeholder="how the AI should refer to you" />
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <label style={lbl}>About you (one paragraph)</label>
+            <textarea value={prefs.ownerBio} onChange={(e) => set("ownerBio", e.target.value)} style={{ ...inp, minHeight: 56, resize: "vertical" as const }} placeholder="who you are, what you do, what you're building right now" />
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <label style={lbl}>Interests / passions</label>
+            <input value={prefs.ownerInterests} onChange={(e) => set("ownerInterests", e.target.value)} style={inp} placeholder="e.g. Minecraft, Origin Realms, custom RPG worlds, networking, homelab, NT5 lore" />
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <label style={lbl}>Stack / tools you use</label>
+            <input value={prefs.ownerStack} onChange={(e) => set("ownerStack", e.target.value)} style={inp} placeholder="e.g. Hostinger VPS, n8n, Tailscale, Vercel, Cloudflare, Modrinth, Blockbench" />
+          </div>
+        </section>
+
         {/* House AI model */}
         <section className="panel" style={{ padding: 16 }}>
           <div className="sec-title">House AI brain</div>
@@ -221,11 +248,10 @@ function NT5BroadcastSettings({ prefs, set }: { prefs: ReturnType<typeof loadPre
     <section className="panel" style={{ padding: 16 }}>
       <div className="sec-title">NT5 broadcast</div>
       <p style={{ fontSize: 12, color: "var(--mute)", marginTop: 6 }}>
-        Real anchor voices via ElevenLabs and stock B-roll via Pexels. Connect both in the
-        Control Panel; the broadcast bar falls back to the OS's built-in voices and a
-        starfield backdrop when keys aren't set.
+        Anchor voices ship with the Hub — no setup required. If the voice service is
+        unreachable, the broadcast falls back to your OS's built-in voices.
       </p>
-      <button className="btn" style={{ marginTop: 8 }} onClick={() => void loadVoices()} disabled={loading}>{loading ? "Loading…" : voices.length ? "Reload voices" : "Load ElevenLabs voices"}</button>
+      <button className="btn" style={{ marginTop: 8 }} onClick={() => void loadVoices()} disabled={loading}>{loading ? "Loading…" : voices.length ? "Reload voices" : "Load anchor voices"}</button>
       {err && <div style={{ fontSize: 11, color: "var(--mute)", marginTop: 6 }}>{err}</div>}
       {voices.length > 0 && (
         <div style={{ marginTop: 12 }}>
@@ -268,4 +294,13 @@ const inp: React.CSSProperties = {
   fontFamily: "ui-monospace, monospace",
   outline: "none",
   width: "100%",
+};
+
+const lbl: React.CSSProperties = {
+  display: "block",
+  fontSize: 11,
+  color: "var(--mute)",
+  letterSpacing: 1,
+  textTransform: "uppercase",
+  marginBottom: 4,
 };

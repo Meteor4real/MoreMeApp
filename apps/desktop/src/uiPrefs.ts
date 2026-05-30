@@ -24,6 +24,13 @@ export type UiPrefs = {
   brollEnabled: boolean;
   // NT5 broadcast — use a DigitalBlueprint scene as a 3D B-roll backdrop
   blueprintBackdrop: boolean;
+  // Owner profile — fed into every AI call as system context so the model
+  // actually knows who it's talking to (Minecraft fan, what they make, etc.)
+  // instead of guessing.
+  ownerName: string;
+  ownerInterests: string;       // free-text: games, hobbies, focus areas
+  ownerStack: string;           // free-text: tools, languages, services they use
+  ownerBio: string;             // free-text: one-paragraph about-me
 };
 
 export const DEFAULT_PREFS: UiPrefs = {
@@ -40,7 +47,28 @@ export const DEFAULT_PREFS: UiPrefs = {
   anchorVoices: { voss: "", zara: "", dex: "", lena: "", orin: "" },
   brollEnabled: true,
   blueprintBackdrop: false,
+  ownerName: "",
+  ownerInterests: "",
+  ownerStack: "",
+  ownerBio: "",
 };
+
+// Compose the owner-profile block injected into every AI system prompt.
+// Keep it compact but rich enough to ground a small local model.
+export function ownerProfileContext(p: UiPrefs = loadPrefs()): string {
+  const lines: string[] = [];
+  if (p.ownerName) lines.push(`Operator's name: ${p.ownerName}.`);
+  if (p.ownerBio) lines.push(`About them: ${p.ownerBio}`);
+  if (p.ownerInterests) lines.push(`Interests / things they care about: ${p.ownerInterests}.`);
+  if (p.ownerStack) lines.push(`Tools and services they use: ${p.ownerStack}.`);
+  if (!lines.length) return "";
+  return [
+    "Background on who you're working with (use this; do not contradict it):",
+    ...lines,
+    // Tiny world-knowledge primer so small local models don't blank on obvious terms.
+    "Reference: Minecraft is the sandbox game by Mojang. Modrinth is the Minecraft mod platform. Blockbench is a low-poly modeling tool. Origin Realms is a Minecraft server with custom RPG content. Hostinger is a VPS / hosting provider. Tailscale is a wireguard-based mesh VPN. n8n is an open-source workflow automation tool. Hermes is the operator's custom self-hosted AI. NT5 is the operator's in-universe newsroom.",
+  ].join("\n");
+}
 
 const KEY = "nchub.uiprefs.v1";
 
