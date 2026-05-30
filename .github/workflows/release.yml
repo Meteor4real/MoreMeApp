@@ -31,8 +31,25 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Install
-        run: npm ci --no-audit --no-fund
+      - name: Install (with retry — node-llama-cpp postinstall can flake)
+        shell: bash
+        run: |
+          set -e
+          for attempt in 1 2 3; do
+            echo "::group::npm ci attempt $attempt"
+            if npm ci --no-audit --no-fund; then
+              echo "::endgroup::"
+              echo "npm ci succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "::warning::npm ci failed on attempt $attempt — purging cache + retrying"
+            npm cache clean --force || true
+            rm -rf node_modules apps/*/node_modules packages/*/node_modules 2>/dev/null || true
+            sleep 15
+          done
+          echo "::error::npm ci failed 3 times. node-llama-cpp's prebuilt-binary download likely 5xx'd."
+          exit 1
 
       - name: Generate icons
         run: npm run icons --workspace=@nchub/desktop
