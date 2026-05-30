@@ -10,6 +10,11 @@ export type UiPrefs = {
   infoOrigin: boolean;         // Origin Realms server pulse
   infoSystem: boolean;         // CPU/mem/disk pulse
   infoCrew: boolean;           // recent group-chat activity
+  infoClock: boolean;          // live clock + date
+  infoMoreMe: boolean;         // MoreMe streak + today progress
+  infoBroBot: boolean;         // BroBot gallery recent
+  infoGithub: boolean;         // GitHub open PRs pulse
+  infoVercel: boolean;         // Vercel latest deploy state
   // Ticker
   tickerEnabled: boolean;
   // Browser
@@ -39,6 +44,11 @@ export const DEFAULT_PREFS: UiPrefs = {
   infoOrigin: true,
   infoSystem: true,
   infoCrew: true,
+  infoClock: true,
+  infoMoreMe: true,
+  infoBroBot: false,
+  infoGithub: false,
+  infoVercel: false,
   tickerEnabled: true,
   searchEngine: "duckduckgo",
   showBookmarksBar: true,

@@ -1,28 +1,34 @@
+import { useState } from "react";
 import { NT5Broadcast } from "../shell/NT5Broadcast";
+import { NT5Studio } from "./NT5Studio";
 
-// Embedded NT5 / S.P.A.C.E. News — the real Next.js site, statically exported
-// and bundled into the app under public/embedded/nt5, run locally (offline) in
-// an iframe as a true carbon copy. A header bar shows the reworked NT5 mark,
-// and a broadcast bar gives every wire article a real audio (TTS) read-out
-// in the assigned anchor's voice. The in-app wire scheduler keeps the
-// bundled site supplied with fresh anchor articles (Dex's Origin Realms
-// coverage tracks the actual live mcstatus.io pulse).
+// Embedded NT5 — wire (the bundled site + live anchor articles) on one
+// subtab; Studio (the broadcast authoring tool — Pexels clips, 3D scenes,
+// title cards, timeline reel) on the other. The Studio composes, never
+// generates: every frame is sourced from real media the user picks.
 
 export function NT5() {
+  const [tab, setTab] = useState<"wire" | "studio">("wire");
   return (
     <div className="stage" style={{ background: "#05050d", padding: 0, display: "flex", flexDirection: "column" }}>
-      <NT5Header />
-      <NT5Broadcast />
-      <iframe
-        title="NT5 — S.P.A.C.E. News"
-        src="embedded/nt5/index.html"
-        style={{ flex: 1, width: "100%", border: "none", display: "block" }}
-      />
+      <NT5Header tab={tab} onTab={setTab} />
+      {tab === "wire" ? (
+        <>
+          <NT5Broadcast />
+          <iframe
+            title="NT5 — S.P.A.C.E. News"
+            src="embedded/nt5/index.html"
+            style={{ flex: 1, width: "100%", border: "none", display: "block" }}
+          />
+        </>
+      ) : (
+        <NT5Studio />
+      )}
     </div>
   );
 }
 
-function NT5Header() {
+function NT5Header({ tab, onTab }: { tab: "wire" | "studio"; onTab: (t: "wire" | "studio") => void }) {
   return (
     <div
       style={{
@@ -88,6 +94,22 @@ function NT5Header() {
         </div>
       </div>
       <div style={{ flex: 1 }} />
+      <div style={{ display: "flex", gap: 6, marginRight: 10 }}>
+        {(["wire", "studio"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => onTab(t)}
+            className="btn"
+            style={{
+              padding: "4px 12px",
+              fontSize: 11,
+              letterSpacing: 1.5,
+              textTransform: "uppercase",
+              color: tab === t ? "#22d3ee" : "var(--mute)",
+              borderColor: tab === t ? "rgba(34,211,238,0.55)" : undefined,
+            }}>{t}</button>
+        ))}
+      </div>
       <span
         style={{
           display: "inline-flex",

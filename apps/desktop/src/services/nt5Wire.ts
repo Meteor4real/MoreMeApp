@@ -162,5 +162,117 @@ async function tryRun() {
     const s = await window.hub.llm.status();
     if (!s.ready) return;
     await runWireOnce(3);
+    // After every house-model run, also pull real-world headlines from a
+    // few public RSS feeds and convert them into anchor-voiced items.
+    // This is the "accurate reporting" path — the items reference real
+    // current events, just filed in the NT5 anchor's voice.
+    await runRealWorldOnce(2).catch(() => undefined);
   } catch { /* ignore — wire stays quiet */ }
+}
+
+// ---------------------------------------------------------------------------
+// Real-world news source. Pulls a handful of public RSS feeds (Hacker News,
+// NASA, BBC tech, Ars), parses them, picks fresh headlines, and rewrites
+// each into a 2-sentence NT5-anchor brief. Items get filed with a sourceUrl
+// pointing back to the original article so they're verifiably real.
+// ---------------------------------------------------------------------------
+
+const REAL_FEEDS: { url: string; topic: string; anchor: string; category: string }[] = [
+  { url: "https://hnrss.org/frontpage?count=8",          topic: "tech / startups", anchor: "orin", category: "tech" },
+  { url: "https://www.nasa.gov/feed/",                   topic: "space",           anchor: "lena", category: "space" },
+  { url: "https://feeds.bbci.co.uk/news/technology/rss.xml", topic: "technology",  anchor: "orin", category: "tech" },
+  { url: "https://feeds.arstechnica.com/arstechnica/index/", topic: "deep tech",   anchor: "orin", category: "tech" },
+];
+
+type RealHit = { title: string; link: string; pubDate?: string; description?: string };
+
+function parseRss(xml: string): RealHit[] {
+  const out: RealHit[] = [];
+  const itemRe = /<item[^>]*>([\s\S]*?)<\/item>/g;
+  let m: RegExpExecArray | null;
+  while ((m = itemRe.exec(xml))) {
+    const block = m[1];
+    const pick = (tag: string) => {
+      const r = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`).exec(block);
+      if (!r) return "";
+      let v = r[1].trim();
+      const cdata = /<!\[CDATA\[([\s\S]*?)\]\]>/.exec(v);
+      if (cdata) v = cdata[1];
+      return v.replace(/<[^>]+>/g, "").trim();
+    };
+    const title = pick("title");
+    const link = pick("link");
+    if (!title || !link) continue;
+    out.push({ title, link, pubDate: pick("pubDate"), description: pick("description") });
+    if (out.length >= 6) break;
+  }
+  return out;
+}
+
+async function fetchFeed(url: string): Promise<RealHit[]> {
+  const r = await window.hub.net({ method: "GET", url, headers: { "User-Agent": "Mozilla/5.0 NetworkChuckHub" } });
+  if (!r.ok || typeof r.data !== "string") return [];
+  return parseRss(r.data);
+}
+
+export async function runRealWorldOnce(perFeed = 2): Promise<{ ok: boolean; added: WireArticle[]; error?: string }> {
+  const existing = readAll();
+  const existingTitles = new Set(existing.map((a) => a.title.toLowerCase()));
+  const added: WireArticle[] = [];
+  for (const feed of REAL_FEEDS) {
+    let hits: RealHit[] = [];
+    try { hits = await fetchFeed(feed.url); } catch { continue; }
+    const fresh = hits.filter((h) => !existingTitles.has(h.title.toLowerCase())).slice(0, perFeed);
+    for (const h of fresh) {
+      const filed = await fileRealItem(feed.anchor, feed.category, h);
+      if (filed) {
+        added.push(filed);
+        existingTitles.add(filed.title.toLowerCase());
+      }
+    }
+  }
+  if (added.length) {
+    const merged = [...added, ...existing].slice(0, 80);
+    writeAll(merged);
+    subs.forEach((fn) => fn(merged));
+    document.querySelectorAll("iframe").forEach((f) => {
+      try { f.contentWindow?.postMessage({ type: "nt5-add-articles", articles: added }, "*"); } catch { /* ignore */ }
+    });
+  }
+  return { ok: true, added };
+}
+
+// Take a real headline + snippet and rewrite it into a 2-sentence anchor
+// brief. Falls back to the original snippet if the model isn't available so
+// the item still lands as a real-world reference with its source link.
+async function fileRealItem(anchor: string, category: string, hit: RealHit): Promise<WireArticle | null> {
+  let body = (hit.description || "").slice(0, 320);
+  try {
+    const s = await window.hub.llm.status();
+    if (s.ready) {
+      const sys = `You are NT5 anchor ${ANCHORS[anchor] || "Voss Calloway"}. Rewrite a real headline + snippet as a tight 2-sentence brief in your voice. No invented details — only what's in the snippet. End neutrally.`;
+      const u = `HEADLINE: ${hit.title}\nSNIPPET: ${hit.description || ""}\nWrite the brief now (2 sentences, no preamble, no markdown).`;
+      const r = await window.hub.llm.chat(sys, u);
+      if (r.ok && r.text) body = r.text.trim().replace(/^["']|["']$/g, "");
+    }
+  } catch { /* keep snippet */ }
+  if (!body) return null;
+  const now = new Date(hit.pubDate ? Date.parse(hit.pubDate) : Date.now());
+  const id = `real-${now.getTime()}-${slugify(hit.title).slice(0, 12)}`;
+  return {
+    id,
+    slug: slugify(hit.title) || id,
+    title: hit.title,
+    body,
+    category,
+    anchor_id: anchor in ANCHORS ? anchor : "voss",
+    author_display: ANCHORS[anchor] || ANCHORS.voss,
+    published_at: now.toISOString(),
+    created_at: now.toISOString(),
+    voice_audio_url: null,
+    is_broadcast: false,
+    broadcast_segment: null,
+    source_urls: [hit.link] as unknown as [],
+    topics: [],
+  };
 }

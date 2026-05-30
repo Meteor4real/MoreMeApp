@@ -157,6 +157,11 @@ export function Settings({ onSignOut }: { onSignOut: () => void }) {
           <Toggle label="Origin Realms server pulse" checked={prefs.infoOrigin} onChange={(v) => set("infoOrigin", v)} />
           <Toggle label="System pulse (CPU / mem / free disk)" checked={prefs.infoSystem} onChange={(v) => set("infoSystem", v)} />
           <Toggle label="Crew chatter (recent group-chat activity)" checked={prefs.infoCrew} onChange={(v) => set("infoCrew", v)} />
+          <Toggle label="Live clock + date" checked={prefs.infoClock} onChange={(v) => set("infoClock", v)} />
+          <Toggle label="More Me streak + today progress" checked={prefs.infoMoreMe} onChange={(v) => set("infoMoreMe", v)} />
+          <Toggle label="BroBot gallery recent" checked={prefs.infoBroBot} onChange={(v) => set("infoBroBot", v)} />
+          <Toggle label="GitHub open PR pulse" checked={prefs.infoGithub} onChange={(v) => set("infoGithub", v)} />
+          <Toggle label="Vercel latest deploy" checked={prefs.infoVercel} onChange={(v) => set("infoVercel", v)} />
           <Toggle label="Bottom ticker" checked={prefs.tickerEnabled} onChange={(v) => set("tickerEnabled", v)} />
           <div style={{ marginTop: 10 }}>
             <label style={{ display: "block", fontSize: 11, color: "var(--mute)", letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 }}>News wire interval (min)</label>
