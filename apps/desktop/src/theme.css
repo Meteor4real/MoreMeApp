@@ -456,5 +456,147 @@ body.vibe-oddball {
 }
 body.vibe-oddball .glow-text { animation: nchub-oddball-hue 12s linear infinite; }
 
+/* Ember (crimson default): slow heat haze rising from the bottom */
+@keyframes nchub-ember-rise { from { background-position: 0 0; } to { background-position: 0 -600px; } }
+body.vibe-ember {
+  background-image:
+    radial-gradient(ellipse at 50% 120%, rgba(255,45,74,0.10), transparent 55%),
+    repeating-linear-gradient(to bottom, rgba(255,90,60,0.015) 0 2px, transparent 2px 7px);
+  background-size: auto, auto 600px;
+  animation: nchub-ember-rise 22s linear infinite;
+}
+body.vibe-ember .glow-text { text-shadow: 0 0 8px var(--glow), 0 0 18px rgba(255,80,40,0.35); }
+
+/* Cyber: neon grid floor that drifts toward the viewer */
+@keyframes nchub-grid-pan { from { background-position: 0 0, 0 0; } to { background-position: 0 44px, 44px 0; } }
+body.vibe-grid {
+  background-image:
+    linear-gradient(rgba(34,211,238,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34,211,238,0.05) 1px, transparent 1px);
+  background-size: 44px 44px, 44px 44px;
+  animation: nchub-grid-pan 6s linear infinite;
+}
+body.vibe-grid .glow-text { text-shadow: 0 0 8px var(--glow), 0 0 16px rgba(0,229,255,0.4); }
+
+/* Toxic: pulsing radioactive glow from the corners */
+@keyframes nchub-radio-pulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
+body.vibe-radio::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(circle at 0% 100%, rgba(34,197,94,0.10), transparent 30%),
+    radial-gradient(circle at 100% 0%, rgba(163,230,53,0.08), transparent 30%);
+  animation: nchub-radio-pulse 4s ease-in-out infinite;
+}
+
+/* Royal: drifting nebula clouds */
+@keyframes nchub-nebula-drift { from { background-position: 0 0, 0 0; } to { background-position: 700px -300px, -500px 400px; } }
+body.vibe-nebula {
+  background-image:
+    radial-gradient(ellipse 600px 400px at 20% 30%, rgba(168,85,247,0.08), transparent 70%),
+    radial-gradient(ellipse 500px 500px at 80% 70%, rgba(217,70,239,0.06), transparent 70%);
+  background-size: 1400px 1400px, 1400px 1400px;
+  animation: nchub-nebula-drift 40s linear infinite alternate;
+}
+
+/* Midnight: a faint twinkling starfield */
+@keyframes nchub-twinkle { 0%,100% { opacity: 0.4; } 50% { opacity: 0.9; } }
+body.vibe-starfield::before {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background-image:
+    radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.7), transparent),
+    radial-gradient(1px 1px at 70% 60%, rgba(255,255,255,0.6), transparent),
+    radial-gradient(1px 1px at 40% 80%, rgba(255,255,255,0.5), transparent),
+    radial-gradient(1px 1px at 90% 20%, rgba(255,255,255,0.7), transparent),
+    radial-gradient(1px 1px at 55% 45%, rgba(255,255,255,0.5), transparent);
+  background-size: 100% 100%;
+  animation: nchub-twinkle 5s ease-in-out infinite;
+}
+
+/* Rose: soft warm bloom breathing in the center */
+@keyframes nchub-bloom { 0%,100% { transform: scale(1); opacity: 0.5; } 50% { transform: scale(1.15); opacity: 0.8; } }
+body.vibe-bloom::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background: radial-gradient(ellipse 700px 500px at 50% 40%, rgba(236,72,153,0.08), transparent 60%);
+  animation: nchub-bloom 9s ease-in-out infinite;
+}
+
+/* Vaporwave: pink/cyan gradient wash + slow sun-grid */
+@keyframes nchub-vapor { from { background-position: 0 0; } to { background-position: 0 80px; } }
+body.vibe-vaporwave {
+  background-image:
+    linear-gradient(180deg, rgba(185,103,255,0.05), transparent 40%, rgba(1,205,254,0.05)),
+    repeating-linear-gradient(to bottom, rgba(255,113,206,0.04) 0 1px, transparent 1px 40px);
+  background-size: auto, auto 80px;
+  animation: nchub-vapor 8s linear infinite;
+}
+body.vibe-vaporwave .glow-text { text-shadow: 0 0 10px var(--glow), 2px 2px 0 rgba(1,205,254,0.4); }
+
+/* Matrix: faint vertical code-rain streaks */
+@keyframes nchub-rain { from { background-position: 0 -400px; } to { background-position: 0 400px; } }
+body.vibe-matrix {
+  background-image: repeating-linear-gradient(90deg, rgba(34,197,94,0.04) 0 1px, transparent 1px 14px),
+                    linear-gradient(180deg, transparent, rgba(34,197,94,0.05));
+  background-size: auto, 100% 400px;
+  animation: nchub-rain 5s linear infinite;
+}
+body.vibe-matrix .glow-text { text-shadow: 0 0 8px var(--glow), 0 0 16px rgba(34,197,94,0.5); }
+
+/* Synthwave: sunset gradient at the horizon + scanlines */
+body.vibe-synthwave {
+  background-image:
+    linear-gradient(180deg, transparent 55%, rgba(244,63,94,0.08) 80%, rgba(251,146,60,0.10)),
+    repeating-linear-gradient(to bottom, rgba(251,113,133,0.03) 0 1px, transparent 1px 4px);
+}
+body.vibe-synthwave .glow-text { text-shadow: 0 0 10px var(--glow), 0 2px 12px rgba(251,146,60,0.45); }
+
+/* Noir: desaturated, high-contrast, soft film grain */
+@keyframes nchub-grain { 0%,100% { opacity: 0.5; } 50% { opacity: 0.7; } }
+body.vibe-noir { filter: saturate(0.5) contrast(1.08); }
+body.vibe-noir::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background-image: repeating-radial-gradient(circle at 50% 50%, rgba(255,255,255,0.012) 0 1px, transparent 1px 2px);
+  animation: nchub-grain 0.6s steps(2) infinite;
+}
+
+/* Arctic: cool frost light from the top */
+body.vibe-arctic {
+  background-image:
+    radial-gradient(ellipse at 50% -10%, rgba(56,189,248,0.10), transparent 55%),
+    radial-gradient(ellipse at 100% 100%, rgba(125,211,252,0.05), transparent 50%);
+}
+body.vibe-arctic .glow-text { text-shadow: 0 0 10px var(--glow), 0 0 18px rgba(186,230,253,0.4); }
+
+/* Volcano: magma glow welling from the bottom, pulsing */
+@keyframes nchub-magma { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }
+body.vibe-volcano::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background: radial-gradient(ellipse 1000px 300px at 50% 110%, rgba(220,38,38,0.14), rgba(250,204,21,0.05) 40%, transparent 65%);
+  animation: nchub-magma 5s ease-in-out infinite;
+}
+
+/* Aurora: green/violet ribbons sweeping the top */
+@keyframes nchub-aurora { from { background-position: 0 0; } to { background-position: 1200px 0; } }
+body.vibe-aurora {
+  background-image:
+    linear-gradient(100deg, rgba(16,185,129,0.07), rgba(167,139,250,0.06) 40%, rgba(52,211,153,0.07) 70%, transparent);
+  background-size: 1200px 60%;
+  background-repeat: no-repeat;
+  animation: nchub-aurora 24s linear infinite;
+}
+body.vibe-aurora .glow-text { text-shadow: 0 0 10px var(--glow), 0 0 20px rgba(52,211,153,0.4); }
+
+/* Gold: luxe shimmer sweep across titles + warm vignette */
+@keyframes nchub-gold-sweep { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+body.vibe-gold {
+  background-image: radial-gradient(ellipse at 50% 0%, rgba(224,179,77,0.07), transparent 55%);
+}
+body.vibe-gold .glow-text {
+  background: linear-gradient(90deg, #b8860b, #f3dca0 50%, #b8860b);
+  background-size: 200% auto;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: nchub-gold-sweep 6s linear infinite;
+}
+
 /* Display-font hook for theme-driven titles */
 .glow-text, .sec-title, .panel-head, h1, h2 { font-family: var(--display-font, ui-monospace, Menlo, monospace); }

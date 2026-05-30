@@ -278,7 +278,7 @@ export function GroupChat() {
         </div>
 
         {view === "config" ? (
-          <ConfigPanel cfg={cfg} onChange={(next) => { setCfg(next); saveConfig(next); }} />
+          <ConfigPanel cfg={cfg} houseReady={houseReady} onChange={(next) => { setCfg(next); saveConfig(next); }} />
         ) : view === "projects" ? (
           <ProjectsView availableIds={available.map((a) => a.id)} onBackToChat={() => setView("chat")} />
         ) : (
@@ -329,9 +329,11 @@ export function GroupChat() {
 
 function ConfigPanel({
   cfg,
+  houseReady,
   onChange,
 }: {
   cfg: ConfigMap;
+  houseReady: boolean;
   onChange: (next: ConfigMap) => void;
 }) {
   function update(id: string, patch: Partial<AgentConfig>) {
@@ -363,8 +365,8 @@ function ConfigPanel({
               <span className="mono glow-text" style={{ fontSize: 12, width: 22, textAlign: "center" }}>{mono(a.name)}</span>
               <span className="mono" style={{ fontSize: 13 }}>{a.name}</span>
               <span style={{ fontSize: 11, color: "var(--mute)" }}>{a.role}</span>
-              <span style={{ marginLeft: "auto", fontSize: 10, color: agentAvailable(a, c) ? "var(--pink)" : "var(--mute)" }}>
-                {agentAvailable(a, c) ? "ON CALL" : "NEEDS SETUP"}
+              <span style={{ marginLeft: "auto", fontSize: 10, color: agentAvailable(a, c, houseReady) ? "var(--pink)" : "var(--mute)" }}>
+                {agentAvailable(a, c, houseReady) ? "ON CALL" : a.silent || effectiveTransport(a, c) === "house" ? "MODEL LOADING" : "NEEDS SETUP"}
               </span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8, marginTop: 10 }}>

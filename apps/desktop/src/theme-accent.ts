@@ -18,17 +18,28 @@ export type Theme = {
 };
 
 export const ACCENTS: Record<string, Theme> = {
-  crimson:     { label: "Crimson (default)",  red: "#ff2d4a", pink: "#ff5577", orange: "#ff7a2d", glow: "#ff3355" },
-  cyber:       { label: "Cyber",               red: "#0093c4", pink: "#22d3ee", orange: "#3b82f6", glow: "#00e5ff" },
-  toxic:       { label: "Toxic",               red: "#15a34a", pink: "#22c55e", orange: "#a3e635", glow: "#22c55e" },
-  royal:       { label: "Royal",               red: "#7c3aed", pink: "#a855f7", orange: "#d946ef", glow: "#a855f7" },
+  // Core palettes — each now carries its own vibe so the whole surface
+  // changes, not just the accent swatch.
+  crimson:     { label: "Crimson (default)",   red: "#ff2d4a", pink: "#ff5577", orange: "#ff7a2d", glow: "#ff3355", vibeClass: "ember" },
+  cyber:       { label: "Cyber (neon grid)",   red: "#0093c4", pink: "#22d3ee", orange: "#3b82f6", glow: "#00e5ff", vibeClass: "grid",      displayFont: "'Chakra Petch','Space Grotesk',sans-serif" },
+  toxic:       { label: "Toxic (radioactive)", red: "#15a34a", pink: "#22c55e", orange: "#a3e635", glow: "#22c55e", vibeClass: "radio" },
+  royal:       { label: "Royal (nebula)",      red: "#7c3aed", pink: "#a855f7", orange: "#d946ef", glow: "#a855f7", vibeClass: "nebula" },
+  midnight:    { label: "Midnight (starfield)", red: "#1e3a8a", pink: "#3b82f6", orange: "#60a5fa", glow: "#3b82f6", vibeClass: "starfield" },
+  rose:        { label: "Rose (warm bloom)",   red: "#be185d", pink: "#ec4899", orange: "#f472b6", glow: "#ec4899", vibeClass: "bloom" },
   // Animated / dynamic vibes
   retro:       { label: "Retro (CRT scanlines)",   red: "#ff9f1a", pink: "#ffd166", orange: "#f97316", glow: "#ffd166", vibeClass: "retro",       displayFont: "'VT323', 'Courier New', monospace" },
   futuristic:  { label: "Futuristic (holo shimmer)", red: "#06b6d4", pink: "#22d3ee", orange: "#a78bfa", glow: "#22d3ee", vibeClass: "futuristic",  displayFont: "'Orbitron','Space Grotesk',sans-serif" },
   prehistoric: { label: "Prehistoric (parchment)", red: "#a16207", pink: "#ca8a04", orange: "#dc8d3a", glow: "#d97706", vibeClass: "prehistoric", displayFont: "'Cormorant Garamond', Georgia, serif" },
   oddball:     { label: "Oddball (chaos)",      red: "#ec4899", pink: "#f472b6", orange: "#facc15", glow: "#84cc16", vibeClass: "oddball",     displayFont: "'Comic Sans MS', 'Chalkboard SE', cursive" },
-  midnight:    { label: "Midnight (deep blue)", red: "#1e3a8a", pink: "#3b82f6", orange: "#60a5fa", glow: "#3b82f6" },
-  rose:        { label: "Rose (warm pink)",     red: "#be185d", pink: "#ec4899", orange: "#f472b6", glow: "#ec4899" },
+  // New: more flavors
+  vaporwave:   { label: "Vaporwave",           red: "#ff71ce", pink: "#ff9ff3", orange: "#01cdfe", glow: "#b967ff", vibeClass: "vaporwave",   displayFont: "'Orbitron','Space Grotesk',sans-serif" },
+  matrix:      { label: "Matrix (rain)",       red: "#16a34a", pink: "#22c55e", orange: "#4ade80", glow: "#22c55e", vibeClass: "matrix",      displayFont: "'JetBrains Mono','Courier New',monospace" },
+  synthwave:   { label: "Synthwave (sunset)",  red: "#f43f5e", pink: "#fb7185", orange: "#fb923c", glow: "#f97316", vibeClass: "synthwave",   displayFont: "'Orbitron','Space Grotesk',sans-serif" },
+  noir:        { label: "Noir (mono)",         red: "#9ca3af", pink: "#e5e7eb", orange: "#d1d5db", glow: "#9ca3af", vibeClass: "noir",        displayFont: "'Cormorant Garamond', Georgia, serif" },
+  arctic:      { label: "Arctic (frost)",      red: "#0ea5e9", pink: "#7dd3fc", orange: "#bae6fd", glow: "#38bdf8", vibeClass: "arctic" },
+  volcano:     { label: "Volcano (magma)",     red: "#dc2626", pink: "#f97316", orange: "#facc15", glow: "#ef4444", vibeClass: "volcano" },
+  aurora:      { label: "Aurora (borealis)",   red: "#10b981", pink: "#34d399", orange: "#a78bfa", glow: "#34d399", vibeClass: "aurora" },
+  gold:        { label: "Gold (luxe)",         red: "#b8860b", pink: "#f3dca0", orange: "#e0b34d", glow: "#e0b34d", vibeClass: "gold",        displayFont: "'Cormorant Garamond', Georgia, serif" },
 };
 
 const KEY = "nchub.accent.v1";
