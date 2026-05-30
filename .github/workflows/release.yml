@@ -21,23 +21,53 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    # 45 min per platform — Windows + node-llama-cpp is the slow one. If
+    # something hangs past this, we fail with logs instead of hanging silent.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
       - name: Generate icons
         run: npm run icons --workspace=@nchub/desktop
+
       - name: Package desktop app
         run: npm run package:desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
+      # Always-on summary of what landed in the release dir, even on
+      # failure — gives us a postmortem in the Actions run page without
+      # digging through electron-builder's output.
       - name: List build output
-        run: node -e "const fs=require('fs');const d='apps/desktop/release';if(!fs.existsSync(d)){console.error('NO release dir — packaging produced nothing');process.exit(1);}const f=fs.readdirSync(d);console.log('Built:',f);if(!f.length){console.error('release dir empty');process.exit(1);}"
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          d="apps/desktop/release"
+          {
+            echo "## Build summary on ${{ matrix.os }}"
+            echo ""
+            if [ ! -d "$d" ]; then
+              echo "**release/ dir does not exist** — packaging produced nothing."
+              exit 0
+            fi
+            echo "**Files in $d:**"
+            echo ""
+            ls -la "$d" 2>&1 | sed 's/^/    /'
+            echo ""
+            count=$(ls -1 "$d" 2>/dev/null | wc -l)
+            echo "Total: $count items"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          # Fail the job ONLY if the dir is missing or empty (so partial wins still upload).
+          [ -d "$d" ] && [ -n "$(ls -A "$d" 2>/dev/null)" ]
 
       - name: Upload Windows artifacts
         if: matrix.os == 'windows-latest'
@@ -46,7 +76,10 @@ jobs:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           draft: false
           prerelease: false
-          fail_on_unmatched_files: true
+          # Don't fail the whole job if a glob is empty — let other globs
+          # still upload what they can. The build-output step above already
+          # fails when nothing was produced.
+          fail_on_unmatched_files: false
           files: |
             apps/desktop/release/*.exe
             apps/desktop/release/*.zip
@@ -58,7 +91,7 @@ jobs:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           draft: false
           prerelease: false
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false
           files: |
             apps/desktop/release/*.dmg
             apps/desktop/release/*.zip
@@ -70,7 +103,23 @@ jobs:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           draft: false
           prerelease: false
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false
           files: |
             apps/desktop/release/*.AppImage
             apps/desktop/release/*.deb
+
+      # Final per-job status pinned to the Actions run page.
+      - name: Run summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo ""
+            echo "### Status on ${{ matrix.os }}"
+            echo ""
+            if [ -d "apps/desktop/release" ] && [ -n "$(ls -A apps/desktop/release 2>/dev/null)" ]; then
+              echo ":white_check_mark: Built and uploaded to **${{ github.event.inputs.tag || github.ref_name }}**."
+            else
+              echo ":x: Nothing built. Inspect the **Install** / **Package desktop app** step above for the failure."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
