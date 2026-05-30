@@ -442,30 +442,52 @@ export function DigitalBlueprint() {
       return;
     }
     setGenStatus("Generating…");
-    // Smaller schema = a 3B model can actually produce valid JSON. Shape +
-    // position + color is the floor; metalness / roughness / emissive are
-    // optional knobs. The inspector lets the user dial materials further.
-    const system =
-      "You compose 3D scenes by emitting a JSON array of primitives. " +
-      'Reply with ONLY a JSON array, no prose, no markdown fences. Each item: ' +
-      '{"shape":"box"|"sphere"|"cylinder"|"cone"|"torus"|"plane","pos":[x,y,z],"scale":[sx,sy,sz],"color":"#rrggbb","metal":0-1,"rough":0-1,"glow":"#rrggbb","glowI":0-3}. ' +
-      "Use 6-18 primitives. Stack them to suggest a real object. y>=0. metal+rough optional. glow optional. " +
-      "Example: [{\"shape\":\"box\",\"pos\":[0,0.5,0],\"scale\":[2,1,1],\"color\":\"#888888\",\"metal\":0.6,\"rough\":0.4}]";
+    // Three-pass strategy. Each pass tightens what the small local model has
+    // to do: pass 1 = full schema with materials, pass 2 = minimum schema
+    // (shape/pos/scale/color), pass 3 = literal "give me 8 lines like this"
+    // with a worked example. Whichever pass parses first wins.
+    const prompts = [
+      {
+        system:
+          "Output a JSON array of 3D primitives and NOTHING else. No prose, no markdown, no code fences. " +
+          'Schema: [{"shape":"box"|"sphere"|"cylinder"|"cone"|"torus"|"plane","pos":[x,y,z],"scale":[sx,sy,sz],"color":"#rrggbb","metal":0-1,"rough":0-1,"glow":"#rrggbb","glowI":0-3}, ...]. ' +
+          "6-14 primitives. y>=0. metal/rough/glow are optional. Stack pieces so they read as a real object.",
+        user: `Build: ${prompt}\n\nRespond with the JSON array only, starting with [ and ending with ].`,
+      },
+      {
+        system: "Output ONLY a JSON array. No text before or after. Each item is " +
+          '{"shape":"box"|"sphere"|"cylinder"|"cone"|"torus"|"plane","pos":[x,y,z],"scale":[sx,sy,sz],"color":"#rrggbb"}.' +
+          " 8 to 12 items. y>=0.",
+        user: `Build: ${prompt}\n\n[`,
+      },
+      {
+        system: "You output a JSON array. Nothing else. Copy this format EXACTLY: " +
+          '[{"shape":"box","pos":[0,0.5,0],"scale":[2,1,1],"color":"#888888"},{"shape":"sphere","pos":[0,1.6,0],"scale":[0.6,0.6,0.6],"color":"#ffcc88"}]',
+        user: `Replace the contents with 8-12 primitives that look like: ${prompt}\nReply with the array only.`,
+      },
+    ];
 
     let raw = "";
     let parsed: unknown[] | null = null;
-    for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
-      const res = await houseChat(system, `Build: ${prompt}\n\nRespond with the JSON array only.`);
+    for (let attempt = 0; attempt < prompts.length && !parsed; attempt++) {
+      setGenStatus(attempt === 0 ? "Generating…" : `Pass ${attempt + 1}…`);
+      const res = await houseChat(prompts[attempt].system, prompts[attempt].user);
       if (!res.ok) { setGenStatus(`Local brain error: ${res.error}`); return; }
       raw = res.text || "";
       parsed = extractJsonArray(raw);
-      if (!parsed && attempt === 0) {
-        setGenStatus("First pass wasn't valid JSON. Retrying…");
-      }
     }
-    if (!parsed) {
-      setGenStatus(`Local brain produced something we couldn't parse as a scene. Raw output: ${raw.slice(0, 200)}…`);
-      return;
+    if (!parsed || parsed.length === 0) {
+      // Last-resort template match — picks a pre-built scene whose keywords
+      // overlap the prompt. Keeps the action productive instead of erroring
+      // out when the small local model can't hit valid JSON.
+      const tpl = matchTemplate(prompt);
+      if (tpl) {
+        parsed = tpl as unknown[];
+        setGenStatus(`Brain output wasn't parseable; dropped in a template scene matching "${prompt}". Edit it from the inspector.`);
+      } else {
+        setGenStatus(`Local brain produced something we couldn't parse. Try a more specific prompt (e.g. "wooden chair", "stone arch", "small house"). Last output: ${raw.slice(0, 160)}…`);
+        return;
+      }
     }
     let n = 0;
     for (const o of (parsed as Array<Record<string, unknown>>).slice(0, 24)) {
@@ -490,6 +512,65 @@ export function DigitalBlueprint() {
   function numOr(v: unknown, fallback: number): number {
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
+  }
+  // Template library for the AI fallback. Keyword-matched starter scenes —
+  // not "generated" content (these are hand-authored primitives), just a
+  // sane place to land when the small local model can't hit valid JSON.
+  function matchTemplate(p: string): Array<Record<string, unknown>> | null {
+    const k = p.toLowerCase();
+    if (/chair|stool|seat/.test(k)) return [
+      { shape: "box", pos: [0, 0.5, 0], scale: [1.2, 0.18, 1.2], color: "#8b5a2b", metal: 0.1, rough: 0.7 },
+      { shape: "cylinder", pos: [-0.5, 0.25, -0.5], scale: [0.12, 0.5, 0.12], color: "#6b4220", metal: 0.1, rough: 0.7 },
+      { shape: "cylinder", pos: [0.5, 0.25, -0.5], scale: [0.12, 0.5, 0.12], color: "#6b4220", metal: 0.1, rough: 0.7 },
+      { shape: "cylinder", pos: [-0.5, 0.25, 0.5], scale: [0.12, 0.5, 0.12], color: "#6b4220", metal: 0.1, rough: 0.7 },
+      { shape: "cylinder", pos: [0.5, 0.25, 0.5], scale: [0.12, 0.5, 0.12], color: "#6b4220", metal: 0.1, rough: 0.7 },
+      { shape: "box", pos: [0, 1.25, -0.55], scale: [1.2, 1.4, 0.12], color: "#8b5a2b", metal: 0.1, rough: 0.7 },
+    ];
+    if (/table|desk/.test(k)) return [
+      { shape: "box", pos: [0, 0.9, 0], scale: [2.4, 0.12, 1.2], color: "#5c3a1a", metal: 0.1, rough: 0.6 },
+      { shape: "cylinder", pos: [-1.05, 0.45, -0.5], scale: [0.12, 0.9, 0.12], color: "#3b240e", metal: 0.1, rough: 0.6 },
+      { shape: "cylinder", pos: [1.05, 0.45, -0.5], scale: [0.12, 0.9, 0.12], color: "#3b240e", metal: 0.1, rough: 0.6 },
+      { shape: "cylinder", pos: [-1.05, 0.45, 0.5], scale: [0.12, 0.9, 0.12], color: "#3b240e", metal: 0.1, rough: 0.6 },
+      { shape: "cylinder", pos: [1.05, 0.45, 0.5], scale: [0.12, 0.9, 0.12], color: "#3b240e", metal: 0.1, rough: 0.6 },
+    ];
+    if (/house|cabin|hut|cottage/.test(k)) return [
+      { shape: "box", pos: [0, 1, 0], scale: [4, 2, 3], color: "#a47148", metal: 0.05, rough: 0.85 },
+      { shape: "cone", pos: [0, 2.6, 0], scale: [2.6, 1.4, 2], color: "#7c3018", metal: 0.05, rough: 0.85 },
+      { shape: "box", pos: [0, 0.9, 1.51], scale: [0.7, 1.4, 0.05], color: "#3a2210", metal: 0.05, rough: 0.85 },
+      { shape: "box", pos: [-1.2, 1.2, 1.51], scale: [0.6, 0.6, 0.05], color: "#88c0d0", metal: 0.3, rough: 0.3, glow: "#88c0d0", glowI: 0.4 },
+      { shape: "box", pos: [1.2, 1.2, 1.51], scale: [0.6, 0.6, 0.05], color: "#88c0d0", metal: 0.3, rough: 0.3, glow: "#88c0d0", glowI: 0.4 },
+      { shape: "cylinder", pos: [1.2, 2.4, -0.6], scale: [0.25, 0.8, 0.25], color: "#4a3020", metal: 0.05, rough: 0.85 },
+    ];
+    if (/car|vehicle|truck/.test(k)) return [
+      { shape: "box", pos: [0, 0.5, 0], scale: [3.4, 0.6, 1.4], color: "#1f2937", metal: 0.8, rough: 0.25 },
+      { shape: "box", pos: [0, 1.05, 0], scale: [1.8, 0.5, 1.3], color: "#1f2937", metal: 0.8, rough: 0.25 },
+      { shape: "cylinder", pos: [-1.1, 0.3, 0.75], scale: [0.35, 0.18, 0.35], color: "#0a0a0a", metal: 0.6, rough: 0.6 },
+      { shape: "cylinder", pos: [1.1, 0.3, 0.75], scale: [0.35, 0.18, 0.35], color: "#0a0a0a", metal: 0.6, rough: 0.6 },
+      { shape: "cylinder", pos: [-1.1, 0.3, -0.75], scale: [0.35, 0.18, 0.35], color: "#0a0a0a", metal: 0.6, rough: 0.6 },
+      { shape: "cylinder", pos: [1.1, 0.3, -0.75], scale: [0.35, 0.18, 0.35], color: "#0a0a0a", metal: 0.6, rough: 0.6 },
+      { shape: "box", pos: [1.5, 0.6, 0.55], scale: [0.05, 0.18, 0.18], color: "#fff3b0", glow: "#fff3b0", glowI: 1.2 },
+      { shape: "box", pos: [1.5, 0.6, -0.55], scale: [0.05, 0.18, 0.18], color: "#fff3b0", glow: "#fff3b0", glowI: 1.2 },
+    ];
+    if (/arch|gate|portal/.test(k)) return [
+      { shape: "box", pos: [-1.2, 1.5, 0], scale: [0.4, 3, 0.4], color: "#9ca3af", metal: 0.05, rough: 0.85 },
+      { shape: "box", pos: [1.2, 1.5, 0], scale: [0.4, 3, 0.4], color: "#9ca3af", metal: 0.05, rough: 0.85 },
+      { shape: "torus", pos: [0, 3.05, 0], scale: [1.4, 1.4, 0.4], color: "#9ca3af", metal: 0.05, rough: 0.85 },
+      { shape: "box", pos: [0, 0.05, 0], scale: [3.6, 0.1, 1], color: "#71717a", metal: 0.05, rough: 0.85 },
+    ];
+    if (/tower|spire|skyscraper/.test(k)) return [
+      { shape: "box", pos: [0, 1, 0], scale: [1.4, 2, 1.4], color: "#52525b", metal: 0.4, rough: 0.6 },
+      { shape: "box", pos: [0, 2.7, 0], scale: [1.1, 1.4, 1.1], color: "#52525b", metal: 0.4, rough: 0.6 },
+      { shape: "box", pos: [0, 3.9, 0], scale: [0.8, 1, 0.8], color: "#52525b", metal: 0.4, rough: 0.6 },
+      { shape: "cone", pos: [0, 4.9, 0], scale: [0.6, 1.2, 0.6], color: "#a3a3a3", metal: 0.6, rough: 0.3 },
+      { shape: "sphere", pos: [0, 5.7, 0], scale: [0.18, 0.18, 0.18], color: "#ffd166", glow: "#ffd166", glowI: 1.6 },
+    ];
+    if (/tree|pine|oak/.test(k)) return [
+      { shape: "cylinder", pos: [0, 0.6, 0], scale: [0.2, 1.2, 0.2], color: "#5a3a1a", metal: 0, rough: 0.9 },
+      { shape: "cone", pos: [0, 1.9, 0], scale: [1, 1.6, 1], color: "#1f7a3a", metal: 0, rough: 0.85 },
+      { shape: "cone", pos: [0, 2.8, 0], scale: [0.8, 1.2, 0.8], color: "#1f7a3a", metal: 0, rough: 0.85 },
+      { shape: "cone", pos: [0, 3.5, 0], scale: [0.55, 0.9, 0.55], color: "#2a8a4a", metal: 0, rough: 0.85 },
+    ];
+    return null;
   }
   // Resilient JSON-array extractor: strips ```code fences```, finds the first
   // balanced [...] pair (so trailing text doesn't trip JSON.parse), and tries

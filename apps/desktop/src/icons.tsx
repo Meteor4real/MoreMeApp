@@ -40,8 +40,10 @@ export const ICON: Record<string, ReactNode> = {
   // Hub panels
   control: hubSvg(<><circle cx="12" cy="13" r="7" /><path d="M12 13 L15.5 9.5" /><path d="M5 13h1M18 13h1M12 6v1" /></>),
   terminal: hubSvg(<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 9l3 3-3 3M13 15h4" /></>),
-  // Plain speech-bubble mark — matches the rest of the rail's stroke style.
-  ai: hubSvg(<path d="M4 5h13a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7l-4 3v-3H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />),
+  // Plain speech-bubble mark — centered to match the rest of the rail.
+  // Bubble body 4-20 × 5-17, tail tucked under so the visual center sits at
+  // (12,12) like every other 24×24 icon in this set.
+  ai: hubSvg(<path d="M4 5h16a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 20 17h-7l-4 3v-3H4a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 4 5z" />),
   browser: hubSvg(<><circle cx="12" cy="12" r="8" /><path d="M4 12h16M12 4c2.5 2.5 2.5 13 0 16M12 4c-2.5 2.5-2.5 13 0 16" /></>),
   library: hubSvg(<><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M10 9l5 3-5 3z" fill="url(#nchg)" /></>),
   settings: hubSvg(<><circle cx="12" cy="12" r="3" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4" /></>),
