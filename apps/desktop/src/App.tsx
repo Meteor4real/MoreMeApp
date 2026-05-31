@@ -22,6 +22,7 @@ import { startWireScheduler } from "./services/nt5Wire";
 import { startOriginPolling } from "./services/originRealms";
 import { registerNavSetter } from "./navBridge";
 import { loadPrefs, subscribePrefs } from "./uiPrefs";
+import { appUnlocked, subscribeCodes } from "./featureGate";
 import logoUrl from "./assets/logo.png";
 
 type Nav =
@@ -39,6 +40,9 @@ export function App() {
   const [railOpen, setRailOpen] = useState(true);
   const [enabledExt, setEnabledExt] = useState<Set<string>>(() => loadEnabled());
   const [prefs, setPrefs] = useState(loadPrefs);
+  const [, setCodeTick] = useState(0);
+  useEffect(() => subscribeCodes(() => setCodeTick((n) => n + 1)), []);
+  const visibleApps = SITE_APPS.filter((a) => appUnlocked(a.id));
   const { items, toasts, dismiss } = useFeed();
 
   useEffect(() => {
@@ -84,7 +88,7 @@ export function App() {
             <RailBtn tour="rail-ai" icon={ICON.ai} label="AI Group Chat" active={nav.kind === "ai"} onClick={() => setNav({ kind: "ai" })} />
             <RailBtn tour="rail-library" icon={ICON.library} label="Library" active={nav.kind === "library"} onClick={() => setNav({ kind: "library" })} />
             <div className="rail-sep" />
-            {SITE_APPS.map((a) => (
+            {visibleApps.map((a) => (
               <RailBtn
                 key={a.id}
                 tour={`rail-app-${a.id}`}
@@ -129,8 +133,24 @@ export function App() {
 }
 
 function renderEmbedded(id: string) {
+  // Honor the feature gate even on direct nav (e.g. an older session that
+  // had a gated app open before its code was locked).
+  if (!appUnlocked(id)) return <GatedPlaceholder id={id} />;
   const C = EMBEDDED[id];
   return C ? <C /> : null;
+}
+
+function GatedPlaceholder({ id }: { id: string }) {
+  return (
+    <div className="stage" style={{ display: "grid", placeItems: "center", padding: 40, textAlign: "center", color: "var(--mute)" }}>
+      <div style={{ maxWidth: 420 }}>
+        <div className="glow-text mono" style={{ fontSize: 12, letterSpacing: 3, textTransform: "uppercase", marginBottom: 10 }}>Locked</div>
+        <div style={{ fontSize: 13, lineHeight: 1.55 }}>
+          <b style={{ color: "var(--ink)" }}>{id}</b> is hidden by default. Enter the matching code in <b>Settings → Dev codes</b> to unlock it.
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function RailBtn({

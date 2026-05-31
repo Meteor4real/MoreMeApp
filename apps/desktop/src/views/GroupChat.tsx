@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AGENTS, type AgentDef, agentAvailable, effectiveTransport } from "../ai/agents";
+import { appUnlocked, subscribeCodes } from "../featureGate";
 import { loadConfig, saveConfig, type ConfigMap, type AgentConfig } from "../ai/store";
 import { ProjectsView } from "./groupchat/Projects";
 
@@ -81,8 +82,13 @@ export function GroupChat() {
     return () => { cancelled = true; clearInterval(t); };
   }, []);
 
-  const available = useMemo(() => AGENTS.filter((a) => agentAvailable(a, cfg[a.id], houseReady)), [cfg, houseReady]);
-  const unavailable = useMemo(() => AGENTS.filter((a) => !agentAvailable(a, cfg[a.id], houseReady)), [cfg, houseReady]);
+  // Subscribe to dev-code unlock changes so the roster updates live when
+  // BroBot (gated under 2089) is unlocked / relocked.
+  const [, setCodeTick] = useState(0);
+  useEffect(() => subscribeCodes(() => setCodeTick((n) => n + 1)), []);
+  const gatedAgents = useMemo(() => AGENTS.filter((a) => appUnlocked(a.id)), [/* re-derived on tick */ houseReady]);
+  const available = useMemo(() => gatedAgents.filter((a) => agentAvailable(a, cfg[a.id], houseReady)), [cfg, houseReady, gatedAgents]);
+  const unavailable = useMemo(() => gatedAgents.filter((a) => !agentAvailable(a, cfg[a.id], houseReady)), [cfg, houseReady, gatedAgents]);
 
   function push(m: Omit<Msg, "id">) {
     setMsgs((prev) => [...prev, { ...m, id: String(mid++) }]);
@@ -356,7 +362,7 @@ function ConfigPanel({
         here. <code>{"{prompt}"}</code> is replaced by the message (or appended if you omit
         it).
       </p>
-      {AGENTS.map((a) => {
+      {AGENTS.filter((a) => appUnlocked(a.id)).map((a) => {
         const c = cfg[a.id];
         const transport = c?.transport ?? a.defaultTransport;
         return (

@@ -36,6 +36,56 @@ export type UiPrefs = {
   ownerInterests: string;       // free-text: games, hobbies, focus areas
   ownerStack: string;           // free-text: tools, languages, services they use
   ownerBio: string;             // free-text: one-paragraph about-me
+
+  // ── Profile (additional fields used by Settings → Profile) ──────────────
+  ownerAvatar: string;          // base64 data URL or external URL
+  ownerPronouns: string;
+  ownerLocation: string;
+  ownerTimezone: string;        // IANA name, defaults to system tz
+  ownerBirthday: string;        // ISO date, optional
+
+  // ── Appearance ─────────────────────────────────────────────────────────
+  reduceMotion: boolean;        // disable shimmer / scanlines / particle anims
+  fontSize: "small" | "normal" | "large";
+  accentIntensity: "soft" | "normal" | "loud";
+  showRailLabels: boolean;      // expand rail to show labels next to icons
+  compactDensity: boolean;      // tighten padding across the app
+
+  // ── Browser ────────────────────────────────────────────────────────────
+  defaultNewTabPage: "start" | "homepage" | "blank";
+  blockPopups: boolean;
+  blockAutoplay: boolean;
+  restoreTabsOnLaunch: boolean;
+
+  // ── AI Group Chat ──────────────────────────────────────────────────────
+  chatDefaultTone: "casual" | "professional" | "hype" | "short";
+  chatResponseLength: "short" | "medium" | "long";
+  chatChainDepth: number;        // how many @mention hops the chain follows (1-4)
+  chatAutoScroll: boolean;       // auto-scroll on new messages
+  chatShowSilent: boolean;       // show silent (mention-only) anchors in roster
+
+  // ── House AI ───────────────────────────────────────────────────────────
+  llmTemperature: number;        // 0..1.5
+  llmMaxTokens: number;
+  llmSystemPrefix: string;       // user-supplied text prepended to every system prompt
+
+  // ── Music ──────────────────────────────────────────────────────────────
+  musicAutoplay: boolean;        // start playing on app launch
+  musicDefaultVolume: number;    // 0..1
+  musicDefaultTrack: string;     // track id from ost.ts
+  musicFadeIn: boolean;          // fade in over a few seconds
+
+  // ── Notifications ──────────────────────────────────────────────────────
+  notificationsEnabled: boolean;
+  notificationDurationMs: number;
+  notificationPosition: "tr" | "br" | "tl" | "bl";
+  notificationSound: boolean;
+
+  // ── Privacy / Security ─────────────────────────────────────────────────
+  privacyClearHistoryOnQuit: boolean;
+  privacyClearDownloadsOnQuit: boolean;
+  privacyBlock3pCookies: boolean;
+  privacyDntGpc: boolean;
 };
 
 export const DEFAULT_PREFS: UiPrefs = {
@@ -61,13 +111,48 @@ export const DEFAULT_PREFS: UiPrefs = {
   ownerInterests: "",
   ownerStack: "",
   ownerBio: "",
+  ownerAvatar: "",
+  ownerPronouns: "",
+  ownerLocation: "",
+  ownerTimezone: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { return ""; } })(),
+  ownerBirthday: "",
+  reduceMotion: false,
+  fontSize: "normal",
+  accentIntensity: "normal",
+  showRailLabels: false,
+  compactDensity: false,
+  defaultNewTabPage: "start",
+  blockPopups: true,
+  blockAutoplay: true,
+  restoreTabsOnLaunch: true,
+  chatDefaultTone: "casual",
+  chatResponseLength: "medium",
+  chatChainDepth: 3,
+  chatAutoScroll: true,
+  chatShowSilent: true,
+  llmTemperature: 0.7,
+  llmMaxTokens: 1024,
+  llmSystemPrefix: "",
+  musicAutoplay: false,
+  musicDefaultVolume: 0.45,
+  musicDefaultTrack: "hub",
+  musicFadeIn: true,
+  notificationsEnabled: true,
+  notificationDurationMs: 5000,
+  notificationPosition: "tr",
+  notificationSound: false,
+  privacyClearHistoryOnQuit: false,
+  privacyClearDownloadsOnQuit: false,
+  privacyBlock3pCookies: true,
+  privacyDntGpc: true,
 };
 
 // Compose the owner-profile block injected into every AI system prompt.
 // Keep it compact but rich enough to ground a small local model.
 export function ownerProfileContext(p: UiPrefs = loadPrefs()): string {
   const lines: string[] = [];
-  if (p.ownerName) lines.push(`Operator's name: ${p.ownerName}.`);
+  if (p.ownerName) lines.push(`Operator's name: ${p.ownerName}${p.ownerPronouns ? ` (${p.ownerPronouns})` : ""}.`);
+  if (p.ownerLocation) lines.push(`Lives in: ${p.ownerLocation}.`);
   if (p.ownerBio) lines.push(`About them: ${p.ownerBio}`);
   if (p.ownerInterests) lines.push(`Interests / things they care about: ${p.ownerInterests}.`);
   if (p.ownerStack) lines.push(`Tools and services they use: ${p.ownerStack}.`);
