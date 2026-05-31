@@ -237,7 +237,7 @@ export function ControlPanel() {
     <div className="stage">
       <div className="mono" style={{ padding: "10px 14px", borderBottom: "1px solid var(--line)", fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: "var(--mute)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <span>Control Panel</span>
-        <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ display: "flex", gap: 6 }} data-tour="cp-tabs">
           {(["connect", "manage"] as const).map((t) => (
             <button key={t} className="btn" style={{ padding: "2px 12px", color: tab === t ? "var(--pink)" : undefined, borderColor: tab === t ? "rgba(255,87,119,0.6)" : undefined }} onClick={() => setTab(t)}>{t}</button>
           ))}

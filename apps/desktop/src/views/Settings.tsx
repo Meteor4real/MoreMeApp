@@ -87,7 +87,7 @@ export function Settings({ onSignOut }: { onSignOut: () => void }) {
           <div key={g} style={{ marginTop: 10 }}>
             <div className="mono" style={{ fontSize: 9, letterSpacing: 1.5, textTransform: "uppercase", color: "var(--mute)", padding: "0 8px 4px" }}>{GROUP_LABEL[g]}</div>
             {SECTIONS.filter((s) => s.group === g).map((s) => (
-              <button key={s.id} onClick={() => setSection(s.id)} className="btn" style={{
+              <button key={s.id} data-tour={`settings-sec-${s.id}`} onClick={() => setSection(s.id)} className="btn" style={{
                 display: "block", width: "100%", textAlign: "left",
                 padding: "8px 12px", fontSize: 12, marginBottom: 4, minHeight: 32,
                 color: section === s.id ? "var(--pink)" : "var(--ink)",

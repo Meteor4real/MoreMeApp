@@ -250,7 +250,7 @@ export function GroupChat() {
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         {/* Chats sidebar */}
         <div style={{ width: 210, borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <button className="btn" style={{ margin: 10 }} onClick={() => setCreating(true)}>+ New chat</button>
+          <button className="btn" data-tour="gt-newchat" style={{ margin: 10 }} onClick={() => setCreating(true)}>+ New chat</button>
           <div style={{ flex: 1, overflow: "auto", padding: "0 8px 8px" }}>
             {chats.length === 0 && <div style={{ fontSize: 11, color: "var(--mute)", padding: 8 }}>No chats yet. Create one and pick who's in it.</div>}
             {chats.map((c) => (

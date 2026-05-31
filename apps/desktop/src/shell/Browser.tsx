@@ -178,7 +178,7 @@ export function Browser({
           <button className="btn" title="Forward" onClick={forward}>›</button>
           <button className="btn" title="Reload" onClick={refresh}>⟳</button>
           <button className="btn" title="Home" onClick={home}>⌂</button>
-          <input value={omni}
+          <input value={omni} data-tour="browser-omni"
             onChange={(e) => setOmni(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") go((e.target as HTMLInputElement).value); }}
             placeholder="Search the web or enter a URL"
