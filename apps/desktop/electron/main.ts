@@ -661,6 +661,34 @@ function registerIpc() {
   ipcMain.handle("privacy:apply", (_e, p: { dntGpc?: boolean; block3p?: boolean }) => {
     try { applyPrivacy(p); return { ok: true }; } catch { return { ok: false }; }
   });
+
+  // ── Agent tools — the Group Terminal crew can call these. Real machine
+  //    access (the user asked for it explicitly); all on-device, no network
+  //    except http_get which the renderer already routes through net:request.
+  ipcMain.handle("tool:exec", async (_e, command: string, cwd?: string) => {
+    return new Promise((resolve) => {
+      try {
+        const { exec } = require("node:child_process") as typeof import("node:child_process");
+        exec(command, { cwd: cwd || os.homedir(), timeout: 60000, maxBuffer: 2 * 1024 * 1024, windowsHide: true },
+          (err, stdout, stderr) => resolve({ ok: !err, code: err ? (err as { code?: number }).code ?? 1 : 0, stdout: String(stdout || "").slice(0, 12000), stderr: String(stderr || "").slice(0, 6000) }));
+      } catch (e) { resolve({ ok: false, code: 1, stdout: "", stderr: String(e) }); }
+    });
+  });
+  ipcMain.handle("tool:readFile", (_e, p: string) => {
+    try { return { ok: true, content: fs.readFileSync(p, "utf8").slice(0, 40000) }; }
+    catch (e) { return { ok: false, error: String(e) }; }
+  });
+  ipcMain.handle("tool:writeFile", (_e, p: string, content: string) => {
+    try { fs.writeFileSync(p, content, "utf8"); return { ok: true }; }
+    catch (e) { return { ok: false, error: String(e) }; }
+  });
+  ipcMain.handle("tool:listDir", (_e, p: string) => {
+    try {
+      const entries = fs.readdirSync(p || os.homedir(), { withFileTypes: true }).slice(0, 300)
+        .map((d) => ({ name: d.name, dir: d.isDirectory() }));
+      return { ok: true, entries };
+    } catch (e) { return { ok: false, error: String(e) }; }
+  });
 }
 
 // Live privacy state, consulted by the header/cookie hooks installed in

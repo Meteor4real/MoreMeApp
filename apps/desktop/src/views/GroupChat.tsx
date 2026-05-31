@@ -8,6 +8,7 @@ import {
   loadChats, saveChats, subscribeChats, newChat, estimateTokens,
   type ChatSession, type ChatMsg,
 } from "../ai/chatSessions";
+import { toolsPromptBlock, parseToolCall, runTool, agentMemory, setAgentMemory } from "../ai/agentTools";
 import { ProjectsView } from "./groupchat/Projects";
 
 // The Group Terminal — the Hub's multi-agent room. Multiple saved chats you
@@ -100,30 +101,57 @@ export function GroupChat() {
   }
   const totalTokens = useMemo(() => (active?.msgs ?? []).reduce((s, m) => s + (m.tokens ?? 0), 0), [active?.msgs]);
 
-  // ── one agent's turn ──────────────────────────────────────────────────────
-  async function callAgent(a: AgentDef, directive: string): Promise<string> {
-    const participants = (active?.participantIds ?? []).map((id) => ROSTER.find((x) => x.id === id)?.name).filter(Boolean) as string[];
-    const toneHint = { casual: "Casual, friendly.", professional: "Professional, precise.", hype: "Energetic.", short: "Extremely terse." }[prefs.chatDefaultTone];
-    const lenHint = { short: "1-2 sentences.", medium: "One short paragraph.", long: "A few paragraphs if needed." }[prefs.chatResponseLength];
-    const system =
-      a.system +
-      `\n\nYou are in a group chat called Group Terminal. The operator is Meteor (the boss). Other crew present: ${participants.filter((n) => n !== a.name).join(", ") || "none"}.` +
-      `\nRules: Read the whole conversation. You CAN and SHOULD respond to your colleagues directly, by name. Build on or push back on what they said — don't just repeat it.` +
-      `\nGround every claim. If you do not actually know something, say so plainly — never invent facts, numbers, URLs, names, or quotes. It is fine to say "I'm not sure."` +
-      `\nRespond ONLY as ${a.name}. Do not write other people's lines. Do not prefix with your own name. ${toneHint} ${lenHint}`;
-    const convo = transcript();
-    const userContent = (convo ? `Conversation so far:\n${convo}\n\n` : "") + directive;
-
+  // Low-level model call for an agent (no tool handling, no push).
+  async function runModel(a: AgentDef, system: string, userContent: string): Promise<string> {
     const c = cfg[a.id];
     const t = effectiveTransport(a, c);
     let res: { ok: boolean; text?: string; error?: string };
     if (t === "house") res = await window.hub.llm.chat(system, userContent, { temperature: prefs.llmTemperature, maxTokens: prefs.llmMaxTokens });
     else if (t === "cli") res = await window.hub.agentRun(c?.cmd || a.defaultCmd || "", `${system}\n\n${userContent}`);
     else res = await window.hub.aiChat({ provider: c?.provider ?? a.defaultProvider, endpoint: c?.endpoint, apiKey: c?.apiKey, model: c?.model || a.defaultModel, system, messages: [{ role: "user", content: userContent }] });
+    return res.ok ? (res.text || "(no output)") : `[${a.name} couldn't reach their tool: ${res.error}]`;
+  }
 
-    const text = res.ok ? (res.text || "(no output)") : `[${a.name} couldn't reach their tool: ${res.error}]`;
-    pushMsg({ agentId: a.id, name: a.name, kind: "agent", content: text });
-    return text;
+  function baseSystem(a: AgentDef): string {
+    const participants = (active?.participantIds ?? []).map((id) => ROSTER.find((x) => x.id === id)?.name).filter(Boolean) as string[];
+    const toneHint = { casual: "Casual, friendly.", professional: "Professional, precise.", hype: "Energetic.", short: "Extremely terse." }[prefs.chatDefaultTone];
+    const lenHint = { short: "1-2 sentences.", medium: "One short paragraph.", long: "A few paragraphs if needed." }[prefs.chatResponseLength];
+    const mem = agentMemory(a.id);
+    const memBlock = mem.length ? `\n\nYour saved memory (things you chose to remember):\n${mem.map((m) => "- " + m).join("\n")}` : "";
+    return (
+      a.system +
+      `\n\nYou are in the Group Terminal. The operator is ${prefs.ownerName || "Meteor"} (the boss). Other crew present: ${participants.filter((n) => n !== a.name).join(", ") || "none"}.` +
+      `\nRead the whole conversation. You CAN and SHOULD respond to your colleagues directly, by name. Build on or push back — don't just repeat them.` +
+      `\nGround every claim. If you do not actually know something, say so — never invent facts, numbers, URLs, names, or quotes. Use a tool to check instead of guessing.` +
+      `\nRespond ONLY as ${a.name}. No name prefix, no other people's lines. ${toneHint} ${lenHint}` +
+      memBlock +
+      `\n\n${toolsPromptBlock()}`
+    );
+  }
+
+  // ── one agent's turn, with a bounded tool-use loop ─────────────────────────
+  async function callAgent(a: AgentDef, directive: string): Promise<string> {
+    const system = baseSystem(a);
+    let convo = transcript();
+    let userContent = (convo ? `Conversation so far:\n${convo}\n\n` : "") + directive;
+    let finalText = "";
+    const MAX_TOOLS = 4;
+    for (let step = 0; step <= MAX_TOOLS; step++) {
+      if (stopRef.current) break;
+      const out = await runModel(a, system, userContent);
+      const call = step < MAX_TOOLS ? parseToolCall(out) : null;
+      if (!call) { finalText = out; break; }
+      // Show the tool call, run it, show the result, feed it back.
+      pushMsg({ agentId: a.id, name: a.name, kind: "tool", content: `▸ ${call.tool}(${JSON.stringify(call.args)})` });
+      setBusy(`${a.name} · ${call.tool}`);
+      const result = await runTool(call.tool, call.args, { agentId: a.id });
+      pushMsg({ agentId: "tool", name: call.tool, kind: "tool", content: (result.ok ? "" : "[error] ") + result.output.slice(0, 4000) });
+      setBusy(a.name);
+      convo = transcript();
+      userContent = `Conversation so far:\n${convo}\n\nThe ${call.tool} tool returned the result shown above. Now give your actual reply to the crew as ${a.name} (or call another tool if you still need to).`;
+    }
+    if (finalText) pushMsg({ agentId: a.id, name: a.name, kind: "agent", content: finalText });
+    return finalText;
   }
 
   // ── the round-table ───────────────────────────────────────────────────────
@@ -422,9 +450,33 @@ function ConfigPanel({ cfg, houseReady, roster, customAgents, onChange }: {
                 <div style={{ fontSize: 12, color: "var(--mute)", alignSelf: "center" }}>No setup needed — runs on the bundled local model.</div>
               )}
             </div>
+            <MemoryEditor agentId={a.id} />
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// Per-agent memory editor — the durable notes an agent keeps (and can append
+// to via the `remember` tool). Injected into the agent's system prompt.
+function MemoryEditor({ agentId }: { agentId: string }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState(() => agentMemory(agentId).join("\n"));
+  useEffect(() => { if (open) setText(agentMemory(agentId).join("\n")); }, [open, agentId]);
+  const count = agentMemory(agentId).length;
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button className="btn" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => setOpen((o) => !o)}>
+        {open ? "hide memory" : `memory (${count})`}
+      </button>
+      {open && (
+        <div style={{ marginTop: 6 }}>
+          <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="One fact per line. The agent reads these every turn and can add more with the remember tool."
+            style={{ ...fieldStyle, minHeight: 70, resize: "vertical" }} />
+          <button className="btn" style={{ fontSize: 11, marginTop: 4 }} onClick={() => { setAgentMemory(agentId, text.split("\n")); }}>Save memory</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -511,6 +563,15 @@ function TypingDots() {
 function Bubble({ m, roster }: { m: ChatMsg; roster: AgentDef[] }) {
   if (m.kind === "system") {
     return <div style={{ textAlign: "center", margin: "10px 0" }}><span className="mono" style={{ fontSize: 11, color: "var(--mute)", background: "rgba(255,255,255,0.04)", padding: "4px 12px", borderRadius: 20 }}>{m.content}</span></div>;
+  }
+  if (m.kind === "tool") {
+    const isCall = m.content.startsWith("▸");
+    return (
+      <div style={{ margin: "4px 0 8px 40px", maxWidth: "76%" }}>
+        <div className="mono" style={{ fontSize: 10, color: "#22d3ee", letterSpacing: 1, textTransform: "uppercase", marginBottom: 2 }}>{isCall ? `${m.name} · tool call` : `${m.name} · result`}</div>
+        <pre style={{ margin: 0, background: "rgba(34,211,238,0.06)", border: "1px solid rgba(34,211,238,0.25)", borderRadius: 8, padding: "8px 10px", fontFamily: "ui-monospace,monospace", fontSize: 12, color: "#bfe9f5", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 220, overflow: "auto" }}>{m.content.replace(/^▸ /, "")}</pre>
+      </div>
+    );
   }
   const isUser = m.kind === "user";
   const a = roster.find((x) => x.id === m.agentId) as (AgentDef & { color?: string }) | undefined;
