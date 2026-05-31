@@ -648,5 +648,7 @@ body.vibe-gold .glow-text {
   animation: nchub-gold-sweep 6s linear infinite;
 }
 
+@keyframes nchub-pulseGlow { 0%,100% { opacity: 0.6; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } }
+
 /* Display-font hook for theme-driven titles */
 .glow-text, .sec-title, .panel-head, h1, h2 { font-family: var(--display-font, ui-monospace, Menlo, monospace); }

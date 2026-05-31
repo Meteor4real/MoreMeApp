@@ -21,9 +21,15 @@ export type Instrument =
   | "organ"        // 3-harmonic sine stack
   | "marimba"      // bright sine pluck with very fast decay
   | "lo-fi-pad"    // filtered noise + saw mix
+  | "choir"        // stacked sine "aah" with vibrato
+  | "square-lead"  // chiptune square with fast decay
+  | "supersaw"     // 5 detuned saws, trance lead
+  | "kalimba"      // metallic plucked tine
+  | "harp"         // soft triangle pluck, long tail
+  | "noise-sweep"  // filtered-noise riser/texture
   ;
 
-export type Kit = "house" | "trip" | "hard" | "soft" | "tribal" | "lofi" | "rock" | "techno" | "jazz" | "off";
+export type Kit = "house" | "trip" | "hard" | "soft" | "tribal" | "lofi" | "rock" | "techno" | "jazz" | "dnb" | "trap" | "funk" | "off";
 
 export type TrackDef = {
   id: string;
@@ -63,6 +69,19 @@ export const TRACKS: TrackDef[] = [
   { id: "blueprint-set",name:"Digital Blueprint · Set",    vibe: "ambient piano",    bpm: 64,  root: 53, scale: [0,2,4,7,9,11],     prog: [[0,2,4],[2,4,6],[5,0,2],[3,5,0]],         pad: "pad-warm", bass: "sub-bass", lead: "piano",   arp: "bell",     leadDensity: 0.2,  arpDensity: 0.5,  arpOct: 1, drums: "off",   color: "#ffb84d" },
   { id: "voss-anthem", name: "Voss · Anthem",              vibe: "newsroom theme",   bpm: 116, root: 46, scale: [0,2,4,5,7,9,11],  prog: [[0,4,7],[5,7,11],[3,5,0],[4,7,2]],         pad: "string",   bass: "saw-bass", lead: "brass",   arp: "pluck",    leadDensity: 0.55, arpDensity: 0.5,  arpOct: 1, drums: "rock",  color: "#d946ef" },
   { id: "starchaser",  name: "Star Chaser",                vibe: "epic build",       bpm: 128, root: 47, scale: [0,2,3,5,7,9,11],  prog: [[0,2,4,6],[4,6,1,3],[5,0,2,4],[3,5,7,2]], pad: "pad-saw",  bass: "wob-bass", lead: "fm-lead", arp: "bell",     leadDensity: 0.7,  arpDensity: 0.7,  arpOct: 2, drums: "tribal",color: "#06b6d4" },
+  // ── drastically different genres / structures ──────────────────────────────
+  { id: "neurofunk",   name: "Neuro Drive",                vibe: "drum & bass",      bpm: 174, root: 40, scale: [0,2,3,5,7,8,10],  prog: [[0,2,4],[0,2,4],[5,0,2],[6,1,3]],         pad: "noise-sweep", bass: "wob-bass", lead: "supersaw", arp: "square-lead", leadDensity: 0.5, arpDensity: 0.85, arpOct: 1, drums: "dnb",  color: "#16a34a" },
+  { id: "traphouse",   name: "Low End Theory",             vibe: "trap",             bpm: 140, root: 38, scale: [0,2,3,5,7,8,10],  prog: [[0,2,4],[5,0,2],[3,5,0],[0,2,4]],         pad: "pad-warm", bass: "sub-bass", lead: "bell",    arp: "kalimba",  leadDensity: 0.25, arpDensity: 0.4,  arpOct: 2, drums: "trap",  color: "#7c3aed" },
+  { id: "funkytown",   name: "Estate Funk",                vibe: "funk",             bpm: 104, root: 45, scale: [0,2,4,5,7,9,10],  prog: [[0,2,4,6],[3,5,0,2],[4,6,1,3],[0,2,4,6]], pad: "organ",    bass: "saw-bass", lead: "square-lead", arp: "kalimba", leadDensity: 0.55, arpDensity: 0.6, arpOct: 1, drums: "funk",  color: "#facc15" },
+  { id: "chiptune",    name: "8-Bit Quest",                vibe: "chiptune",         bpm: 150, root: 52, scale: [0,2,4,5,7,9,11],  prog: [[0,2,4],[4,6,1],[5,0,2],[3,5,0]],         pad: "square-lead", bass: "square-lead", lead: "square-lead", arp: "square-lead", leadDensity: 0.7, arpDensity: 0.9, arpOct: 2, drums: "house", color: "#22c55e" },
+  { id: "trance",      name: "Azure Ascent",               vibe: "uplifting trance", bpm: 138, root: 45, scale: [0,2,3,5,7,8,10],  prog: [[0,2,4],[5,0,2],[3,5,0],[6,1,3]],         pad: "supersaw", bass: "saw-bass", lead: "supersaw", arp: "pluck",    leadDensity: 0.6,  arpDensity: 0.95, arpOct: 1, drums: "techno",color: "#3b82f6" },
+  { id: "cathedral",   name: "Cathedral of Stars",         vibe: "choral ambient",   bpm: 56,  root: 50, scale: [0,2,4,5,7,9,11],  prog: [[0,2,4],[5,0,2],[3,5,0],[4,6,1]],         pad: "choir",    bass: "sub-bass", lead: "harp",    arp: "harp",     leadDensity: 0.18, arpDensity: 0.5,  arpOct: 2, drums: "off",   color: "#a78bfa" },
+  { id: "spaghetti",   name: "High Noon, Low Orbit",       vibe: "spaghetti western",bpm: 92,  root: 45, scale: [0,2,3,5,7,8,11],  prog: [[0,2,4],[3,5,0],[4,6,1],[0,2,4]],         pad: "string",   bass: "sub-bass", lead: "brass",   arp: "pluck",    leadDensity: 0.45, arpDensity: 0.4,  arpOct: 1, drums: "rock",  color: "#dc8d3a" },
+  { id: "dub",         name: "Deep Dub Tide",              vibe: "dub reggae",       bpm: 72,  root: 43, scale: [0,2,3,5,7,8,10],  prog: [[0,2,4],[0,2,4],[5,0,2],[5,0,2]],         pad: "organ",    bass: "sub-bass", lead: "kalimba", arp: "kalimba",  leadDensity: 0.35, arpDensity: 0.4,  arpOct: 1, drums: "soft",  color: "#15a34a" },
+  { id: "vapor-mall",  name: "Mallsoft 2089",              vibe: "vaporwave",        bpm: 70,  root: 48, scale: [0,2,4,5,7,9,11],  prog: [[0,2,4,6],[5,0,2,4],[3,5,0,2],[1,3,5,0]], pad: "choir",    bass: "sub-bass", lead: "epiano",  arp: "bell",     leadDensity: 0.3,  arpDensity: 0.45, arpOct: 2, drums: "lofi",  color: "#ff9ff3" },
+  { id: "harpwind",    name: "Harpwind Glade",             vibe: "celtic folk",      bpm: 96,  root: 50, scale: [0,2,4,7,9],        prog: [[0,2,4],[3,5,0],[4,6,1],[2,4,0]],         pad: "harp",     bass: "sub-bass", lead: "harp",    arp: "kalimba",  leadDensity: 0.45, arpDensity: 0.7,  arpOct: 2, drums: "soft",  color: "#34d399" },
+  { id: "darkpsy",     name: "Riftline · Descent",         vibe: "dark psy",         bpm: 150, root: 38, scale: [0,1,3,5,6,8,10],  prog: [[0,2,4],[1,3,5],[0,2,4],[6,0,2]],         pad: "noise-sweep", bass: "wob-bass", lead: "supersaw", arp: "square-lead", leadDensity: 0.5, arpDensity: 0.9, arpOct: 1, drums: "hard",  color: "#ef4444" },
+  { id: "lofi-rain",   name: "Rain on the Deck",           vibe: "lo-fi beats",      bpm: 78,  root: 49, scale: [0,2,3,5,7,9,10],  prog: [[0,2,4,6],[5,0,2,4],[1,3,5,0],[3,5,0,2]], pad: "epiano",   bass: "sub-bass", lead: "kalimba", arp: "harp",     leadDensity: 0.25, arpDensity: 0.35, arpOct: 1, drums: "lofi",  color: "#0ea5e9" },
 ];
 
 const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
@@ -289,6 +308,70 @@ export class OST {
         o.start(start); o.stop(start + dur + 0.05);
         break;
       }
+      case "choir": {
+        // Stacked sines (octave + fifth) with slow attack and a gentle vibrato
+        // for an "aah" vocal-pad feel.
+        const lfo = c.createOscillator(); lfo.type = "sine"; lfo.frequency.value = 5;
+        const lfoG = c.createGain(); lfoG.gain.value = freq * 0.006; lfo.connect(lfoG);
+        [1, 2, 1.5].forEach((mult, i) => {
+          const o = c.createOscillator(); o.type = "sine"; o.frequency.value = freq * mult;
+          lfoG.connect(o.frequency);
+          const og = c.createGain(); og.gain.value = [1, 0.4, 0.5][i];
+          o.connect(og); og.connect(g);
+          o.start(start); o.stop(start + dur + 0.1);
+        });
+        lfo.start(start); lfo.stop(start + dur + 0.1);
+        g.gain.setValueAtTime(0.0001, start);
+        g.gain.linearRampToValueAtTime(gain * 0.7, start + 0.35);
+        g.gain.linearRampToValueAtTime(gain * 0.55, start + dur * 0.7);
+        g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+        break;
+      }
+      case "square-lead": {
+        const o = c.createOscillator(); o.type = "square"; o.frequency.value = freq;
+        o.connect(g);
+        env(0.004, Math.min(dur, 0.5), gain * 0.7);
+        o.start(start); o.stop(start + dur + 0.05);
+        break;
+      }
+      case "supersaw": {
+        const detunes = [-12, -7, 0, 7, 12];
+        const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 3500; lp.Q.value = 1;
+        lp.connect(g);
+        detunes.forEach((d) => { const o = c.createOscillator(); o.type = "sawtooth"; o.frequency.value = freq; o.detune.value = d; o.connect(lp); o.start(start); o.stop(start + dur + 0.05); });
+        env(0.02, dur, gain * 0.5);
+        break;
+      }
+      case "kalimba": {
+        const o = c.createOscillator(); o.type = "sine"; o.frequency.value = freq;
+        const o2 = c.createOscillator(); o2.type = "sine"; o2.frequency.value = freq * 6.3;
+        const o2g = c.createGain(); o2g.gain.value = 0.25; o2.connect(o2g); o2g.connect(g);
+        o.connect(g);
+        env(0.002, Math.min(dur, 0.4), gain * 1.0);
+        o.start(start); o2.start(start);
+        o.stop(start + 0.5); o2.stop(start + 0.5);
+        break;
+      }
+      case "harp": {
+        const o = c.createOscillator(); o.type = "triangle"; o.frequency.value = freq;
+        const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.setValueAtTime(5000, start); lp.frequency.exponentialRampToValueAtTime(1200, start + dur);
+        o.connect(lp); lp.connect(g);
+        env(0.003, dur * 1.3, gain * 0.85);
+        o.start(start); o.stop(start + dur + 0.15);
+        break;
+      }
+      case "noise-sweep": {
+        if (this.noiseBuf) {
+          const n = c.createBufferSource(); n.buffer = this.noiseBuf; n.loop = true;
+          const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 2;
+          bp.frequency.setValueAtTime(Math.max(200, freq), start);
+          bp.frequency.exponentialRampToValueAtTime(Math.min(8000, freq * 6), start + dur);
+          n.connect(bp); bp.connect(g);
+          env(0.05, dur, gain * 0.5);
+          n.start(start); n.stop(start + dur + 0.05);
+        }
+        break;
+      }
     }
   }
 
@@ -450,6 +533,24 @@ export class OST {
         if (within === 4 || within === 12) this.snare(time, kit);
         if (within % 3 === 0) this.hat(time, true, kit);
         else if (within % 2 === 0) this.shaker(time);
+        break;
+      case "dnb":
+        // Amen-ish: kick on 0 + 10, snare on 4 + 12, busy hats.
+        if (within === 0 || within === 10) this.kick(time, "hard");
+        if (within === 4 || within === 12) this.snare(time, "rock");
+        this.hat(time, within % 8 === 6, "techno");
+        break;
+      case "trap":
+        // Booming kick, snappy clap on 3rd beat, rolling hats (incl. triplet feel).
+        if (within === 0 || within === 7) this.kick(time, "rock");
+        if (within === 8) this.clap(time);
+        if (within % 2 === 0 || within === 11 || within === 13 || within === 15) this.hat(time, false, "techno");
+        break;
+      case "funk":
+        // Syncopated kick + backbeat snare + steady 16th hats.
+        if (within === 0 || within === 6 || within === 10) this.kick(time, "soft");
+        if (within === 4 || within === 12) this.snare(time, "rock");
+        this.hat(time, within % 4 === 2, "house");
         break;
     }
   }

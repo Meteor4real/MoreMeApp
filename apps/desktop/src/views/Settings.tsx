@@ -3,7 +3,7 @@ import { getSession } from "../auth/supabase";
 import { ACCENTS, applyAccent, loadAccent } from "../theme-accent";
 import { getData, setData, whoAmI, cloudConfigured } from "../embedded/haloscloud";
 import { loadPrefs, savePrefs, SEARCH_ENGINES, subscribePrefs, applyUiPrefs, type UiPrefs } from "../uiPrefs";
-import { TRACKS } from "../audio/ost";
+import { TRACKS, ost } from "../audio/ost";
 import { KNOWN_CODES, loadCodes, tryUnlock, relock, subscribeCodes, type CodeKey } from "../featureGate";
 import logoUrl from "../assets/logo.png";
 
@@ -341,14 +341,81 @@ function NT5BroadcastSettings({ prefs, set }: { prefs: UiPrefs; set: <K extends 
 
 // ── MUSIC ───────────────────────────────────────────────────────────────────
 function MusicSection({ prefs, set }: { prefs: UiPrefs; set: <K extends keyof UiPrefs>(k: K, v: UiPrefs[K]) => void }) {
+  const [idx, setIdx] = useState(() => Math.max(0, TRACKS.findIndex((t) => t.id === prefs.musicDefaultTrack)));
+  const [playing, setPlaying] = useState(() => ost.playing);
+  const [vol, setVol] = useState(prefs.musicDefaultVolume);
+  const [genre, setGenre] = useState("all");
+  const cur = TRACKS[idx] || TRACKS[0];
+
+  // Keep the displayed track in sync with whatever the global OST is doing.
+  useEffect(() => {
+    const t = setInterval(() => { setPlaying(ost.playing); if (ost.currentIndex >= 0) setIdx(ost.currentIndex); }, 600);
+    return () => clearInterval(t);
+  }, []);
+
+  function play(i: number) { ost.play(i); setIdx(i); setPlaying(true); }
+  function toggle() { if (playing) { ost.stop(); setPlaying(false); } else { play(idx); } }
+  function next() { play((idx + 1) % TRACKS.length); }
+  function prev() { play((idx - 1 + TRACKS.length) % TRACKS.length); }
+  function setVolume(v: number) { setVol(v); ost.setVolume(v); }
+
+  const genres = ["all", ...Array.from(new Set(TRACKS.map((t) => t.vibe)))];
+  const shown = genre === "all" ? TRACKS : TRACKS.filter((t) => t.vibe === genre);
+
   return (
-    <SectionShell title="Music / OST" intro="Procedural soundtrack engine. 18 tracks, distinct instrument palettes per track.">
+    <SectionShell title="Music / OST" intro={`Procedural soundtrack engine — ${TRACKS.length} tracks across very different genres (lo-fi, drum & bass, trance, chiptune, funk, choral ambient, dub, western, vaporwave…), each with its own instrument palette and drum kit. All synthesized live; no audio files.`}>
+      {/* Now playing / transport */}
+      <div className="panel" style={{ padding: 16, display: "flex", alignItems: "center", gap: 16, background: `linear-gradient(135deg, ${cur.color}22, rgba(0,0,0,0.3))`, border: `1px solid ${cur.color}55` }}>
+        <div style={{ width: 64, height: 64, borderRadius: 12, flexShrink: 0, background: `linear-gradient(135deg, ${cur.color}, #0a0820)`, boxShadow: `0 0 22px ${cur.color}66`, display: "grid", placeItems: "center" }}>
+          <span style={{ width: 18, height: 18, borderRadius: "50%", background: "rgba(255,255,255,0.85)", boxShadow: playing ? `0 0 12px #fff` : "none", animation: playing ? "nchub-pulseGlow 1.6s ease-in-out infinite" : "none" }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="glow-text" style={{ fontSize: 18, fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800 }}>{cur.name}</div>
+          <div style={{ fontSize: 12, color: "var(--mute)" }}>{cur.vibe} · {cur.bpm} BPM · pad {cur.pad} · lead {cur.lead} · {cur.drums} kit</div>
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <button className="btn" onClick={prev} title="Previous">‹‹</button>
+          <button className="btn" onClick={toggle} style={{ minWidth: 64, color: "var(--pink)" }}>{playing ? "❚❚ Pause" : "► Play"}</button>
+          <button className="btn" onClick={next} title="Next">››</button>
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "12px 0" }}>
+        <span style={{ fontSize: 11, color: "var(--mute)", minWidth: 56 }}>Volume</span>
+        <input type="range" min={0} max={1} step={0.02} value={vol} onChange={(e) => setVolume(Number(e.target.value))} style={{ flex: 1, accentColor: "var(--pink)" }} />
+        <span className="mono" style={{ fontSize: 11, color: "var(--ink)", minWidth: 36, textAlign: "right" }}>{Math.round(vol * 100)}%</span>
+      </div>
+
+      {/* Genre filter + track grid */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "10px 0" }}>
+        {genres.map((g) => (
+          <button key={g} className="btn" style={{ fontSize: 10, padding: "3px 9px", minHeight: 26, color: genre === g ? "var(--pink)" : undefined, borderColor: genre === g ? "rgba(255,87,119,0.55)" : undefined }} onClick={() => setGenre(g)}>{g}</button>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 8 }}>
+        {shown.map((t) => {
+          const i = TRACKS.indexOf(t);
+          const active = i === idx;
+          return (
+            <button key={t.id} onClick={() => play(i)} className={active ? "panel-hot panel" : "panel"}
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: 8, textAlign: "left", cursor: "pointer", borderColor: active ? `${t.color}aa` : undefined }}>
+              <span style={{ width: 30, height: 30, borderRadius: 7, flexShrink: 0, background: `linear-gradient(135deg, ${t.color}, #0a0820)`, boxShadow: `0 0 8px ${t.color}66` }} />
+              <span style={{ minWidth: 0, flex: 1 }}>
+                <div className="mono" style={{ fontSize: 12, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
+                <div style={{ fontSize: 10, color: "var(--mute)" }}>{t.vibe} · {t.bpm} BPM</div>
+              </span>
+              {active && playing && <span className="glow-text" style={{ fontSize: 10 }}>NOW</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      <Hr />
+      <div className="sec-title">Startup defaults</div>
       <Toggle label="Autoplay on launch" checked={prefs.musicAutoplay} onChange={(v) => set("musicAutoplay", v)} />
       <Toggle label="Fade in over 3 seconds" checked={prefs.musicFadeIn} onChange={(v) => set("musicFadeIn", v)} />
       <Grid cols={2}>
         <Field label="Default track">
-          <Select value={prefs.musicDefaultTrack} onChange={(v) => set("musicDefaultTrack", v)}
-            options={TRACKS.map((t) => [t.id, `${t.name} (${t.vibe})`])} />
+          <Select value={prefs.musicDefaultTrack} onChange={(v) => set("musicDefaultTrack", v)} options={TRACKS.map((t) => [t.id, `${t.name} (${t.vibe})`])} />
         </Field>
         <Field label={`Default volume (${Math.round(prefs.musicDefaultVolume * 100)}%)`}>
           <input type="range" min={0} max={1} step={0.05} value={prefs.musicDefaultVolume} onChange={(e) => set("musicDefaultVolume", Number(e.target.value))} style={{ width: "100%", accentColor: "var(--pink)" }} />
