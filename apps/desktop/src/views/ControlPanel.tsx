@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ADAPTERS, type ManageGroup, type ManageResult, type ManageRow, type RowAction } from "./controlPanelAdapters";
+import { PUSH_APIS, detectHotRows, type PushHandle } from "./controlPanelPush";
 
 // The Control Panel, reimplemented natively in-app (Option 2). Each user
 // connects THEIR OWN services here; tokens are stored in the OS-keychain vault
@@ -60,12 +61,19 @@ export function ControlPanel() {
   const [live, setLive] = useState<Record<string, ManageResult | "loading">>({});
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [rowExpand, setRowExpand] = useState<Record<string, ManageGroup[] | "loading">>({});
+  const [rowPrompt, setRowPrompt] = useState<{ key: string; action: RowAction; value: string } | null>(null);
   const [actMsg, setActMsg] = useState<string | null>(null);
 
   const [autoRefresh, setAutoRefresh] = useState(true);
   const REFRESH_SEC = 20;
   const [countdown, setCountdown] = useState(REFRESH_SEC);
-  const pullRef = useRef<() => void>(() => {});
+  const pullRef = useRef<(serviceId?: string) => void>(() => {});
+
+  // Push subscriptions keyed by service id. Opened when the service first
+  // shows up in the Manage tab, torn down on tab leave.
+  const pushHandlesRef = useRef<Record<string, PushHandle>>({});
+  const hotRowsRef = useRef<Record<string, Set<string>>>({});
+  const [, setPushTick] = useState(0); // forces re-render so labelFn() refreshes
 
   async function refresh() { setStatus(await window.hub.vault.list()); }
   useEffect(() => { void refresh(); }, []);
@@ -104,21 +112,64 @@ export function ControlPanel() {
   }
 
   // Pull live data for every connected service that has an adapter, in parallel.
-  async function pullManage(showLoading = true) {
-    const connected = SERVICES.filter((s) => isConnected(s.id) && ADAPTERS[s.id]?.pull);
+  // If serviceId is passed, pull only that one (used by push subscriptions).
+  async function pullManage(showLoading = true, serviceId?: string) {
+    const connected = SERVICES.filter((s) => isConnected(s.id) && ADAPTERS[s.id]?.pull && (!serviceId || s.id === serviceId));
     if (showLoading) setLive((l) => { const n = { ...l }; for (const s of connected) if (!n[s.id]) n[s.id] = "loading"; return n; });
     await Promise.all(connected.map(async (s) => {
       try {
         const cred = await window.hub.vault.get(s.id);
         const res = await ADAPTERS[s.id].pull!(cred);
         setLive((l) => ({ ...l, [s.id]: res }));
+        // Recompute hot rows for the push layer.
+        const allRows: { id: string; cells: unknown[] }[] = [];
+        for (const g of res.groups) for (const r of g.rows) allRows.push({ id: r.id, cells: r.cells });
+        hotRowsRef.current[s.id] = detectHotRows(s.id, allRows);
       } catch (e) {
         setLive((l) => ({ ...l, [s.id]: { summary: "", groups: [], error: String(e) } }));
       }
     }));
-    setCountdown(REFRESH_SEC);
+    if (!serviceId) setCountdown(REFRESH_SEC);
   }
-  pullRef.current = () => void pullManage(false);
+  pullRef.current = (serviceId?: string) => void pullManage(false, serviceId);
+
+  // Open / close push subscriptions per service as the tab and connected
+  // state change. Each subscription pulls only its own service when it
+  // fires, so a flurry of HA events doesn't repull everything.
+  useEffect(() => {
+    if (tab !== "manage") {
+      for (const id in pushHandlesRef.current) { try { pushHandlesRef.current[id].close(); } catch { /* ignore */ } }
+      pushHandlesRef.current = {};
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      for (const s of SERVICES) {
+        if (cancelled) return;
+        if (!isConnected(s.id)) continue;
+        const api = PUSH_APIS[s.id];
+        if (!api?.subscribe || pushHandlesRef.current[s.id]) continue;
+        try {
+          const cred = await window.hub.vault.get(s.id);
+          const handle = await api.subscribe(
+            cred,
+            () => { pullRef.current(s.id); setPushTick((n) => n + 1); },
+            () => hotRowsRef.current[s.id] || new Set<string>(),
+          );
+          pushHandlesRef.current[s.id] = handle;
+        } catch { /* ignore — push is best-effort */ }
+      }
+    })();
+    // Tick once a second so labelFn() (which is time-dependent for HA / Portainer)
+    // updates in the panel header.
+    const labelTick = setInterval(() => setPushTick((n) => n + 1), 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(labelTick);
+      for (const id in pushHandlesRef.current) { try { pushHandlesRef.current[id].close(); } catch { /* ignore */ } }
+      pushHandlesRef.current = {};
+    };
+  }, [tab, status]);
 
   useEffect(() => { if (tab === "manage" && Object.keys(live).length === 0) void pullManage(); }, [tab, status]);
 
@@ -135,13 +186,33 @@ export function ControlPanel() {
     return () => clearInterval(t);
   }, [tab, autoRefresh]);
 
-  async function runAction(a: RowAction, serviceId: string) {
+  async function runAction(a: RowAction, serviceId: string, rowKey?: string) {
+    if (a.prompt && a.runWith && rowKey) {
+      setRowPrompt({ key: rowKey, action: a, value: a.prompt.initial || "" });
+      return;
+    }
+    if (!a.run) return;
     setActMsg("…");
     try {
       const msg = await a.run();
       setActMsg(msg);
     } catch (e) { setActMsg(String(e)); }
     // Re-pull just this service so the row reflects the new state.
+    try {
+      const cred = await window.hub.vault.get(serviceId);
+      const res = await ADAPTERS[serviceId].pull?.(cred);
+      if (res) setLive((l) => ({ ...l, [serviceId]: res }));
+    } catch { /* ignore */ }
+  }
+  async function submitRowPrompt() {
+    if (!rowPrompt || !rowPrompt.action.runWith) return;
+    setActMsg("…");
+    try {
+      const msg = await rowPrompt.action.runWith(rowPrompt.value);
+      setActMsg(msg);
+    } catch (e) { setActMsg(String(e)); }
+    const serviceId = rowPrompt.key.split(":")[0];
+    setRowPrompt(null);
     try {
       const cred = await window.hub.vault.get(serviceId);
       const res = await ADAPTERS[serviceId].pull?.(cred);
@@ -270,15 +341,27 @@ export function ControlPanel() {
                   <span className="mono" style={{ fontSize: 13, letterSpacing: 1.5, textTransform: "uppercase", color: "var(--pink)" }}>
                     <span style={{ display: "inline-block", width: 12, color: "var(--mute)" }}>{isCollapsed ? "▸" : "▾"}</span> {s.name}
                   </span>
-                  <span className="mono" style={{ fontSize: 12, color: "var(--mute)" }}>
-                    {result === "loading" || result === undefined ? "loading…" : result.error ? `error: ${result.error}` : result.summary}
+                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    {pushHandlesRef.current[s.id] && (
+                      <span className="mono" style={{ fontSize: 10, letterSpacing: 1, padding: "2px 6px", borderRadius: 4,
+                          color: pushHandlesRef.current[s.id].kind === "ws" ? "#22d3ee" : "#f59e0b",
+                          border: `1px solid ${pushHandlesRef.current[s.id].kind === "ws" ? "rgba(34,211,238,0.4)" : "rgba(245,158,11,0.4)"}` }}>
+                        {pushHandlesRef.current[s.id].labelFn()}
+                      </span>
+                    )}
+                    <span className="mono" style={{ fontSize: 12, color: "var(--mute)" }}>
+                      {result === "loading" || result === undefined ? "loading…" : result.error ? `error: ${result.error}` : result.summary}
+                    </span>
                   </span>
                 </div>
                 {!isCollapsed && result && result !== "loading" && !result.error && (
                   <div style={{ padding: 14 }}>
                     {result.composers?.map((comp, ci) => <Composer key={ci} comp={comp} onDone={(m) => { setActMsg(m); pullRef.current(); }} />)}
                     {result.groups.map((grp, gi) => (
-                      <GroupTable key={gi} group={grp} serviceId={s.id} prefix={`${s.id}:${gi}`} rowExpand={rowExpand} onToggleRow={toggleRow} onAction={runAction} />
+                      <GroupTable key={gi} group={grp} serviceId={s.id} prefix={`${s.id}:${gi}`}
+                        rowExpand={rowExpand} onToggleRow={toggleRow} onAction={runAction}
+                        rowPrompt={rowPrompt} setRowPromptValue={(v) => setRowPrompt((p) => p ? { ...p, value: v } : p)}
+                        submitRowPrompt={submitRowPrompt} cancelRowPrompt={() => setRowPrompt(null)} />
                     ))}
                   </div>
                 )}
@@ -291,11 +374,15 @@ export function ControlPanel() {
   );
 }
 
-function GroupTable({ group, serviceId, prefix, rowExpand, onToggleRow, onAction }: {
+function GroupTable({ group, serviceId, prefix, rowExpand, onToggleRow, onAction, rowPrompt, setRowPromptValue, submitRowPrompt, cancelRowPrompt }: {
   group: ManageGroup; serviceId: string; prefix: string;
   rowExpand: Record<string, ManageGroup[] | "loading">;
   onToggleRow: (key: string, row: ManageRow) => void;
-  onAction: (a: RowAction, serviceId: string) => void;
+  onAction: (a: RowAction, serviceId: string, rowKey?: string) => void;
+  rowPrompt: { key: string; action: RowAction; value: string } | null;
+  setRowPromptValue: (v: string) => void;
+  submitRowPrompt: () => void;
+  cancelRowPrompt: () => void;
 }) {
   return (
     <div style={{ marginBottom: 12 }}>
@@ -310,6 +397,7 @@ function GroupTable({ group, serviceId, prefix, rowExpand, onToggleRow, onAction
             {group.rows.map((row) => {
               const key = `${prefix}:${row.id}`;
               const ex = rowExpand[key];
+              const promptHere = rowPrompt && rowPrompt.key === key;
               return (
                 <RowFragment key={key}>
                   <tr onClick={() => onToggleRow(key, row)} style={{ cursor: row.expand ? "pointer" : "default" }}>
@@ -318,15 +406,32 @@ function GroupTable({ group, serviceId, prefix, rowExpand, onToggleRow, onAction
                       {row.expand && <span className="mono" style={{ color: "var(--mute)", marginRight: 8 }}>{ex ? "▾" : "▸"}</span>}
                       {row.actions?.map((a, i) => (
                         <button key={i} className="btn" style={{ padding: "2px 8px", marginLeft: 4, color: a.danger ? "var(--orange)" : undefined }}
-                          onClick={(e) => { e.stopPropagation(); onAction(a, serviceId); }}>{a.label}</button>
+                          onClick={(e) => { e.stopPropagation(); onAction(a, serviceId, key); }}>{a.label}</button>
                       ))}
                     </td>
                   </tr>
+                  {promptHere && (
+                    <tr>
+                      <td colSpan={group.columns.length + 1} style={{ background: "rgba(245,158,11,0.06)", padding: "8px 12px" }}>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <input autoFocus value={rowPrompt!.value} placeholder={rowPrompt!.action.prompt?.placeholder}
+                            onChange={(e) => setRowPromptValue(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") submitRowPrompt(); if (e.key === "Escape") cancelRowPrompt(); }}
+                            style={{ ...inpInline, flex: 1 }} />
+                          <button className="btn" onClick={submitRowPrompt}>{rowPrompt!.action.prompt?.submitLabel || "Apply"}</button>
+                          <button className="btn" onClick={cancelRowPrompt}>cancel</button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
                   {ex && (
                     <tr>
                       <td colSpan={group.columns.length + 1} style={{ background: "rgba(0,0,0,0.25)", padding: "8px 12px" }}>
                         {ex === "loading" ? <span className="mono" style={{ fontSize: 11, color: "var(--mute)" }}>loading…</span>
-                          : ex.map((g, gi) => <GroupTable key={gi} group={g} serviceId={serviceId} prefix={`${key}:${gi}`} rowExpand={rowExpand} onToggleRow={onToggleRow} onAction={onAction} />)}
+                          : ex.map((g, gi) => <GroupTable key={gi} group={g} serviceId={serviceId} prefix={`${key}:${gi}`}
+                              rowExpand={rowExpand} onToggleRow={onToggleRow} onAction={onAction}
+                              rowPrompt={rowPrompt} setRowPromptValue={setRowPromptValue}
+                              submitRowPrompt={submitRowPrompt} cancelRowPrompt={cancelRowPrompt} />)}
                       </td>
                     </tr>
                   )}
@@ -339,6 +444,7 @@ function GroupTable({ group, serviceId, prefix, rowExpand, onToggleRow, onAction
     </div>
   );
 }
+const inpInline: React.CSSProperties = { background: "rgba(0,0,0,0.5)", border: "1px solid var(--line)", borderRadius: 6, color: "var(--ink)", padding: "6px 8px", fontSize: 12, fontFamily: "ui-monospace, monospace", outline: "none" };
 
 function RowFragment({ children }: { children: React.ReactNode }) { return <>{children}</>; }
 

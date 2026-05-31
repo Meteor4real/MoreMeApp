@@ -16,7 +16,16 @@ async function net<T = unknown>(opts: { method: string; url: string; headers?: R
   return (await window.hub.net(opts)) as NetResp<T>;
 }
 
-export type RowAction = { label: string; run: () => Promise<string>; danger?: boolean };
+// A row action is either a one-click button (run) or an inline composer
+// that pops a tiny form right under the row, collects a value, then runs.
+export type RowAction = {
+  label: string;
+  danger?: boolean;
+  run?: () => Promise<string>;
+  // For inline composer-style actions (replaces window.prompt).
+  prompt?: { placeholder: string; initial?: string; submitLabel?: string };
+  runWith?: (value: string) => Promise<string>;
+};
 export type ManageRow = {
   id: string;
   cells: ReactNode[];
@@ -216,11 +225,12 @@ const tailscale: Adapter = {
           cells: [dot(isOn ? "green" : "grey"), d.name, d.os, (d.addresses || [])[0] || "", d.lastSeen ? ago(seen) : "—", (d.tags || []).join(", ")],
           actions: [
             ...(d.authorized === false ? [{ label: "authorize", run: async () => okMsg(await net({ method: "POST", url: `https://api.tailscale.com/api/v2/device/${d.id}/authorized`, headers: auth, body: { authorized: true } }), "authorized") }] : []),
-            { label: "set tag", run: async () => {
-              const tag = window.prompt(`Tag for ${d.name} (e.g. tag:server)`, (d.tags || [])[0] || "tag:");
-              if (!tag) return "cancelled";
-              return okMsg(await net({ method: "POST", url: `https://api.tailscale.com/api/v2/device/${d.id}/tags`, headers: auth, body: { tags: [tag] } }), "tag set");
-            } },
+            { label: "set tag",
+              prompt: { placeholder: "tag:server", initial: (d.tags || [])[0] || "tag:", submitLabel: "Apply" },
+              runWith: async (tag) => {
+                if (!tag.trim()) return "cancelled";
+                return okMsg(await net({ method: "POST", url: `https://api.tailscale.com/api/v2/device/${d.id}/tags`, headers: auth, body: { tags: [tag.trim()] } }), `tag set on ${d.name}`);
+              } },
             { label: "delete", danger: true, run: async () => okMsg(await net({ method: "DELETE", url: `https://api.tailscale.com/api/v2/device/${d.id}`, headers: auth }), `${d.name} removed`) },
           ],
         };
