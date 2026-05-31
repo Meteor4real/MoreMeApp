@@ -163,6 +163,16 @@ function isAppOrigin(u?: string): boolean {
   return u.startsWith("file://") || (!!DEV_URL && u.startsWith(DEV_URL));
 }
 
+// Crude registrable-domain (eTLD+1) for same-site comparison. Good enough for
+// the common .com/.org/.io cases and multi-label TLDs like .co.uk.
+function registrableDomain(host: string): string {
+  const parts = host.toLowerCase().split(".").filter(Boolean);
+  if (parts.length <= 2) return parts.join(".");
+  const twoLevelTld = /^(co|com|org|net|gov|edu|ac)\.[a-z]{2}$/;
+  const lastTwo = parts.slice(-2).join(".");
+  return twoLevelTld.test(lastTwo) ? parts.slice(-3).join(".") : parts.slice(-2).join(".");
+}
+
 function harden(ses: Electron.Session) {
   ses.webRequest.onBeforeRequest((details, cb) => {
     if (hostBlocked(details.url)) return cb({ cancel: true });
@@ -186,6 +196,30 @@ function harden(ses: Electron.Session) {
       delete details.requestHeaders["Sec-GPC"];
     }
     cb({ requestHeaders: details.requestHeaders });
+  });
+
+  // Third-party cookie blocking. When enabled, strip Set-Cookie from any
+  // response whose registrable domain differs from the document that made the
+  // request (looked up via the request's webContents top URL). Genuine 3p
+  // cookie blocking, not just the tracker-host blocklist.
+  ses.webRequest.onHeadersReceived((details, cb) => {
+    if (!privacyState.block3p) return cb({ responseHeaders: details.responseHeaders });
+    const headers = details.responseHeaders || {};
+    const cookieKey = Object.keys(headers).find((k) => k.toLowerCase() === "set-cookie");
+    if (!cookieKey) return cb({ responseHeaders: headers });
+    try {
+      const reqHost = new URL(details.url).hostname;
+      let topHost = "";
+      const wcId = (details as unknown as { webContentsId?: number }).webContentsId;
+      if (typeof wcId === "number") {
+        const wc = require("electron").webContents.fromId(wcId);
+        if (wc) { try { topHost = new URL(wc.getURL()).hostname; } catch { /* ignore */ } }
+      }
+      if (topHost && registrableDomain(reqHost) !== registrableDomain(topHost)) {
+        delete headers[cookieKey];
+      }
+    } catch { /* ignore */ }
+    cb({ responseHeaders: headers });
   });
 
   ses.setPermissionRequestHandler((_wc, perm, cb, details) => {

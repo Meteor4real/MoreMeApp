@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { getSession } from "../auth/supabase";
 import { ACCENTS, applyAccent, loadAccent } from "../theme-accent";
 import { getData, setData, whoAmI, cloudConfigured } from "../embedded/haloscloud";
-import { loadPrefs, savePrefs, SEARCH_ENGINES, subscribePrefs, type UiPrefs } from "../uiPrefs";
+import { loadPrefs, savePrefs, SEARCH_ENGINES, subscribePrefs, applyUiPrefs, type UiPrefs } from "../uiPrefs";
 import { TRACKS } from "../audio/ost";
 import { KNOWN_CODES, loadCodes, tryUnlock, relock, subscribeCodes, type CodeKey } from "../featureGate";
 import logoUrl from "../assets/logo.png";
@@ -60,7 +60,7 @@ export function Settings({ onSignOut }: { onSignOut: () => void }) {
     return () => { cancelled = true; clearInterval(t); off(); };
   }, []);
 
-  function pickAccent(name: string) { setAccent(name); applyAccent(name); }
+  function pickAccent(name: string) { setAccent(name); applyAccent(name); applyUiPrefs(loadPrefs()); }
   async function setBgPref(k: keyof typeof bg, v: boolean) { const next = await window.hub.bg.set({ [k]: v }); setBg(next); }
   async function downloadModel() { setLlmBusy(true); try { await window.hub.llm.ensure(); } finally { setLlmBusy(false); } }
   function set<K extends keyof UiPrefs>(k: K, v: UiPrefs[K]) { setPrefs(savePrefs({ [k]: v } as Partial<UiPrefs>)); }

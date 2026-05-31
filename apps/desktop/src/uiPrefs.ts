@@ -157,8 +157,15 @@ export function applyUiPrefs(p: UiPrefs = loadPrefs()): void {
   const body = document.body;
   // Font size scale.
   root.style.setProperty("--ui-scale", p.fontSize === "small" ? "0.92" : p.fontSize === "large" ? "1.12" : "1");
-  // Accent glow intensity (multiplier applied where --glow shadows are used).
-  root.style.setProperty("--glow-intensity", p.accentIntensity === "soft" ? "0.5" : p.accentIntensity === "loud" ? "1.6" : "1");
+  // Accent glow intensity — derive the live --glow from the theme's raw
+  // --glow-base so every `var(--glow)` shadow across the app dims (soft) or
+  // brightens (loud) without touching individual rules.
+  const base = getComputedStyle(root).getPropertyValue("--glow-base").trim() || "#ff3355";
+  const glow =
+    p.accentIntensity === "soft" ? `color-mix(in srgb, ${base} 45%, transparent)`
+    : p.accentIntensity === "loud" ? `color-mix(in srgb, ${base} 80%, white)`
+    : base;
+  root.style.setProperty("--glow", glow);
   // Body classes (CSS in theme.css reacts to these).
   body.classList.toggle("reduce-motion", p.reduceMotion);
   body.classList.toggle("compact-density", p.compactDensity);

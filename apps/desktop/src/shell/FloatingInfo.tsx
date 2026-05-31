@@ -58,20 +58,26 @@ export function FloatingInfo() {
     return () => clearInterval(t);
   }, []);
 
-  // Clock — updates every second so the widget reads like a live HUD.
+  // Clock — updates every second, rendered in the operator's configured
+  // timezone (Settings → Profile → Timezone) so it's actually their wall time.
   useEffect(() => {
+    const tz = prefs.ownerTimezone || undefined;
     function tickClock() {
       const d = new Date();
-      const hh = d.getHours().toString().padStart(2, "0");
-      const mm = d.getMinutes().toString().padStart(2, "0");
-      const ss = d.getSeconds().toString().padStart(2, "0");
-      const dateStr = d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-      setClock({ time: `${hh}:${mm}:${ss}`, date: dateStr.toUpperCase() });
+      let time: string; let dateStr: string;
+      try {
+        time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: tz, hour12: false });
+        dateStr = d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", timeZone: tz });
+      } catch {
+        time = d.toLocaleTimeString("en-GB", { hour12: false });
+        dateStr = d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+      }
+      setClock({ time, date: dateStr.toUpperCase() });
     }
     tickClock();
     const t = setInterval(tickClock, 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [prefs.ownerTimezone]);
 
   // MoreMe streak + today's progress, polled from its localStorage every 30 s.
   useEffect(() => {
@@ -219,6 +225,24 @@ export function FloatingInfo() {
         </InfoCard>
       ),
     });
+  }
+  // Birthday greeting — shows all day on the operator's birthday (compares
+  // month + day from Settings → Profile → Birthday).
+  if (prefs.ownerBirthday) {
+    const bd = prefs.ownerBirthday.split("-"); // YYYY-MM-DD
+    const now = new Date();
+    if (bd.length === 3 && Number(bd[1]) === now.getMonth() + 1 && Number(bd[2]) === now.getDate()) {
+      cards.push({
+        id: "birthday", show: true,
+        node: (
+          <InfoCard key="birthday" tag="◆ Happy birthday" color="#ff7a2d">
+            <div style={{ fontSize: 13, color: "#ffe5d4", lineHeight: 1.4 }}>
+              The whole Hub crew is wishing {prefs.ownerName || "you"} a great one today.
+            </div>
+          </InfoCard>
+        ),
+      });
+    }
   }
   if (prefs.infoClock && clock.time) {
     cards.push({

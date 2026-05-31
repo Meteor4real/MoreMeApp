@@ -52,6 +52,9 @@ export function applyAccent(name: string) {
   r.setProperty("--red", a.red);
   r.setProperty("--pink", a.pink);
   r.setProperty("--orange", a.orange);
+  // --glow-base is the theme's raw glow; --glow is derived from it by the
+  // accent-intensity pref (see applyUiPrefs). Default --glow = base.
+  r.setProperty("--glow-base", a.glow);
   r.setProperty("--glow", a.glow);
   if (a.ink) r.setProperty("--ink", a.ink);
   if (a.mute) r.setProperty("--mute", a.mute);
