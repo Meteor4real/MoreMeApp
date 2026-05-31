@@ -31,6 +31,13 @@ const ANCHORS = [
   { id: "zara",  name: "Zip Kindle",    beat: "Earth Trending / Culture",          color: "#ec4899" },
 ];
 
+const LAST_VISIT_KEY = "nchub.nt5.lastVisit.v1";
+function loadLastVisit(): number {
+  try { const r = localStorage.getItem(LAST_VISIT_KEY); if (r) return Number(r); } catch { /* ignore */ }
+  return 0;
+}
+function bumpLastVisit() { try { localStorage.setItem(LAST_VISIT_KEY, String(Date.now())); } catch { /* ignore */ } }
+
 const BMK_KEY = "nchub.nt5.bookmarks.v1";
 function loadBookmarks(): Set<string> {
   try { const r = localStorage.getItem(BMK_KEY); if (r) return new Set(JSON.parse(r) as string[]); }
@@ -55,6 +62,11 @@ export function NT5Newsroom() {
   const [bookmarks, setBookmarks] = useState<Set<string>>(loadBookmarks);
   const [readingId, setReadingId] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  // Remember the previous-visit timestamp so we can highlight what landed
+  // since then; bump the saved value when the user leaves the view.
+  const [lastVisit] = useState<number>(loadLastVisit);
+  useEffect(() => { return () => { bumpLastVisit(); }; }, []);
+  const unreadCount = useMemo(() => arts.filter((a) => Date.parse(a.published_at) > lastVisit).length, [arts, lastVisit]);
 
   function toggleBookmark(id: string) {
     setBookmarks((b) => { const n = new Set(b); n.has(id) ? n.delete(id) : n.add(id); saveBookmarks(n); return n; });
@@ -110,6 +122,7 @@ export function NT5Newsroom() {
           ON AIR
         </span>
         <span style={{ flex: 1 }} />
+        {unreadCount > 0 && <Stat label="new since last visit" value={unreadCount} color="#ffd166" />}
         <Stat label="filed today" value={todayCount} color={C.magenta} />
         <Stat label="real-world" value={realCount} color={C.cyan} />
         <Stat label="last filed" value={lastFiledRel} color={C.ink} />
@@ -151,13 +164,13 @@ export function NT5Newsroom() {
             </div>
 
             {isFiltering ? (
-              <CardGrid articles={filtered} onOpen={setOpen} bookmarks={bookmarks} onToggleBookmark={toggleBookmark} readingId={readingId} />
+              <CardGrid articles={filtered} onOpen={setOpen} bookmarks={bookmarks} onToggleBookmark={toggleBookmark} readingId={readingId} lastVisit={lastVisit} />
             ) : (
               <div style={{ marginTop: 12 }}>
                 {Object.entries(CAT_META).map(([cat, meta]) => {
                   const items = (byCat[cat] || []).slice(0, 12);
                   if (items.length === 0) return null;
-                  return <Rail key={cat} cat={cat} meta={meta} items={items} onOpen={setOpen} bookmarks={bookmarks} onToggleBookmark={toggleBookmark} readingId={readingId} />;
+                  return <Rail key={cat} cat={cat} meta={meta} items={items} onOpen={setOpen} bookmarks={bookmarks} onToggleBookmark={toggleBookmark} readingId={readingId} lastVisit={lastVisit} />;
                 })}
               </div>
             )}
@@ -266,7 +279,7 @@ function Hero({ article, onOpen }: { article: WireArticle; onOpen: () => void })
   );
 }
 
-function Rail({ cat, meta, items, onOpen, bookmarks, onToggleBookmark, readingId }: { cat: string; meta: { label: string; color: string }; items: WireArticle[]; onOpen: (a: WireArticle) => void; bookmarks: Set<string>; onToggleBookmark: (id: string) => void; readingId: string | null }) {
+function Rail({ cat, meta, items, onOpen, bookmarks, onToggleBookmark, readingId, lastVisit }: { cat: string; meta: { label: string; color: string }; items: WireArticle[]; onOpen: (a: WireArticle) => void; bookmarks: Set<string>; onToggleBookmark: (id: string) => void; readingId: string | null; lastVisit: number }) {
   void cat;
   return (
     <div style={{ marginBottom: 18 }}>
@@ -276,12 +289,12 @@ function Rail({ cat, meta, items, onOpen, bookmarks, onToggleBookmark, readingId
         <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${meta.color}, transparent)`, opacity: 0.5 }} />
       </div>
       <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6 }}>
-        {items.map((a) => <RailCard key={a.id} article={a} color={meta.color} onClick={() => onOpen(a)} bookmarked={bookmarks.has(a.id)} onBookmark={() => onToggleBookmark(a.id)} reading={readingId === a.id} />)}
+        {items.map((a) => <RailCard key={a.id} article={a} color={meta.color} onClick={() => onOpen(a)} bookmarked={bookmarks.has(a.id)} onBookmark={() => onToggleBookmark(a.id)} reading={readingId === a.id} isNew={Date.parse(a.published_at) > lastVisit} />)}
       </div>
     </div>
   );
 }
-function RailCard({ article, color, onClick, bookmarked, onBookmark, reading }: { article: WireArticle; color: string; onClick: () => void; bookmarked?: boolean; onBookmark?: () => void; reading?: boolean }) {
+function RailCard({ article, color, onClick, bookmarked, onBookmark, reading, isNew }: { article: WireArticle; color: string; onClick: () => void; bookmarked?: boolean; onBookmark?: () => void; reading?: boolean; isNew?: boolean }) {
   const isReal = (article.source_urls || []).length > 0;
   return (
     <div onClick={onClick} style={{ flex: "0 0 280px", padding: 12, background: C.panel, border: `1px solid ${color}33`, borderRadius: 8, cursor: "pointer",
@@ -291,6 +304,7 @@ function RailCard({ article, color, onClick, bookmarked, onBookmark, reading }: 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
         <span style={{ fontSize: 9, color: color, letterSpacing: 1.5, textTransform: "uppercase" }}>{article.author_display}</span>
         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          {isNew && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ffd166", boxShadow: "0 0 8px #ffd166", marginRight: 2 }} title="New since your last visit" />}
           {reading && <span style={{ fontSize: 8, padding: "1px 5px", background: "#ef4444", color: "#fff", borderRadius: 3, letterSpacing: 1, textTransform: "uppercase", animation: "nt5pulse 1.6s ease-in-out infinite" }}>READING</span>}
           {isReal && <span style={{ fontSize: 8, color: C.cyan, letterSpacing: 1, textTransform: "uppercase", padding: "1px 5px", border: `1px solid ${C.cyan}55`, borderRadius: 3 }}>REAL</span>}
           {onBookmark && (
@@ -304,13 +318,13 @@ function RailCard({ article, color, onClick, bookmarked, onBookmark, reading }: 
   );
 }
 
-function CardGrid({ articles, onOpen, bookmarks, onToggleBookmark, readingId }: { articles: WireArticle[]; onOpen: (a: WireArticle) => void; bookmarks: Set<string>; onToggleBookmark: (id: string) => void; readingId: string | null }) {
+function CardGrid({ articles, onOpen, bookmarks, onToggleBookmark, readingId, lastVisit }: { articles: WireArticle[]; onOpen: (a: WireArticle) => void; bookmarks: Set<string>; onToggleBookmark: (id: string) => void; readingId: string | null; lastVisit: number }) {
   if (articles.length === 0) return <div style={{ color: C.muted, fontSize: 13, padding: 20 }}>No stories match.</div>;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10, marginTop: 10 }}>
       {articles.map((a) => {
         const color = CAT_META[a.category]?.color || C.magenta;
-        return <RailCard key={a.id} article={a} color={color} onClick={() => onOpen(a)} bookmarked={bookmarks.has(a.id)} onBookmark={() => onToggleBookmark(a.id)} reading={readingId === a.id} />;
+        return <RailCard key={a.id} article={a} color={color} onClick={() => onOpen(a)} bookmarked={bookmarks.has(a.id)} onBookmark={() => onToggleBookmark(a.id)} reading={readingId === a.id} isNew={Date.parse(a.published_at) > lastVisit} />;
       })}
     </div>
   );
