@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { SignalFinderTargets } from "../SignalFinder";
+import { houseChat } from "../../houseLLM";
 import {
-  STAGES, STAGE_LABEL, STAGE_COLOR, type Stage, type Ext, type Channel, type Tag, type Note,
+  STAGES, STAGE_LABEL, STAGE_COLOR, type Stage, type Ext, type Channel, type Note,
   loadAllExt, saveAllExt, getExt, patchExt,
   loadWeights, saveWeights, type Weights, DEFAULT_WEIGHTS,
   loadTemplates, saveTemplates, type Template, fillTemplate, DEFAULT_TEMPLATES,
@@ -16,7 +17,7 @@ import {
 // All new data lives in a sidecar (sfExt.ts) keyed by target id so the
 // original component keeps working.
 
-type View = "targets" | "pipeline" | "templates" | "stats" | "settings";
+type View = "targets" | "pipeline" | "ai" | "templates" | "stats" | "settings";
 
 type Target = {
   id: string; name: string; type: string; niche: string; platform: string;
@@ -32,13 +33,37 @@ function loadTargets(): Target[] {
 
 const C_BAR_BG = "linear-gradient(90deg, #160a14, #1a0c14 30%, #110a14 75%, #0c0810)";
 
+function exportAll() {
+  const data = {
+    v: 1, ts: Date.now(),
+    targets: loadTargets(),
+    ext: loadAllExt(),
+    weights: loadWeights(),
+    templates: loadTemplates(),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = `signalfinder-${Date.now()}.json`; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 500);
+}
+function importAll(text: string) {
+  try {
+    const d = JSON.parse(text) as { targets?: unknown; ext?: unknown; weights?: unknown; templates?: unknown };
+    if (Array.isArray(d.targets)) localStorage.setItem("nchub.signalfinder.v2", JSON.stringify(d.targets));
+    if (d.ext) saveAllExt(d.ext as Record<string, Ext>);
+    if (d.weights) saveWeights(d.weights as Weights);
+    if (Array.isArray(d.templates)) saveTemplates(d.templates as Template[]);
+    window.location.reload();
+  } catch { /* ignore */ }
+}
+
 export function SignalFinder() {
   const [view, setView] = useState<View>("targets");
   return (
     <div className="stage" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ display: "flex", gap: 6, alignItems: "center", padding: "8px 14px", borderBottom: "1px solid var(--line)", background: C_BAR_BG }}>
         <span style={{ fontFamily: "ui-monospace,monospace", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "var(--mute)", marginRight: 6 }}>SignalFinder</span>
-        {(["targets", "pipeline", "templates", "stats", "settings"] as const).map((v) => (
+        {(["targets", "pipeline", "ai", "templates", "stats", "settings"] as const).map((v) => (
           <button key={v} onClick={() => setView(v)} className="btn" style={{
             padding: "6px 14px", fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase",
             color: view === v ? "var(--pink)" : undefined, borderColor: view === v ? "rgba(255,87,119,0.55)" : undefined,
@@ -46,10 +71,17 @@ export function SignalFinder() {
           }}>{v}</button>
         ))}
         <span style={{ flex: 1 }} />
+        <button className="btn" onClick={exportAll} title="Download all targets + sidecar data as JSON" style={{ fontSize: 11, padding: "6px 12px" }}>Export</button>
+        <label className="btn" style={{ fontSize: 11, padding: "6px 12px", cursor: "pointer" }}>
+          Import
+          <input type="file" accept=".json,application/json" style={{ display: "none" }}
+            onChange={(e) => { const f = e.currentTarget.files?.[0]; if (f) f.text().then(importAll); e.currentTarget.value = ""; }} />
+        </label>
       </div>
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         {view === "targets" && <SignalFinderTargets />}
         {view === "pipeline" && <PipelineView />}
+        {view === "ai" && <AIStudioView />}
         {view === "templates" && <TemplatesView />}
         {view === "stats" && <StatsView />}
         {view === "settings" && <SettingsView />}
@@ -63,6 +95,9 @@ function PipelineView() {
   const [targets, setTargets] = useState<Target[]>(loadTargets);
   const [ext, setExt] = useState(loadAllExt);
   const [open, setOpen] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [tagFilter, setTagFilter] = useState<string>("");
+  const [dragOver, setDragOver] = useState<Stage | null>(null);
 
   // Pick up changes whenever this view is shown.
   useEffect(() => { setTargets(loadTargets()); setExt(loadAllExt()); }, []);
@@ -70,8 +105,22 @@ function PipelineView() {
   function moveStage(id: string, stage: Stage) { setExt(patchExt(id, { stage })); }
   function patchTarget(id: string, p: Partial<Ext>) { setExt(patchExt(id, p)); }
 
+  // All tags currently in use across targets — for the tag-filter dropdown.
+  const allTags = useMemo(() => {
+    const s = new Set<string>();
+    for (const id of Object.keys(ext)) for (const tg of ext[id].tags) s.add(tg.label);
+    return [...s].sort();
+  }, [ext]);
+
+  const filteredTargets = targets.filter((t) => {
+    const text = q.trim().toLowerCase();
+    if (text && !(t.name.toLowerCase().includes(text) || t.niche.toLowerCase().includes(text) || t.platform.toLowerCase().includes(text))) return false;
+    if (tagFilter && !getExt(ext, t.id).tags.some((tg) => tg.label === tagFilter)) return false;
+    return true;
+  });
+
   const byStage: Record<Stage, Target[]> = { prospect: [], contacted: [], replied: [], talks: [], won: [], lost: [] };
-  for (const t of targets) byStage[getExt(ext, t.id).stage].push(t);
+  for (const t of filteredTargets) byStage[getExt(ext, t.id).stage].push(t);
   const overdueCount = targets.filter((t) => {
     const f = getExt(ext, t.id).followup;
     return f && new Date(f).getTime() < Date.now();
@@ -85,9 +134,21 @@ function PipelineView() {
         <span style={{ flex: 1 }} />
         <span style={{ fontSize: 11, color: "var(--mute)" }}>{targets.length} target{targets.length === 1 ? "" : "s"}</span>
       </div>
+      <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 10 }}>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="search by name, niche, platform" style={{ ...inp, flex: 1, maxWidth: 320 }} />
+        <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} style={{ ...inp, maxWidth: 180 }}>
+          <option value="">all tags</option>
+          {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <span style={{ fontSize: 11, color: "var(--mute)" }}>{filteredTargets.length} shown</span>
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${STAGES.length}, minmax(220px, 1fr))`, gap: 10 }}>
         {STAGES.map((s) => (
-          <div key={s} style={{ background: "rgba(0,0,0,0.4)", border: `1px solid ${STAGE_COLOR[s]}55`, borderTop: `3px solid ${STAGE_COLOR[s]}`, borderRadius: 6, display: "flex", flexDirection: "column", minHeight: 200 }}>
+          <div key={s}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(s); }}
+            onDragLeave={() => setDragOver((d) => d === s ? null : d)}
+            onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (id) moveStage(id, s); setDragOver(null); }}
+            style={{ background: dragOver === s ? `${STAGE_COLOR[s]}1c` : "rgba(0,0,0,0.4)", border: `1px solid ${dragOver === s ? STAGE_COLOR[s] : `${STAGE_COLOR[s]}55`}`, borderTop: `3px solid ${STAGE_COLOR[s]}`, borderRadius: 6, display: "flex", flexDirection: "column", minHeight: 200, transition: "background .12s, border-color .12s" }}>
             <div style={{ padding: "8px 10px", display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ fontFamily: "ui-monospace,monospace", fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: STAGE_COLOR[s] }}>{STAGE_LABEL[s]}</span>
               <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--mute)" }}>{byStage[s].length}</span>
@@ -97,10 +158,13 @@ function PipelineView() {
                 const e = getExt(ext, t.id);
                 const overdue = e.followup && new Date(e.followup).getTime() < Date.now();
                 return (
-                  <div key={t.id} onClick={() => setOpen(t.id)} style={{
-                    padding: 8, background: "rgba(20,8,12,0.75)", border: "1px solid var(--line)", borderRadius: 5, cursor: "pointer",
-                    borderLeft: `3px solid ${STAGE_COLOR[s]}`,
-                  }}>
+                  <div key={t.id} onClick={() => setOpen(t.id)}
+                    draggable
+                    onDragStart={(de) => { de.dataTransfer.setData("text/plain", t.id); de.dataTransfer.effectAllowed = "move"; }}
+                    style={{
+                      padding: 8, background: "rgba(20,8,12,0.75)", border: "1px solid var(--line)", borderRadius: 5, cursor: "grab",
+                      borderLeft: `3px solid ${STAGE_COLOR[s]}`,
+                    }}>
                     <div style={{ fontFamily: "ui-monospace,monospace", fontSize: 12, color: "var(--ink)" }}>{t.name || "(unnamed)"}</div>
                     <div style={{ fontSize: 10, color: "var(--mute)", marginTop: 2 }}>{t.type}{t.niche ? ` · ${t.niche}` : ""}</div>
                     {e.tags.length > 0 && (
@@ -235,6 +299,159 @@ function TargetEditor({ target, ext, onClose, onMove, onPatch }: {
           </Section>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── AI Studio ───────────────────────────────────────────────────────────────
+function AIStudioView() {
+  const [targets] = useState<Target[]>(loadTargets);
+  const [targetId, setTargetId] = useState<string>(targets[0]?.id || "");
+  const [templates] = useState<Template[]>(loadTemplates);
+  const [tplId, setTplId] = useState<string>(templates[0]?.id || "");
+  const [tone, setTone] = useState<Template["tone"]>("casual");
+  const [hook, setHook] = useState("");
+  const [draft, setDraft] = useState("");
+  const [variations, setVariations] = useState<string[]>([]);
+  const [subject, setSubject] = useState("");
+  const [busy, setBusy] = useState<"draft" | "vary" | "subject" | "improve" | "follow" | null>(null);
+
+  const target = targets.find((t) => t.id === targetId);
+  const template = templates.find((t) => t.id === tplId);
+
+  function prefill() {
+    if (!target || !template) return;
+    const filled = fillTemplate(template.body, { name: target.name, niche: target.niche, platform: target.platform, hook: hook || "" });
+    setDraft(filled);
+  }
+  useEffect(() => { prefill(); }, [tplId, targetId]);
+
+  async function generateDraft() {
+    if (!target) return;
+    setBusy("draft"); setVariations([]);
+    const sys = `You are SignalFinder's outreach assistant. Write ONE short opening message in a ${tone} tone. Two sentences max for "short", three to four for everything else. No preamble, no quotes, no signature. Reference one CONCRETE thing about the target if the hook is provided; never fabricate specifics.`;
+    const u = `Target: ${target.name} (${target.type})${target.niche ? `, niche: ${target.niche}` : ""}${target.platform ? `, on ${target.platform}` : ""}.\nHook: ${hook || "(none provided)"}\nReply with the message text only.`;
+    const r = await houseChat(sys, u);
+    setDraft(r.ok ? (r.text || "").trim().replace(/^["']|["']$/g, "") : `[model error] ${r.error}`);
+    setBusy(null);
+  }
+  async function generateVariations() {
+    if (!target) return;
+    setBusy("vary");
+    const sys = `You are SignalFinder's outreach assistant. Produce exactly 3 numbered variations of an opening message in a ${tone} tone. Each on its own paragraph, prefixed with "1.", "2.", "3.". No preamble.`;
+    const u = `Target: ${target.name}${target.niche ? ` (${target.niche})` : ""}${target.platform ? ` on ${target.platform}` : ""}.\nHook: ${hook || "(none)"}\nReply with the three numbered variations.`;
+    const r = await houseChat(sys, u);
+    const text = r.ok ? (r.text || "") : `[model error] ${r.error}`;
+    const parts = text.split(/(?:^|\n)\s*\d+\.\s+/).map((s) => s.trim()).filter(Boolean);
+    setVariations(parts.slice(0, 3));
+    setBusy(null);
+  }
+  async function generateSubject() {
+    if (!target) return;
+    setBusy("subject");
+    const sys = "Generate ONE short, high-open-rate email subject line (5-9 words). No quotes, no preamble.";
+    const u = `Reaching out to: ${target.name}${target.niche ? ` (${target.niche})` : ""}.\nHook: ${hook || "(none)"}\nTone: ${tone}.\nReply with the subject only.`;
+    const r = await houseChat(sys, u);
+    setSubject(r.ok ? (r.text || "").trim().replace(/^["']|["']$/g, "").split("\n")[0] : `[model error] ${r.error}`);
+    setBusy(null);
+  }
+  async function improveDraft() {
+    if (!draft.trim()) return;
+    setBusy("improve");
+    const sys = `You are an outreach editor. Tighten the message below: make it more ${tone}, cut filler, keep specifics. Reply with the improved message text only, no preamble, no quotes.`;
+    const r = await houseChat(sys, draft);
+    setDraft(r.ok ? (r.text || "").trim().replace(/^["']|["']$/g, "") : draft);
+    setBusy(null);
+  }
+  async function generateFollowup() {
+    if (!target) return;
+    setBusy("follow");
+    const sys = `Write a SHORT, ${tone} follow-up message (1-2 sentences) to a prior outreach that hasn't replied. No guilt, no pressure. No preamble or quotes.`;
+    const u = `Target: ${target.name}${target.niche ? ` (${target.niche})` : ""}.\nThe original outreach was about: ${hook || "the original topic"}.\nReply with the follow-up only.`;
+    const r = await houseChat(sys, u);
+    setDraft(r.ok ? (r.text || "").trim().replace(/^["']|["']$/g, "") : `[model error] ${r.error}`);
+    setBusy(null);
+  }
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", padding: 14, minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <span style={{ fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 14, color: "var(--pink)", letterSpacing: 2, textTransform: "uppercase" }}>AI Studio</span>
+        <span style={{ fontSize: 11, color: "var(--mute)" }}>powered by the bundled house model — uses your About-you profile as context</span>
+      </div>
+      {targets.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--mute)" }}>Add a target on the Targets tab first.</div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div>
+            <Section title="Target">
+              <select value={targetId} onChange={(e) => setTargetId(e.target.value)} style={inp}>
+                {targets.map((t) => <option key={t.id} value={t.id}>{t.name} — {t.type}</option>)}
+              </select>
+            </Section>
+            <Section title="Tone">
+              <div style={{ display: "flex", gap: 4 }}>
+                {(["casual", "professional", "hype", "short"] as Template["tone"][]).map((tn) => (
+                  <button key={tn} className="btn" onClick={() => setTone(tn)} style={{
+                    flex: 1, fontSize: 11, padding: "6px 10px",
+                    color: tone === tn ? "var(--pink)" : undefined,
+                    borderColor: tone === tn ? "rgba(255,87,119,0.55)" : undefined,
+                  }}>{tn}</button>
+                ))}
+              </div>
+            </Section>
+            <Section title="Starting template (optional)">
+              <select value={tplId} onChange={(e) => setTplId(e.target.value)} style={inp}>
+                <option value="">— from scratch —</option>
+                {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <button className="btn" onClick={prefill} style={{ marginTop: 6, fontSize: 11, padding: "6px 12px" }}>Fill from template</button>
+            </Section>
+            <Section title="Hook (one specific thing about them)">
+              <input value={hook} onChange={(e) => setHook(e.target.value)} placeholder="e.g. just released a new mod pack" style={inp} />
+            </Section>
+            <Section title="Generate">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                <button className="btn" onClick={() => void generateDraft()} disabled={busy !== null}>{busy === "draft" ? "…" : "Draft message"}</button>
+                <button className="btn" onClick={() => void generateVariations()} disabled={busy !== null}>{busy === "vary" ? "…" : "3 variations"}</button>
+                <button className="btn" onClick={() => void generateSubject()} disabled={busy !== null}>{busy === "subject" ? "…" : "Subject line"}</button>
+                <button className="btn" onClick={() => void generateFollowup()} disabled={busy !== null}>{busy === "follow" ? "…" : "Follow-up"}</button>
+              </div>
+            </Section>
+          </div>
+          <div>
+            {subject && (
+              <Section title="Subject">
+                <div style={{ display: "flex", gap: 4 }}>
+                  <input value={subject} onChange={(e) => setSubject(e.target.value)} style={inp} />
+                  <button className="btn" onClick={() => navigator.clipboard.writeText(subject)} style={{ fontSize: 11 }}>copy</button>
+                </div>
+              </Section>
+            )}
+            <Section title="Draft">
+              <textarea value={draft} onChange={(e) => setDraft(e.target.value)} style={{ ...inp, minHeight: 180, resize: "vertical" as const }} />
+              <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+                <button className="btn" onClick={() => void improveDraft()} disabled={busy !== null || !draft.trim()} style={{ fontSize: 11 }}>{busy === "improve" ? "…" : "Improve"}</button>
+                <button className="btn" onClick={() => navigator.clipboard.writeText(draft)} disabled={!draft.trim()} style={{ fontSize: 11 }}>copy</button>
+                <button className="btn" onClick={() => setDraft("")} disabled={!draft.trim()} style={{ fontSize: 11 }}>clear</button>
+              </div>
+            </Section>
+            {variations.length > 0 && (
+              <Section title={`Variations (${variations.length})`}>
+                {variations.map((v, i) => (
+                  <div key={i} style={{ marginBottom: 8, padding: 10, background: "rgba(0,0,0,0.4)", border: "1px solid var(--line)", borderRadius: 5 }}>
+                    <div style={{ fontSize: 12, color: "var(--ink)", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{v}</div>
+                    <div style={{ marginTop: 6, display: "flex", gap: 4 }}>
+                      <button className="btn" onClick={() => setDraft(v)} style={{ fontSize: 10, padding: "3px 8px" }}>use this</button>
+                      <button className="btn" onClick={() => navigator.clipboard.writeText(v)} style={{ fontSize: 10, padding: "3px 8px" }}>copy</button>
+                    </div>
+                  </div>
+                ))}
+              </Section>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -136,6 +136,51 @@ function makeTexture(kind: string, color = "#888888"): THREE.CanvasTexture | nul
     x.putImageData(img, 0, 0);
   } else if (kind === "dots") {
     for (let i = 16; i < 256; i += 40) for (let j = 16; j < 256; j += 40) { x.beginPath(); x.arc(i, j, 8, 0, 7); x.fill(); }
+  } else if (kind === "brick") {
+    // Offset rows of bricks with mortar gaps.
+    x.fillStyle = "rgba(0,0,0,0.45)"; x.fillRect(0, 0, 256, 256);
+    x.fillStyle = color;
+    const bw = 64, bh = 32;
+    for (let row = 0; row < 256 / bh; row++) {
+      const off = (row % 2) * (bw / 2);
+      for (let col = -1; col * bw - off < 256; col++) x.fillRect(col * bw - off + 2, row * bh + 2, bw - 4, bh - 4);
+    }
+  } else if (kind === "wood") {
+    // Sinusoidal grain along the x axis, varying intensity.
+    const img = x.getImageData(0, 0, 256, 256);
+    for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
+      const idx = (j * 256 + i) * 4;
+      const g = Math.sin(i * 0.05 + Math.sin(j * 0.04) * 1.6) * 22 + Math.sin(i * 0.3) * 6;
+      img.data[idx] = Math.max(0, Math.min(255, img.data[idx] + g));
+      img.data[idx + 1] = Math.max(0, Math.min(255, img.data[idx + 1] + g * 0.6));
+      img.data[idx + 2] = Math.max(0, Math.min(255, img.data[idx + 2] + g * 0.3));
+    }
+    x.putImageData(img, 0, 0);
+  } else if (kind === "marble") {
+    // Turbulent veins via stacked sines.
+    const img = x.getImageData(0, 0, 256, 256);
+    for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
+      const idx = (j * 256 + i) * 4;
+      const t = Math.sin((i + Math.sin(j * 0.07) * 16) * 0.07 + Math.cos(j * 0.05) * 1.2) * 0.5 + 0.5;
+      const v = Math.pow(t, 3) * 120 - 60;
+      img.data[idx] = Math.max(0, Math.min(255, img.data[idx] + v));
+      img.data[idx + 1] = Math.max(0, Math.min(255, img.data[idx + 1] + v));
+      img.data[idx + 2] = Math.max(0, Math.min(255, img.data[idx + 2] + v));
+    }
+    x.putImageData(img, 0, 0);
+  } else if (kind === "cells") {
+    // Voronoi-ish cell pattern from random seeds.
+    const seeds = Array.from({ length: 18 }, () => [Math.random() * 256, Math.random() * 256]);
+    const img = x.getImageData(0, 0, 256, 256);
+    for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
+      let m = 1e9; for (const [sx, sy] of seeds) { const d = (sx - i) * (sx - i) + (sy - j) * (sy - j); if (d < m) m = d; }
+      const v = Math.min(80, Math.sqrt(m) * 1.2 - 12);
+      const idx = (j * 256 + i) * 4;
+      img.data[idx] = Math.max(0, Math.min(255, img.data[idx] - v));
+      img.data[idx + 1] = Math.max(0, Math.min(255, img.data[idx + 1] - v));
+      img.data[idx + 2] = Math.max(0, Math.min(255, img.data[idx + 2] - v));
+    }
+    x.putImageData(img, 0, 0);
   }
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -583,6 +628,55 @@ export function DigitalBlueprint() {
     saveSceneSnapshot();
   }
 
+  // Duplicate the selected mesh — copies geometry by re-issuing the addShape
+  // path with the selected snap so material + transform + annotation all carry.
+  function duplicate() {
+    const m = selected.current; if (!m) return;
+    const s = readSnap(m);
+    const dup = addShape((m.userData.shape as Shape) || "box", { ...s, px: s.px + 0.4, pz: s.pz + 0.4 });
+    select(dup);
+  }
+  function toggleVisible(m: THREE.Mesh) { m.visible = !m.visible; setSnap((p) => p ? { ...p } : p); }
+  function toggleLock(m: THREE.Mesh) { m.userData.locked = !m.userData.locked; setSnap((p) => p ? { ...p } : p); }
+
+  // Multi-scene registry. Keyed by id; persists alongside the legacy single-
+  // scene snapshot so the NT5 backdrop reader keeps working.
+  type StoredScene = { id: string; name: string; objects: Array<{ shape: Shape; snap: Snap }>; updatedAt: number };
+  function readSceneRegistry(): StoredScene[] {
+    try { const r = localStorage.getItem("nchub.digitalblueprint.scenes.v1"); if (r) return JSON.parse(r) as StoredScene[]; }
+    catch { /* ignore */ }
+    return [];
+  }
+  function writeSceneRegistry(list: StoredScene[]) {
+    try { localStorage.setItem("nchub.digitalblueprint.scenes.v1", JSON.stringify(list)); } catch { /* ignore */ }
+  }
+  function captureScene(): Array<{ shape: Shape; snap: Snap }> {
+    return objects.current.map((m) => ({ shape: (m.userData.shape as Shape) || "box", snap: readSnap(m) }));
+  }
+  function clearAll() {
+    for (const m of objects.current.slice()) { scene.current!.remove(m); m.geometry.dispose(); (m.material as THREE.Material).dispose(); }
+    objects.current = []; select(null); saveSceneSnapshot();
+  }
+  function loadCapture(items: Array<{ shape: Shape; snap: Snap }>, replace: boolean) {
+    if (replace) clearAll();
+    for (const it of items) addShape(it.shape, it.snap);
+    saveSceneSnapshot();
+  }
+  api.current.exportJson = () => {
+    const data = { v: 1, atmos, objects: captureScene() };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `blueprint-${Date.now()}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 500);
+  };
+  api.current.importJson = (text: string) => {
+    try {
+      const data = JSON.parse(text) as { atmos?: Atmosphere; objects?: Array<{ shape: Shape; snap: Snap }> };
+      if (data.objects) loadCapture(data.objects, true);
+      if (data.atmos) setAtmos(data.atmos);
+    } catch { /* ignore */ }
+  };
+
   async function generate() {
     setGenStatus("Checking the local brain…");
     const st = await window.hub.llm.status();
@@ -809,6 +903,12 @@ export function DigitalBlueprint() {
             <button className="db-btn" style={playMode ? { background: DB.accent, color: DB.paper, borderColor: DB.accent } : undefined}
               onClick={() => setPlayMode((p) => !p)}>{playMode ? "Stop play" : "Play"}</button>
             <button className="db-btn" onClick={() => api.current.exportPng()}>PNG</button>
+            <button className="db-btn" onClick={() => api.current.exportJson()}>Export JSON</button>
+            <label className="db-btn" style={{ cursor: "pointer" }}>
+              Import JSON
+              <input type="file" accept=".json,application/json" style={{ display: "none" }}
+                onChange={(e) => { const f = e.currentTarget.files?.[0]; if (f) f.text().then((t) => api.current.importJson(t)); e.currentTarget.value = ""; }} />
+            </label>
             <label className="db-btn" style={{ cursor: "pointer" }}>
               Import GLB
               <input
@@ -861,6 +961,43 @@ export function DigitalBlueprint() {
 
           <div style={{ height: 1, background: DB.rule, margin: "14px 0" }} />
 
+          <Label>Outliner ({objects.current.length})</Label>
+          <div style={{ maxHeight: 180, overflowY: "auto", border: `1px solid ${DB.rule}`, borderRadius: 2, marginBottom: 8 }}>
+            {objects.current.length === 0 && <div style={{ fontSize: 11, color: DB.inkLight, padding: 8 }}>No objects yet — add a shape or use the AI generator.</div>}
+            {objects.current.map((m, i) => {
+              const isSel = selected.current === m;
+              const sh = (m.userData.shape as string) || "obj";
+              const lab = (m.userData.annotation as { title?: string } | undefined)?.title;
+              return (
+                <div key={i} onClick={() => select(m)} style={{
+                  display: "flex", alignItems: "center", gap: 4, padding: "4px 8px",
+                  fontSize: 11, fontFamily: "'Courier New',monospace", cursor: "pointer",
+                  borderBottom: `1px solid ${DB.ruleSoft}`,
+                  background: isSel ? `${DB.accent}22` : "transparent",
+                  color: m.visible === false ? DB.inkDim : DB.ink,
+                }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: isSel ? DB.accent : DB.inkSoft }} />
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {lab || sh} <span style={{ color: DB.inkDim }}>· {sh}</span>
+                  </span>
+                  {m.userData.locked && <span style={{ fontSize: 9, color: DB.accent }}>LOCK</span>}
+                  <button className="db-btn" style={{ padding: "1px 6px", fontSize: 9 }} onClick={(e) => { e.stopPropagation(); toggleVisible(m); }}>{m.visible === false ? "show" : "hide"}</button>
+                </div>
+              );
+            })}
+          </div>
+
+          <Label>Scenes</Label>
+          <ScenesPanel
+            readRegistry={readSceneRegistry as unknown as () => Array<{ id: string; name: string; objects: unknown[]; updatedAt: number }>}
+            writeRegistry={writeSceneRegistry as unknown as (l: Array<{ id: string; name: string; objects: unknown[]; updatedAt: number }>) => void}
+            captureScene={captureScene as unknown as () => Array<{ shape: string; snap: unknown }>}
+            loadCapture={loadCapture as unknown as (i: Array<{ shape: string; snap: unknown }>, r: boolean) => void}
+            clearAll={clearAll}
+          />
+
+          <div style={{ height: 1, background: DB.rule, margin: "14px 0" }} />
+
           {!snap && <div style={{ fontSize: 12, color: DB.inkLight }}>Click an object to edit its material + transform.</div>}
           {snap && (
             <>
@@ -891,7 +1028,7 @@ export function DigitalBlueprint() {
               <Label>Procedural texture</Label>
               <select value={snap.texture} onChange={(e) => patch({ texture: e.target.value })}
                 style={{ width: "100%", padding: "6px 8px", fontSize: 11 }}>
-                {["none", "checker", "grid", "stripes", "noise", "dots"].map((t) => <option key={t} value={t}>{t}</option>)}
+                {["none", "checker", "grid", "stripes", "noise", "dots", "brick", "wood", "marble", "cells"].map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
 
               <Label>Transform</Label>
@@ -902,7 +1039,12 @@ export function DigitalBlueprint() {
               <Label>Animation (runs in Play mode)</Label>
               <AnimationPicker mesh={selected.current} />
 
-              <button className="db-btn" style={{ marginTop: 12, borderColor: DB.accent2, color: DB.accent2 }} onClick={del}>Delete object</button>
+              <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
+                <button className="db-btn" onClick={duplicate} style={{ flex: 1 }}>Duplicate</button>
+                <button className="db-btn" onClick={() => selected.current && toggleVisible(selected.current)} style={{ flex: 1 }}>{selected.current?.visible === false ? "Show" : "Hide"}</button>
+                <button className="db-btn" onClick={() => selected.current && toggleLock(selected.current)} style={{ flex: 1 }}>{selected.current?.userData.locked ? "Unlock" : "Lock"}</button>
+              </div>
+              <button className="db-btn" style={{ marginTop: 8, width: "100%", borderColor: DB.accent2, color: DB.accent2 }} onClick={del}>Delete object</button>
             </>
           )}
         </div>
@@ -943,6 +1085,50 @@ function SliderInt({ l, v, on, min = 0, max = 100 }: { l: string; v: number; on:
     <div style={{ marginBottom: 6 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: DB.inkSoft }}><span>{l}</span><span>{v}</span></div>
       <input type="range" min={min} max={max} step={1} value={v} onChange={(e) => on(Number(e.target.value))} style={{ width: "100%" }} />
+    </div>
+  );
+}
+
+// Multi-scene save panel. The registry is a list of named snapshots stored
+// at "nchub.digitalblueprint.scenes.v1". Loading replaces the live scene.
+function ScenesPanel({ readRegistry, writeRegistry, captureScene, loadCapture, clearAll }: {
+  readRegistry: () => Array<{ id: string; name: string; objects: unknown[]; updatedAt: number }>;
+  writeRegistry: (list: Array<{ id: string; name: string; objects: unknown[]; updatedAt: number }>) => void;
+  captureScene: () => Array<{ shape: string; snap: unknown }>;
+  loadCapture: (items: Array<{ shape: string; snap: unknown }>, replace: boolean) => void;
+  clearAll: () => void;
+}) {
+  const [list, setList] = useState(readRegistry);
+  const [name, setName] = useState("");
+  function save() {
+    const nm = name.trim() || `Scene ${list.length + 1}`;
+    const entry = { id: `sc-${Date.now()}`, name: nm, objects: captureScene(), updatedAt: Date.now() };
+    const next = [...list, entry]; writeRegistry(next); setList(next); setName("");
+  }
+  function load(id: string, replace: boolean) {
+    const s = readRegistry().find((x) => x.id === id);
+    if (!s) return;
+    loadCapture(s.objects as Array<{ shape: string; snap: unknown }>, replace);
+  }
+  function remove(id: string) { const next = list.filter((s) => s.id !== id); writeRegistry(next); setList(next); }
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="scene name" style={{ flex: 1, padding: "6px 8px", fontSize: 11 }} />
+        <button className="db-btn" onClick={save}>Save</button>
+        <button className="db-btn" onClick={clearAll} title="Clear the live scene">Clear</button>
+      </div>
+      <div style={{ maxHeight: 140, overflowY: "auto" }}>
+        {list.length === 0 && <div style={{ fontSize: 11, color: "#6a86aa" }}>No saved scenes.</div>}
+        {list.map((s) => (
+          <div key={s.id} style={{ display: "flex", gap: 4, alignItems: "center", padding: "3px 0", fontSize: 11, fontFamily: "'Courier New',monospace" }}>
+            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
+            <button className="db-btn" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => load(s.id, true)}>load</button>
+            <button className="db-btn" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => load(s.id, false)}>add</button>
+            <button className="db-btn" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => remove(s.id)}>✕</button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

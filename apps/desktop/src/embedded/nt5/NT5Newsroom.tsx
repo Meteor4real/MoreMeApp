@@ -31,21 +31,58 @@ const ANCHORS = [
   { id: "zara",  name: "Zip Kindle",    beat: "Earth Trending / Culture",          color: "#ec4899" },
 ];
 
+const BMK_KEY = "nchub.nt5.bookmarks.v1";
+function loadBookmarks(): Set<string> {
+  try { const r = localStorage.getItem(BMK_KEY); if (r) return new Set(JSON.parse(r) as string[]); }
+  catch { /* ignore */ }
+  return new Set();
+}
+function saveBookmarks(s: Set<string>) { try { localStorage.setItem(BMK_KEY, JSON.stringify([...s])); } catch { /* ignore */ } }
+
+type TimeRange = "all" | "24h" | "week" | "month";
+
 export function NT5Newsroom() {
   const [arts, setArts] = useState<WireArticle[]>([]);
   const [open, setOpen] = useState<WireArticle | null>(null);
   const [filter, setFilter] = useState<string>("all");
+  const [anchorFilter, setAnchorFilter] = useState<string>("all");
+  const [timeFilter, setTimeFilter] = useState<TimeRange>("all");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "real" | "lore">("all");
+  const [showBookmarksOnly, setShowBookmarksOnly] = useState(false);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState<"wire" | "real" | null>(null);
   const [teleprompter, setTeleprompter] = useState(false);
+  const [bookmarks, setBookmarks] = useState<Set<string>>(loadBookmarks);
+  const [readingId, setReadingId] = useState<string | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  function toggleBookmark(id: string) {
+    setBookmarks((b) => { const n = new Set(b); n.has(id) ? n.delete(id) : n.add(id); saveBookmarks(n); return n; });
+  }
+  function clearWire() {
+    try { localStorage.removeItem("nt5wire.articles"); } catch { /* ignore */ }
+    setArts([]); setConfirmClear(false);
+  }
 
   useEffect(() => subscribeWire(setArts), []);
 
   const filtered = useMemo(() => {
     const text = q.trim().toLowerCase();
-    return arts.filter((a) => (filter === "all" || a.category === filter) &&
-      (!text || a.title.toLowerCase().includes(text) || a.body.toLowerCase().includes(text) || a.author_display.toLowerCase().includes(text)));
-  }, [arts, filter, q]);
+    const horizons: Record<TimeRange, number> = { all: 0, "24h": 86400e3, week: 7 * 86400e3, month: 30 * 86400e3 };
+    const cutoff = timeFilter === "all" ? 0 : Date.now() - horizons[timeFilter];
+    return arts.filter((a) => {
+      if (filter !== "all" && a.category !== filter) return false;
+      if (anchorFilter !== "all" && a.anchor_id !== anchorFilter) return false;
+      const isReal = (a.source_urls || []).length > 0;
+      if (sourceFilter === "real" && !isReal) return false;
+      if (sourceFilter === "lore" && isReal) return false;
+      if (cutoff > 0 && Date.parse(a.published_at) < cutoff) return false;
+      if (showBookmarksOnly && !bookmarks.has(a.id)) return false;
+      if (text && !(a.title.toLowerCase().includes(text) || a.body.toLowerCase().includes(text) || a.author_display.toLowerCase().includes(text))) return false;
+      return true;
+    });
+  }, [arts, filter, anchorFilter, timeFilter, sourceFilter, showBookmarksOnly, bookmarks, q]);
+  const isFiltering = filter !== "all" || anchorFilter !== "all" || timeFilter !== "all" || sourceFilter !== "all" || showBookmarksOnly || q.trim() !== "";
 
   const breaking = arts.find((a) => a.category === "breaking") || arts[0] || null;
   const todayCount = useMemo(() => {
@@ -79,6 +116,7 @@ export function NT5Newsroom() {
         <button className="btn" disabled={busy !== null} onClick={() => void fireWire()} style={btnStyle(busy === "wire")}>{busy === "wire" ? "filing…" : "File new stories"}</button>
         <button className="btn" disabled={busy !== null} onClick={() => void fireReal()} style={btnStyle(busy === "real")}>{busy === "real" ? "pulling…" : "Pull real headlines"}</button>
         <button className="btn" onClick={() => setTeleprompter((t) => !t)} style={btnStyle(teleprompter)}>{teleprompter ? "Exit teleprompter" : "Go live"}</button>
+        <button className="btn" onClick={() => setConfirmClear(true)} style={{ ...btnStyle(false), color: C.red, borderColor: `${C.red}66` }} title="Wipe every article from the wire">Reset wire</button>
       </div>
 
       {/* main area */}
@@ -98,15 +136,28 @@ export function NT5Newsroom() {
                 <FilterBtn key={k} active={filter === k} onClick={() => setFilter(k)} color={m.color}>{m.label}</FilterBtn>
               ))}
             </div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 9, color: C.muted, letterSpacing: 1.5, textTransform: "uppercase", marginRight: 4 }}>anchor</span>
+              <FilterBtn active={anchorFilter === "all"} onClick={() => setAnchorFilter("all")}>any</FilterBtn>
+              {ANCHORS.map((a) => <FilterBtn key={a.id} active={anchorFilter === a.id} onClick={() => setAnchorFilter(a.id)} color={a.color}>{a.name.split(" ")[0]}</FilterBtn>)}
+              <span style={{ width: 1, height: 16, background: C.line, margin: "0 6px" }} />
+              <span style={{ fontSize: 9, color: C.muted, letterSpacing: 1.5, textTransform: "uppercase", marginRight: 4 }}>time</span>
+              {(["all", "24h", "week", "month"] as TimeRange[]).map((tr) => <FilterBtn key={tr} active={timeFilter === tr} onClick={() => setTimeFilter(tr)}>{tr === "all" ? "any" : tr === "24h" ? "24h" : tr === "week" ? "1w" : "1mo"}</FilterBtn>)}
+              <span style={{ width: 1, height: 16, background: C.line, margin: "0 6px" }} />
+              <span style={{ fontSize: 9, color: C.muted, letterSpacing: 1.5, textTransform: "uppercase", marginRight: 4 }}>source</span>
+              {(["all", "real", "lore"] as const).map((sf) => <FilterBtn key={sf} active={sourceFilter === sf} onClick={() => setSourceFilter(sf)} color={sf === "real" ? C.cyan : sf === "lore" ? C.magenta : undefined}>{sf}</FilterBtn>)}
+              <span style={{ width: 1, height: 16, background: C.line, margin: "0 6px" }} />
+              <FilterBtn active={showBookmarksOnly} onClick={() => setShowBookmarksOnly((v) => !v)} color="#ffd166">★ saved ({bookmarks.size})</FilterBtn>
+            </div>
 
-            {q || filter !== "all" ? (
-              <CardGrid articles={filtered} onOpen={setOpen} />
+            {isFiltering ? (
+              <CardGrid articles={filtered} onOpen={setOpen} bookmarks={bookmarks} onToggleBookmark={toggleBookmark} readingId={readingId} />
             ) : (
               <div style={{ marginTop: 12 }}>
                 {Object.entries(CAT_META).map(([cat, meta]) => {
                   const items = (byCat[cat] || []).slice(0, 12);
                   if (items.length === 0) return null;
-                  return <Rail key={cat} cat={cat} meta={meta} items={items} onOpen={setOpen} />;
+                  return <Rail key={cat} cat={cat} meta={meta} items={items} onOpen={setOpen} bookmarks={bookmarks} onToggleBookmark={toggleBookmark} readingId={readingId} />;
                 })}
               </div>
             )}
@@ -147,7 +198,19 @@ export function NT5Newsroom() {
         </div>
       )}
 
-      {open && <DetailModal article={open} onClose={() => setOpen(null)} />}
+      {open && <DetailModal article={open} onClose={() => setOpen(null)} bookmarked={bookmarks.has(open.id)} onToggleBookmark={() => toggleBookmark(open.id)} onReadingChange={(reading) => setReadingId(reading ? open.id : null)} />}
+      {confirmClear && (
+        <div onClick={() => setConfirmClear(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ padding: 20, background: C.panel, border: `1px solid ${C.red}66`, borderRadius: 10, maxWidth: 400 }}>
+            <div style={{ fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 14, color: C.red, letterSpacing: 2, textTransform: "uppercase", marginBottom: 10 }}>Reset wire?</div>
+            <p style={{ fontSize: 13, color: C.ink, lineHeight: 1.5 }}>This deletes every article currently on the wire. The next scheduler tick (or a manual File / Pull) will re-fill it.</p>
+            <div style={{ display: "flex", gap: 6, marginTop: 14, justifyContent: "flex-end" }}>
+              <button className="btn" onClick={() => setConfirmClear(false)}>Cancel</button>
+              <button className="btn" onClick={clearWire} style={{ color: C.red, borderColor: `${C.red}88` }}>Yes, reset</button>
+            </div>
+          </div>
+        </div>
+      )}
       <style>{`@keyframes nt5pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } } @keyframes nt5crawl { from { transform: translate3d(0,0,0); } to { transform: translate3d(-100%,0,0); } } @keyframes nt5shimmer { from { background-position: 0 0; } to { background-position: 200% 0; } }`}</style>
     </div>
   );
@@ -203,7 +266,8 @@ function Hero({ article, onOpen }: { article: WireArticle; onOpen: () => void })
   );
 }
 
-function Rail({ cat, meta, items, onOpen }: { cat: string; meta: { label: string; color: string }; items: WireArticle[]; onOpen: (a: WireArticle) => void }) {
+function Rail({ cat, meta, items, onOpen, bookmarks, onToggleBookmark, readingId }: { cat: string; meta: { label: string; color: string }; items: WireArticle[]; onOpen: (a: WireArticle) => void; bookmarks: Set<string>; onToggleBookmark: (id: string) => void; readingId: string | null }) {
+  void cat;
   return (
     <div style={{ marginBottom: 18 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
@@ -212,12 +276,12 @@ function Rail({ cat, meta, items, onOpen }: { cat: string; meta: { label: string
         <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${meta.color}, transparent)`, opacity: 0.5 }} />
       </div>
       <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6 }}>
-        {items.map((a) => <RailCard key={a.id} article={a} color={meta.color} onClick={() => onOpen(a)} />)}
+        {items.map((a) => <RailCard key={a.id} article={a} color={meta.color} onClick={() => onOpen(a)} bookmarked={bookmarks.has(a.id)} onBookmark={() => onToggleBookmark(a.id)} reading={readingId === a.id} />)}
       </div>
     </div>
   );
 }
-function RailCard({ article, color, onClick }: { article: WireArticle; color: string; onClick: () => void }) {
+function RailCard({ article, color, onClick, bookmarked, onBookmark, reading }: { article: WireArticle; color: string; onClick: () => void; bookmarked?: boolean; onBookmark?: () => void; reading?: boolean }) {
   const isReal = (article.source_urls || []).length > 0;
   return (
     <div onClick={onClick} style={{ flex: "0 0 280px", padding: 12, background: C.panel, border: `1px solid ${color}33`, borderRadius: 8, cursor: "pointer",
@@ -226,7 +290,13 @@ function RailCard({ article, color, onClick }: { article: WireArticle; color: st
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${color}33`; e.currentTarget.style.boxShadow = "none"; }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
         <span style={{ fontSize: 9, color: color, letterSpacing: 1.5, textTransform: "uppercase" }}>{article.author_display}</span>
-        {isReal && <span style={{ fontSize: 8, color: C.cyan, letterSpacing: 1, textTransform: "uppercase", padding: "1px 5px", border: `1px solid ${C.cyan}55`, borderRadius: 3 }}>REAL</span>}
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          {reading && <span style={{ fontSize: 8, padding: "1px 5px", background: "#ef4444", color: "#fff", borderRadius: 3, letterSpacing: 1, textTransform: "uppercase", animation: "nt5pulse 1.6s ease-in-out infinite" }}>READING</span>}
+          {isReal && <span style={{ fontSize: 8, color: C.cyan, letterSpacing: 1, textTransform: "uppercase", padding: "1px 5px", border: `1px solid ${C.cyan}55`, borderRadius: 3 }}>REAL</span>}
+          {onBookmark && (
+            <button onClick={(e) => { e.stopPropagation(); onBookmark(); }} title={bookmarked ? "Remove bookmark" : "Save"} style={{ background: "transparent", border: "none", cursor: "pointer", color: bookmarked ? "#ffd166" : C.muted, fontSize: 14, padding: 0, lineHeight: 1 }}>★</button>
+          )}
+        </div>
       </div>
       <div style={{ fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" as const, overflow: "hidden" }}>{article.title}</div>
       <div style={{ marginTop: 6, fontSize: 10, color: C.muted }}>{rel(Date.parse(article.published_at))}</div>
@@ -234,22 +304,23 @@ function RailCard({ article, color, onClick }: { article: WireArticle; color: st
   );
 }
 
-function CardGrid({ articles, onOpen }: { articles: WireArticle[]; onOpen: (a: WireArticle) => void }) {
+function CardGrid({ articles, onOpen, bookmarks, onToggleBookmark, readingId }: { articles: WireArticle[]; onOpen: (a: WireArticle) => void; bookmarks: Set<string>; onToggleBookmark: (id: string) => void; readingId: string | null }) {
   if (articles.length === 0) return <div style={{ color: C.muted, fontSize: 13, padding: 20 }}>No stories match.</div>;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10, marginTop: 10 }}>
       {articles.map((a) => {
         const color = CAT_META[a.category]?.color || C.magenta;
-        return <RailCard key={a.id} article={a} color={color} onClick={() => onOpen(a)} />;
+        return <RailCard key={a.id} article={a} color={color} onClick={() => onOpen(a)} bookmarked={bookmarks.has(a.id)} onBookmark={() => onToggleBookmark(a.id)} reading={readingId === a.id} />;
       })}
     </div>
   );
 }
 
-function DetailModal({ article, onClose }: { article: WireArticle; onClose: () => void }) {
+function DetailModal({ article, onClose, bookmarked, onToggleBookmark, onReadingChange }: { article: WireArticle; onClose: () => void; bookmarked: boolean; onToggleBookmark: () => void; onReadingChange?: (reading: boolean) => void }) {
   const color = CAT_META[article.category]?.color || C.magenta;
   const [reading, setReading] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => { onReadingChange?.(reading); }, [reading, onReadingChange]);
 
   async function readAloud() {
     if (reading) {
@@ -284,6 +355,8 @@ function DetailModal({ article, onClose }: { article: WireArticle; onClose: () =
           <span style={{ padding: "3px 9px", background: color, color: "#0a0820", fontFamily: "ui-monospace,monospace", fontSize: 10, fontWeight: 800, letterSpacing: 2 }}>{(CAT_META[article.category]?.label || article.category).toUpperCase()}</span>
           <span style={{ color: C.muted, fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase" }}>{article.author_display} · {rel(Date.parse(article.published_at))}</span>
           <span style={{ flex: 1 }} />
+          <button className="btn" onClick={onToggleBookmark} title={bookmarked ? "Remove bookmark" : "Save"} style={{ padding: "6px 12px", fontSize: 13, color: bookmarked ? "#ffd166" : undefined, borderColor: bookmarked ? "rgba(255,209,102,0.6)" : undefined }}>★ {bookmarked ? "Saved" : "Save"}</button>
+          <button className="btn" onClick={() => navigator.clipboard.writeText(`${article.title}\n\n${article.body}${(article.source_urls || []).length ? "\n\nSource: " + (article.source_urls as unknown as string[])[0] : ""}`)} style={{ padding: "6px 12px", fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase" }}>Copy</button>
           <button className="btn" onClick={() => void readAloud()} style={{ color: reading ? C.red : C.cyan, borderColor: reading ? `${C.red}88` : `${C.cyan}66`, padding: "6px 14px", fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase" }}>
             {reading ? "■ Stop" : "▶ Read aloud"}
           </button>
