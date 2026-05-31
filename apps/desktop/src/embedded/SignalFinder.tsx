@@ -139,7 +139,7 @@ const empty = (): Omit<Target, "id" | "outreach"> => ({
   growth: 3, activity: 3, accessibility: 3, relevance: 3, goal: "", goalAlignment: [],
 });
 
-export function SignalFinder() {
+export function SignalFinderTargets() {
   const [targets, setTargets] = useState<Target[]>(load);
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs);
   const [sel, setSel] = useState<string | null>(null);

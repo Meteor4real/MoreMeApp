@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import { MoreMe } from "./MoreMe";
-import { SignalFinder } from "./SignalFinder";
+import { SignalFinder } from "./signalfinder/SignalFinderShell";
 import { NT5 } from "./NT5";
 import { HALOS } from "./HALOS";
 import { DigitalBlueprint } from "./DigitalBlueprint";
