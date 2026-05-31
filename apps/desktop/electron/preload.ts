@@ -110,8 +110,8 @@ const api = {
   },
 
   terminal: {
-    start: (sessionId: string, cols: number, rows: number): Promise<{ ok: boolean; error?: string }> =>
-      ipcRenderer.invoke("term:start", sessionId, cols, rows),
+    start: (sessionId: string, cols: number, rows: number, shellKind?: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("term:start", sessionId, cols, rows, shellKind),
     input: (sessionId: string, data: string) => ipcRenderer.send("term:input", sessionId, data),
     resize: (sessionId: string, cols: number, rows: number) =>
       ipcRenderer.send("term:resize", sessionId, cols, rows),

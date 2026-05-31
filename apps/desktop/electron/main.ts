@@ -374,11 +374,19 @@ async function runAgentCli(
   });
 }
 
-function defaultShell(): { file: string; args: string[] } {
-  if (process.platform === "win32") {
-    return { file: "powershell.exe", args: [] };
+function defaultShell(kind?: string): { file: string; args: string[] } {
+  const win = process.platform === "win32";
+  switch (kind) {
+    case "powershell": return { file: "powershell.exe", args: [] };
+    case "pwsh": return { file: "pwsh", args: [] };
+    case "cmd": return { file: "cmd.exe", args: [] };
+    case "wsl": return { file: "wsl.exe", args: [] };
+    case "bash": return { file: win ? "bash.exe" : "/bin/bash", args: [] };
+    case "zsh": return { file: "/bin/zsh", args: [] };
+    default:
+      if (win) return { file: "powershell.exe", args: [] };
+      return { file: process.env.SHELL || "/bin/bash", args: [] };
   }
-  return { file: process.env.SHELL || "/bin/bash", args: [] };
 }
 
 function registerIpc() {
@@ -547,7 +555,7 @@ function registerIpc() {
   // --- Terminal (PowerShell on Windows) via node-pty. Sessions are keyed by
   //     a caller-provided string ID so the renderer can run multiple shells
   //     in parallel and keep them alive across React tab switches.
-  ipcMain.handle("term:start", (e, sessionId: string, cols: number, rows: number) => {
+  ipcMain.handle("term:start", (e, sessionId: string, cols: number, rows: number, shellKind?: string) => {
     let pty: {
       spawn: (
         file: string,
@@ -567,14 +575,24 @@ function registerIpc() {
       return { ok: false, error: "pty unavailable: " + String(err) };
     }
     if (terminals.has(sessionId)) return { ok: true }; // already running
-    const { file, args } = defaultShell();
-    const proc = pty.spawn(file, args, {
-      name: "xterm-color",
-      cols: cols || 80,
-      rows: rows || 24,
-      cwd: os.homedir(),
-      env: process.env as Record<string, string>,
-    });
+    let file: string, args: string[];
+    ({ file, args } = defaultShell(shellKind));
+    let proc;
+    try {
+      proc = pty.spawn(file, args, {
+        name: "xterm-color",
+        cols: cols || 80,
+        rows: rows || 24,
+        cwd: os.homedir(),
+        env: process.env as Record<string, string>,
+      });
+    } catch (err) {
+      // Requested shell isn't installed — fall back to the platform default.
+      ({ file, args } = defaultShell());
+      try {
+        proc = pty.spawn(file, args, { name: "xterm-color", cols: cols || 80, rows: rows || 24, cwd: os.homedir(), env: process.env as Record<string, string> });
+      } catch (e2) { return { ok: false, error: "shell spawn failed: " + String(e2) }; }
+    }
     const wrapped: Pty = {
       write: (d) => proc.write(d),
       resize: (c, r) => proc.resize(c, r),
