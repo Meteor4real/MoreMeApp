@@ -146,6 +146,8 @@ export function SignalFinderTargets() {
   const [form, setForm] = useState(empty());
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState("all");
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState<"score" | "audience" | "az" | "recent">("score");
 
   useEffect(() => { savePrefs(prefs); }, [prefs]);
 
@@ -154,13 +156,18 @@ export function SignalFinderTargets() {
     persist(next);
   }
 
-  const ranked = useMemo(
-    () =>
-      [...targets]
-        .filter((t) => filter === "all" || t.type === filter)
-        .sort((a, b) => score(b, prefs.goals).overall - score(a, prefs.goals).overall),
-    [targets, filter, prefs.goals]
-  );
+  const ranked = useMemo(() => {
+    const text = q.trim().toLowerCase();
+    return [...targets]
+      .filter((t) => filter === "all" || t.type === filter)
+      .filter((t) => !text || t.name.toLowerCase().includes(text) || t.niche.toLowerCase().includes(text) || t.platform.toLowerCase().includes(text))
+      .sort((a, b) => {
+        if (sort === "audience") return b.audience - a.audience;
+        if (sort === "az") return a.name.localeCompare(b.name);
+        if (sort === "recent") return Number(b.id) - Number(a.id);
+        return score(b, prefs.goals).overall - score(a, prefs.goals).overall;
+      });
+  }, [targets, filter, prefs.goals, q, sort]);
 
   // Personalization engine: which outreach style lands responses?
   const styleReco = useMemo(() => {
@@ -290,35 +297,101 @@ export function SignalFinderTargets() {
 
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         {/* Ranked list */}
-        <div style={{ width: 320, borderRight: "1px solid var(--line)", overflow: "auto" }}>
-          <div style={{ padding: "8px 10px", display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {["all", ...TYPES].map((f) => (
-              <button key={f} className="btn" style={{ padding: "2px 8px", fontSize: 10, color: filter === f ? "var(--pink)" : undefined }} onClick={() => setFilter(f)}>{f}</button>
-            ))}
+        <div style={{ width: 380, borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", minHeight: 0 }}>
+          {/* search + sort */}
+          <div style={{ padding: "10px 10px 6px", borderBottom: "1px solid var(--line)" }}>
+            <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="search name, niche, platform"
+                style={{ flex: 1, background: "rgba(0,0,0,0.5)", border: "1px solid var(--line)", borderRadius: 6, color: "var(--ink)", padding: "6px 10px", fontSize: 12, fontFamily: "ui-monospace,monospace", outline: "none" }} />
+              <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} title="Sort"
+                style={{ background: "rgba(0,0,0,0.5)", border: "1px solid var(--line)", borderRadius: 6, color: "var(--ink)", padding: "6px 8px", fontSize: 11, fontFamily: "ui-monospace,monospace", outline: "none" }}>
+                <option value="score">Score</option>
+                <option value="audience">Audience</option>
+                <option value="recent">Recent</option>
+                <option value="az">A-Z</option>
+              </select>
+            </div>
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {["all", ...TYPES].map((f) => (
+                <button key={f} className="btn" style={{ padding: "3px 9px", fontSize: 10, minHeight: 26,
+                  color: filter === f ? "var(--pink)" : undefined,
+                  borderColor: filter === f ? "rgba(255,87,119,0.55)" : undefined,
+                  background: filter === f ? "rgba(255,87,119,0.08)" : undefined,
+                }} onClick={() => setFilter(f)}>{f}</button>
+              ))}
+            </div>
           </div>
-          {ranked.length === 0 && <div className="placeholder"><div style={{ fontSize: 13 }}>No targets yet. Add one to start scoring.</div></div>}
-          {ranked.map((t) => {
-            const s = score(t, prefs.goals);
-            return (
-              <button key={t.id} onClick={() => setSel(t.id)} className="panel" style={{ display: "block", width: "calc(100% - 16px)", margin: "0 8px 8px", textAlign: "left", padding: 10, cursor: "pointer", borderColor: sel === t.id ? "rgba(255,87,119,0.6)" : undefined, color: "var(--ink)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span className="mono" style={{ fontSize: 13 }}>{t.name}</span>
-                  <span className="mono glow-text" style={{ fontSize: 16 }}>{s.overall}</span>
-                </div>
-                <div style={{ fontSize: 11, color: "var(--mute)" }}>{t.type} · {t.platform || "—"} · {warmth(t)}</div>
-                {t.goalAlignment.length > 0 && (
-                  <div style={{ fontSize: 10, color: "var(--mute)", marginTop: 2 }}>
-                    {t.goalAlignment.map((g) => NETWORK_GOALS.find((x) => x.id === g)?.label.split(" ")[0]).join(" · ")}
+
+          <div style={{ flex: 1, overflow: "auto", padding: "8px 0" }}>
+            {ranked.length === 0 && (
+              <div style={{ padding: 24, textAlign: "center", color: "var(--mute)", fontSize: 13 }}>
+                {targets.length === 0 ? <>No targets yet.<br />Hit <b>+ Target</b> in the header to add your first.</> : "No matches for the current filter."}
+              </div>
+            )}
+            {ranked.map((t) => {
+              const s = score(t, prefs.goals);
+              const w = warmth(t);
+              const wColor = w === "hot" ? "#ef4444" : w === "warm" ? "#f59e0b" : "#6b7280";
+              const fu = nextFollowup(t);
+              const fuOverdue = fu ? fu < new Date().toISOString().slice(0, 10) : false;
+              return (
+                <button key={t.id} onClick={() => setSel(t.id)} className={sel === t.id ? "panel-hot panel" : "panel"}
+                  style={{
+                    display: "flex", gap: 10, alignItems: "stretch",
+                    width: "calc(100% - 16px)", margin: "0 8px 8px",
+                    textAlign: "left", padding: 10, cursor: "pointer", color: "var(--ink)",
+                    borderColor: sel === t.id ? "rgba(255,87,119,0.55)" : undefined,
+                    background: sel === t.id ? "rgba(255,87,119,0.06)" : undefined,
+                  }}>
+                  <SfRing pct={s.overall} color={s.overall >= 70 ? "#22c55e" : s.overall >= 45 ? "#f59e0b" : "#ef4444"} size={48} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
+                      <span className="mono" style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name || "(unnamed)"}</span>
+                      <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 3, background: `${wColor}22`, color: wColor, letterSpacing: 1, textTransform: "uppercase", fontFamily: "ui-monospace,monospace" }}>{w}</span>
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--mute)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {t.type}{t.niche ? ` · ${t.niche}` : ""}{t.platform ? ` · ${t.platform}` : ""}
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--mute)", marginTop: 2 }}>{t.audience.toLocaleString()} audience{t.outreach.length > 0 ? ` · ${t.outreach.length} outreach` : ""}</div>
+                    {t.goalAlignment.length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 4 }}>
+                        {t.goalAlignment.slice(0, 4).map((g) => {
+                          const lab = NETWORK_GOALS.find((x) => x.id === g)?.label.split(" ")[0] || g;
+                          const active = prefs.goals.includes(g);
+                          return <span key={g} style={{ fontSize: 9, padding: "1px 6px", borderRadius: 3,
+                            background: active ? "rgba(255,87,119,0.16)" : "rgba(255,255,255,0.05)",
+                            color: active ? "var(--pink)" : "var(--mute)", letterSpacing: 0.5,
+                            border: active ? "1px solid rgba(255,87,119,0.45)" : "1px solid transparent",
+                          }}>{lab}</span>;
+                        })}
+                      </div>
+                    )}
+                    {fu && (
+                      <div style={{ fontSize: 9, marginTop: 4, color: fuOverdue ? "#ef4444" : "#f59e0b", fontFamily: "ui-monospace,monospace", letterSpacing: 0.5, textTransform: "uppercase" }}>
+                        {fuOverdue ? "OVERDUE" : "f/u"} · {fu}
+                      </div>
+                    )}
                   </div>
-                )}
-              </button>
-            );
-          })}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Detail */}
-        <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
-          {!current && <div className="placeholder"><div style={{ fontSize: 13 }}>Select a target to see its scoring breakdown + outreach.</div></div>}
+        <div style={{ flex: 1, overflow: "auto" }}>
+          {!current && (
+            <div style={{ height: "100%", display: "grid", placeItems: "center", padding: 40, color: "var(--mute)", textAlign: "center" }}>
+              <div>
+                <div style={{ fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 14, letterSpacing: 3, color: "var(--pink)", textTransform: "uppercase", marginBottom: 8 }}>
+                  Select a target
+                </div>
+                <div style={{ fontSize: 12, lineHeight: 1.6, maxWidth: 320 }}>
+                  Pick someone from the ranked list to see their score breakdown, log outreach, and draft a personalized opener.
+                </div>
+              </div>
+            </div>
+          )}
           {current && (
             <Detail
               t={current}
@@ -332,6 +405,24 @@ export function SignalFinderTargets() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Local circular score ring. Color-graded glow; used by both the card and the
+// detail hero. Mirrors the ring in SignalFinderShell so we don't import across
+// the file boundary.
+function SfRing({ pct, color, size = 56 }: { pct: number; color: string; size?: number }) {
+  const r = size / 2 - 4, c = 2 * Math.PI * r;
+  const v = Math.max(0, Math.min(100, pct));
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }} aria-label="score">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="4" />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth="4" strokeLinecap="round"
+        strokeDasharray={c} strokeDashoffset={c - (v / 100) * c} transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        style={{ filter: `drop-shadow(0 0 4px ${color})`, transition: "stroke-dashoffset .35s" }} />
+      <text x={size / 2} y={size / 2 + (size <= 50 ? 4 : 6)} textAnchor="middle"
+        fontFamily="ui-monospace,monospace" fontSize={size / 3.2} fill={color} fontWeight={700}>{v}</text>
+    </svg>
   );
 }
 
@@ -425,97 +516,164 @@ Style: ${styleHint}.${researchBlock}`
     ["Response likelihood", s.response], ["Collab compatibility", s.collab],
     ["Momentum", s.momentum], ["Timing quality", s.timing], ["Relevance", s.relevance],
   ];
+  const w = warmth(t);
+  const wColor = w === "hot" ? "#ef4444" : w === "warm" ? "#f59e0b" : "#6b7280";
+  const overallColor = s.overall >= 70 ? "#22c55e" : s.overall >= 45 ? "#f59e0b" : "#ef4444";
+  const responseCount = t.outreach.filter((o) => o.responded).length;
+
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <div>
-          <div className="mono" style={{ fontSize: 18 }}>{t.name}</div>
-          <div style={{ fontSize: 12, color: "var(--mute)" }}>{t.type} · {t.niche || "—"} · {t.platform || "—"} · {t.audience.toLocaleString()} audience</div>
-          {t.goal && <div style={{ fontSize: 12, color: "var(--mute)" }}>context: {t.goal}</div>}
-        </div>
-        <div className="mono glow-text" style={{ fontSize: 32 }}>{s.overall}</div>
-      </div>
-
-      <div className="panel" style={{ padding: 10, margin: "10px 0" }}>
-        <div className="mono" style={{ fontSize: 10, color: "var(--mute)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Serves which of your goals</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-          {NETWORK_GOALS.map((g) => {
-            const on = t.goalAlignment.includes(g.id);
-            const active = activeGoals.includes(g.id);
-            return (
-              <button key={g.id} className="btn" style={{ padding: "2px 8px", fontSize: 10, color: on ? "var(--pink)" : undefined, borderColor: on && active ? "rgba(255,87,119,0.55)" : undefined }}
-                onClick={() => onPatch({ goalAlignment: on ? t.goalAlignment.filter((x) => x !== g.id) : [...t.goalAlignment, g.id] })}>
-                {g.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div style={{ margin: "16px 0" }}>
-        {bars.map(([label, v]) => (
-          <div key={label} style={{ marginBottom: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--mute)" }}>
-              <span>{label}</span><span>{v}</span>
-            </div>
-            <div style={{ height: 5, background: "#15151a", borderRadius: 3, overflow: "hidden", marginTop: 3 }}>
-              <div className="strip" style={{ height: "100%", width: `${v}%` }} />
-            </div>
+      {/* HERO — name + meta + big score ring, glowing gradient frame */}
+      <div style={{
+        padding: 20,
+        background: `linear-gradient(135deg, rgba(255,87,119,0.07) 0%, rgba(0,0,0,0.0) 60%), linear-gradient(180deg, rgba(20,8,12,0.7), rgba(8,8,14,0.5))`,
+        borderBottom: "1px solid var(--line)",
+        display: "flex", alignItems: "center", gap: 20,
+      }}>
+        <SfRing pct={s.overall} color={overallColor} size={96} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 22, color: "var(--ink)", letterSpacing: 0.5 }}>{t.name || "(unnamed)"}</span>
+            <span style={{ fontSize: 10, padding: "3px 9px", borderRadius: 4, background: `${wColor}22`, color: wColor, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "ui-monospace,monospace" }}>{w}</span>
+            {styleRecommend && <span style={{ fontSize: 10, padding: "3px 9px", borderRadius: 4, background: "rgba(34,211,238,0.12)", color: "#22d3ee", letterSpacing: 1, textTransform: "uppercase", fontFamily: "ui-monospace,monospace" }}>lead with {styleRecommend}</span>}
           </div>
-        ))}
-      </div>
-
-      <div className="panel" style={{ padding: 12 }}>
-        <div className="mono" style={{ fontSize: 12, letterSpacing: 1, color: "var(--mute)" }}>OUTREACH · {warmth(t)}{fu ? ` · follow up by ${fu}` : ""}</div>
-        <div style={{ display: "flex", gap: 6, margin: "10px 0", flexWrap: "wrap" }}>
-          <button className="btn" onClick={() => onLog(t.id, "concise", false)}>Log concise</button>
-          <button className="btn" onClick={() => onLog(t.id, "detailed", false)}>Log detailed</button>
-          <button className="btn" onClick={() => onLog(t.id, "concise", true)}>+ concise reply</button>
-          <button className="btn" onClick={() => onLog(t.id, "detailed", true)}>+ detailed reply</button>
-        </div>
-        {t.outreach.length === 0 && <div style={{ fontSize: 12, color: "var(--mute)" }}>No outreach logged yet.</div>}
-        {t.outreach.slice().reverse().map((o, i) => (
-          <div key={i} className="mono" style={{ fontSize: 12, color: "var(--mute)" }}>
-            {o.date} · {o.style} · {o.responded ? <span className="glow-text">responded</span> : "sent"}
+          <div style={{ fontSize: 12, color: "var(--mute)", marginTop: 4 }}>
+            {t.type}{t.niche ? ` · ${t.niche}` : ""}{t.platform ? ` · ${t.platform}` : ""} · <b style={{ color: "var(--ink)" }}>{t.audience.toLocaleString()}</b> audience
           </div>
-        ))}
-      </div>
-
-      <div className="panel" style={{ padding: 12, marginTop: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          <div className="mono" style={{ fontSize: 12, letterSpacing: 1, color: "var(--mute)" }}>
-            AI ASSISTANT
-            {styleRecommend && <span className="glow-text"> · {styleRecommend} recommended</span>}
-          </div>
-          <div style={{ display: "flex", gap: 6 }}>
-            <button className="btn" disabled={researching} onClick={() => void pullResearch()} title="Pull a quick web snippet about this person — fed into the draft so the model isn't guessing">
-              {researching ? "…" : research ? "Refresh research" : "Research"}
-            </button>
-            <button className="btn" disabled={drafting} onClick={() => void draftOutreach()}>{drafting ? "…" : "Draft outreach"}</button>
+          {t.goal && <div style={{ fontSize: 12, color: "var(--mute)", marginTop: 6, lineHeight: 1.5 }}><i>{t.goal}</i></div>}
+          <div style={{ display: "flex", gap: 14, marginTop: 10, fontSize: 11, fontFamily: "ui-monospace,monospace" }}>
+            <Stat label="outreach" value={t.outreach.length} />
+            <Stat label="responded" value={responseCount} color="#22c55e" />
+            <Stat label="follow-up" value={fu || "—"} color={fu ? "#f59e0b" : undefined} />
           </div>
         </div>
-        {research && (
-          <div style={{ marginTop: 10, fontSize: 11, color: "var(--mute)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
-            <div className="mono" style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 }}>Research context</div>
-            {research.summary}
-            {research.sources.length > 0 && (
-              <div style={{ marginTop: 6 }}>
-                {research.sources.map((s, i) => (
-                  <a key={i} href={s.url} target="_blank" rel="noreferrer" style={{ display: "block", fontSize: 11, color: "var(--pink)", textDecoration: "none", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>↗ {s.title}</a>
-                ))}
+      </div>
+
+      <div style={{ padding: 16 }}>
+        {/* SCORE BREAKDOWN — 2 columns of bars */}
+        <Section label="Score breakdown">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 18px", marginTop: 6 }}>
+            {bars.map(([label, v]) => (
+              <div key={label}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--mute)" }}>
+                  <span>{label}</span>
+                  <span style={{ color: v >= 70 ? "#22c55e" : v >= 45 ? "#f59e0b" : "var(--mute)", fontFamily: "ui-monospace,monospace" }}>{v}</span>
+                </div>
+                <div style={{ height: 6, background: "#15151a", borderRadius: 3, overflow: "hidden", marginTop: 4 }}>
+                  <div style={{ height: "100%", width: `${v}%`, background: `linear-gradient(90deg, var(--red), var(--pink), var(--orange))`, transition: "width .3s" }} />
+                </div>
               </div>
+            ))}
+          </div>
+        </Section>
+
+        {/* GOAL ALIGNMENT — pickable chips */}
+        <Section label="Serves which of your goals">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            {NETWORK_GOALS.map((g) => {
+              const on = t.goalAlignment.includes(g.id);
+              const active = activeGoals.includes(g.id);
+              return (
+                <button key={g.id} className="btn" style={{
+                  padding: "5px 11px", fontSize: 11, minHeight: 28,
+                  color: on ? "var(--pink)" : undefined,
+                  borderColor: on && active ? "rgba(255,87,119,0.65)" : on ? "rgba(255,87,119,0.35)" : undefined,
+                  background: on ? "rgba(255,87,119,0.08)" : undefined,
+                  boxShadow: on && active ? "0 0 10px rgba(255,87,119,0.3)" : undefined,
+                }}
+                  onClick={() => onPatch({ goalAlignment: on ? t.goalAlignment.filter((x) => x !== g.id) : [...t.goalAlignment, g.id] })}>
+                  {g.label}{active && on && <span style={{ color: "#22c55e", marginLeft: 6 }}>●</span>}
+                </button>
+              );
+            })}
+          </div>
+        </Section>
+
+        {/* AI ASSISTANT — moved up, bigger, primary action */}
+        <Section label={`AI assistant${styleRecommend ? ` · ${styleRecommend} recommended` : ""}`}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button className="btn" disabled={researching} onClick={() => void pullResearch()}
+              title="Pull a quick web snippet about this person — fed into the draft so the model isn't guessing"
+              style={{ minHeight: 36 }}>
+              {researching ? "researching…" : research ? "Refresh research" : "Research"}
+            </button>
+            <button className="btn" disabled={drafting} onClick={() => void draftOutreach()}
+              style={{ minHeight: 36, color: "var(--pink)", borderColor: "rgba(255,87,119,0.6)", background: "rgba(255,87,119,0.08)", fontWeight: 600 }}>
+              {drafting ? "drafting…" : "Draft outreach"}
+            </button>
+            {draft && (
+              <button className="btn" onClick={() => navigator.clipboard.writeText(draft)} style={{ minHeight: 36 }}>Copy draft</button>
             )}
           </div>
-        )}
-        {draft && (
-          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={5}
-            style={{ width: "100%", marginTop: 10, background: "rgba(0,0,0,0.5)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink)", padding: 10, fontSize: 13, fontFamily: "inherit", resize: "vertical", outline: "none" }} />
-        )}
-      </div>
+          {research && (
+            <div style={{ marginTop: 10, padding: 10, background: "rgba(34,211,238,0.05)", border: "1px solid rgba(34,211,238,0.25)", borderRadius: 6 }}>
+              <div className="mono" style={{ fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: "#22d3ee", marginBottom: 6 }}>Research context</div>
+              <div style={{ fontSize: 11, color: "var(--ink)", lineHeight: 1.55, whiteSpace: "pre-wrap", opacity: 0.9 }}>{research.summary}</div>
+              {research.sources.length > 0 && (
+                <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 3 }}>
+                  {research.sources.map((src, i) => (
+                    <a key={i} href={src.url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#22d3ee", textDecoration: "none", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontFamily: "ui-monospace,monospace" }}>↗ {src.title}</a>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {draft && (
+            <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={7}
+              style={{ width: "100%", marginTop: 10, background: "rgba(0,0,0,0.55)", border: "1px solid rgba(255,87,119,0.35)", borderRadius: 8, color: "var(--ink)", padding: 12, fontSize: 13, lineHeight: 1.55, fontFamily: "inherit", resize: "vertical", outline: "none", boxShadow: "0 0 16px rgba(255,87,119,0.08) inset" }} />
+          )}
+        </Section>
 
-      <button className="btn" style={{ marginTop: 14 }} onClick={() => onRemove(t.id)}>Remove target</button>
+        {/* OUTREACH TIMELINE */}
+        <Section label={`Outreach log · ${t.outreach.length} attempt${t.outreach.length === 1 ? "" : "s"}`}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 10 }}>
+            <button className="btn" onClick={() => onLog(t.id, "concise", false)} style={{ fontSize: 12, minHeight: 36 }}>+ Concise sent</button>
+            <button className="btn" onClick={() => onLog(t.id, "detailed", false)} style={{ fontSize: 12, minHeight: 36 }}>+ Detailed sent</button>
+            <button className="btn" onClick={() => onLog(t.id, "concise", true)} style={{ fontSize: 12, minHeight: 36, color: "#22c55e", borderColor: "rgba(34,197,94,0.5)" }}>+ Concise → replied</button>
+            <button className="btn" onClick={() => onLog(t.id, "detailed", true)} style={{ fontSize: 12, minHeight: 36, color: "#22c55e", borderColor: "rgba(34,197,94,0.5)" }}>+ Detailed → replied</button>
+          </div>
+          {t.outreach.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--mute)", padding: "6px 4px" }}>No outreach logged yet. Draft one above, send it, then log it.</div>
+          ) : (
+            <div style={{ borderLeft: "2px solid var(--line)", paddingLeft: 12 }}>
+              {t.outreach.slice().reverse().map((o, i) => (
+                <div key={i} style={{ display: "flex", gap: 10, alignItems: "center", padding: "5px 0", position: "relative" }}>
+                  <span style={{ position: "absolute", left: -19, width: 12, height: 12, borderRadius: "50%", background: o.responded ? "#22c55e" : "#9ca3af", boxShadow: o.responded ? "0 0 8px rgba(34,197,94,0.6)" : "none" }} />
+                  <span className="mono" style={{ fontSize: 11, color: "var(--mute)", minWidth: 90 }}>{o.date}</span>
+                  <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 3, background: "rgba(255,255,255,0.05)", color: "var(--ink)", fontFamily: "ui-monospace,monospace", letterSpacing: 0.5, textTransform: "uppercase" }}>{o.style}</span>
+                  <span style={{ fontSize: 11, color: o.responded ? "#22c55e" : "var(--mute)", fontWeight: o.responded ? 600 : 400 }}>{o.responded ? "responded" : "sent · awaiting"}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+
+        <div style={{ marginTop: 18, display: "flex", justifyContent: "flex-end" }}>
+          <button className="btn" onClick={() => onRemove(t.id)} style={{ color: "#ef4444", borderColor: "rgba(239,68,68,0.4)" }}>Remove target</button>
+        </div>
+      </div>
     </div>
   );
+
+  function Stat({ label, value, color }: { label: string; value: number | string; color?: string }) {
+    return (
+      <div>
+        <div style={{ fontSize: 14, color: color || "var(--ink)", fontWeight: 600, lineHeight: 1 }}>{value}</div>
+        <div style={{ fontSize: 9, color: "var(--mute)", letterSpacing: 1, textTransform: "uppercase", marginTop: 3 }}>{label}</div>
+      </div>
+    );
+  }
+  function Section({ label, children }: { label: string; children: React.ReactNode }) {
+    return (
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <span style={{ fontFamily: "ui-monospace,monospace", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "var(--pink)", textShadow: "0 0 6px rgba(255,87,119,0.4)" }}>{label}</span>
+          <span style={{ flex: 1, height: 1, background: "linear-gradient(90deg, rgba(255,87,119,0.35), transparent)" }} />
+        </div>
+        {children}
+      </div>
+    );
+  }
 }
 
 function goalLabel(g: NetworkGoalId): string {
