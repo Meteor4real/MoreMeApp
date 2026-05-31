@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ADAPTERS, type ManageGroup, type ManageResult, type ManageRow, type RowAction } from "./controlPanelAdapters";
 import { PUSH_APIS, detectHotRows, type PushHandle } from "./controlPanelPush";
+import { docsConnected, setConnected as setDocsConnected, subscribeDocs } from "../embedded/documents/docsStore";
 
 // The Control Panel, reimplemented natively in-app (Option 2). Each user
 // connects THEIR OWN services here; tokens are stored in the OS-keychain vault
@@ -42,6 +43,7 @@ const SERVICES: Service[] = [
   { id: "hermes", name: "Hermes", group: "AI & Hosting", tokenLabel: "Bearer (optional)", needsBaseUrl: true, hint: "co-boss AI — models" },
   { id: "hostinger", name: "Hostinger", group: "AI & Hosting", tokenLabel: "API token", hint: "VPS inventory & power" },
   { id: "pexels", name: "Pexels", group: "Media", tokenLabel: "API key", console: "https://www.pexels.com/api/new/", hint: "NT5 Studio B-roll source" },
+  { id: "googledocs", name: "Google Docs", group: "Content", tokenLabel: "", hint: "powers the Documents tab — sign in inside the app", noAuth: true },
   { id: "modrinth", name: "Modrinth", group: "Local Apps", launcher: "modrinth", noAuth: true, hint: "launch the Modrinth client", tokenLabel: "" },
   { id: "blockbench", name: "Blockbench", group: "Local Apps", launcher: "blockbench", noAuth: true, hint: "launch Blockbench", tokenLabel: "" },
 ];
@@ -271,7 +273,9 @@ export function ControlPanel() {
                       </div>
                       <div style={{ fontSize: 12, color: "var(--mute)", margin: "4px 0 10px" }}>{s.hint}</div>
 
-                      {s.launcher ? (
+                      {s.id === "googledocs" ? (
+                        <GoogleDocsConnect />
+                      ) : s.launcher ? (
                         <button className="btn" onClick={() => void window.hub.launchUri(s.launcher === "modrinth" ? "https://launcher.modrinth.com/" : "https://www.blockbench.net/launcher")}>Launch {s.name}</button>
                       ) : editing === s.id ? (
                         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -369,6 +373,24 @@ export function ControlPanel() {
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+function GoogleDocsConnect() {
+  const [connected, setConn] = useState(docsConnected());
+  useEffect(() => subscribeDocs((s) => setConn(s.connected)), []);
+  return (
+    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      {connected ? (
+        <>
+          <span className="mono" style={{ fontSize: 11, color: "#22c55e" }}>connected</span>
+          <button className="btn" onClick={() => setDocsConnected(false)}>Disconnect</button>
+          <a className="btn" href="https://docs.google.com" target="_blank" rel="noreferrer">Open Docs</a>
+        </>
+      ) : (
+        <button className="btn" onClick={() => setDocsConnected(true)}>Connect</button>
       )}
     </div>
   );

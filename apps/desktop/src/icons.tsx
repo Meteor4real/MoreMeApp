@@ -131,6 +131,22 @@ export const ICON: Record<string, ReactNode> = {
     </svg>
   ),
 
+  // Documents: the Google Docs silhouette in NCH red→orange.
+  documents: (
+    <svg width={S} height={S} viewBox="0 0 48 48" className="rail-ico">
+      <defs>
+        <linearGradient id="docs-rail" x1="0" y1="0" x2="48" y2="48">
+          <stop offset="0" stopColor="#ff2d4a" /><stop offset="0.55" stopColor="#ff5577" /><stop offset="1" stopColor="#ff7a2d" />
+        </linearGradient>
+      </defs>
+      <path d="M12 3 h18 l10 10 v30 a2 2 0 0 1-2 2 H12 a2 2 0 0 1-2-2 V5 a2 2 0 0 1 2-2 z" fill="url(#docs-rail)" />
+      <path d="M30 3 l10 10 h-9 a1 1 0 0 1-1-1 z" fill="#0a0810" opacity="0.35" />
+      <g stroke="#fff" strokeWidth="2.4" strokeLinecap="round" opacity="0.92">
+        <line x1="16" y1="22" x2="34" y2="22" /><line x1="16" y1="28" x2="34" y2="28" /><line x1="16" y1="34" x2="28" y2="34" />
+      </g>
+    </svg>
+  ),
+
   // SignalFinder: hub-themed (it has no real site to match).
   signalfinder: tile(
     <g stroke="#ff5577" strokeWidth="1.5" fill="none" strokeLinecap="round">

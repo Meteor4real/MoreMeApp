@@ -94,7 +94,41 @@ export const TOOLS: ToolSpec[] = [
     desc: "Save a durable note to YOUR own memory so you recall it in future chats.",
     run: async (a, ctx) => { rememberFact(ctx.agentId, str(a.fact)); return { ok: true, output: "remembered." }; },
   },
+  {
+    name: "list_docs", args: "{}",
+    desc: "List the user's Documents (Google Docs) that are allowed for AI access.",
+    run: async () => {
+      const docs = loadDocsForAI();
+      if (!docs.length) return { ok: true, output: "(no allowed docs — the user hasn't added any, or has blocked them)" };
+      return { ok: true, output: docs.map((d) => `${d.title} [id ${d.id}]`).join("\n") };
+    },
+  },
+  {
+    name: "read_doc", args: '{"id_or_title": "Project plan"}',
+    desc: "Read the text of one of the user's allowed Documents (by id or title). Blocked docs are refused.",
+    run: async (a) => {
+      const key = str(a.id_or_title).trim().toLowerCase();
+      const docs = loadDocsForAI();
+      const doc = docs.find((d) => d.id.toLowerCase() === key || d.title.toLowerCase().includes(key));
+      if (!doc) return { ok: false, output: "No allowed doc matches that. It may be blocked, or not added in the Documents tab." };
+      const r = await window.hub.net({ method: "GET", url: `https://docs.google.com/document/d/${doc.id}/export?format=txt`, headers: { "User-Agent": "Mozilla/5.0 NetworkChuckHub/1.0" } });
+      const body = typeof r.data === "string" ? r.data : "";
+      if (!r.ok || !body || body.includes("<html")) return { ok: false, output: "Couldn't read it (the doc must be shared 'anyone with the link' for AI export to work)." };
+      return { ok: true, output: body.slice(0, 12000) };
+    },
+  },
 ];
+
+// Documents the AIs are allowed to see (connected + not individually blocked).
+function loadDocsForAI(): { id: string; title: string }[] {
+  try {
+    const r = localStorage.getItem("nchub.documents.v1");
+    if (!r) return [];
+    const s = JSON.parse(r) as { connected?: boolean; docs?: { id: string; title: string; blocked?: boolean }[] };
+    if (!s.connected) return [];
+    return (s.docs || []).filter((d) => !d.blocked).map((d) => ({ id: d.id, title: d.title }));
+  } catch { return []; }
+}
 
 export function toolsPromptBlock(): string {
   const list = TOOLS.map((t) => `- ${t.name} ${t.args} — ${t.desc}`).join("\n");
