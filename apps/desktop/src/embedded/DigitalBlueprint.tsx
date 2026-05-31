@@ -229,6 +229,9 @@ export function DigitalBlueprint() {
     exportPng: () => void;
     exportJson: () => void;
     importJson: (text: string) => void;
+    deleteSelected?: () => void;
+    duplicateSelected?: () => void;
+    toggleHelp?: () => void;
   }>({
     setWalk: () => {},
     importGlb: () => {},
@@ -248,6 +251,7 @@ export function DigitalBlueprint() {
   const [genStatus, setGenStatus] = useState<string | null>(null);
   const [atmos, setAtmos] = useState<Atmosphere>(DEFAULT_ATMOSPHERE);
   const [showAllLabels, setShowAllLabels] = useState(true);
+  const [showHelp, setShowHelp] = useState(false);
   // Re-renders the annotation overlay every animation frame so labels track
   // the camera. Cheap: we cap labels at the object count.
   const [, setTick] = useState(0);
@@ -394,9 +398,56 @@ export function DigitalBlueprint() {
       const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       ray.setFromCamera(ndc, cam);
       const hit = ray.intersectObjects(objects.current, false)[0];
+      if (playRef.current && hit) {
+        // Play mode: fire the per-object interaction instead of selecting.
+        const mesh = hit.object as THREE.Mesh;
+        const inter = mesh.userData.interaction as { onClick?: string; url?: string } | undefined;
+        if (inter?.onClick) {
+          const mat = mesh.material as THREE.MeshPhysicalMaterial;
+          switch (inter.onClick) {
+            case "toggleVisible": mesh.visible = !mesh.visible; break;
+            case "swapColor": {
+              const prev = (mesh.userData.prevColor as string) || "#" + mat.color.getHexString();
+              const next = (mesh.userData.altColor as string) || "#ff5577";
+              mesh.userData.prevColor = "#" + mat.color.getHexString();
+              mesh.userData.altColor = prev;
+              mat.color.set(next);
+              break;
+            }
+            case "firePulse": {
+              const baseI = mat.emissiveIntensity;
+              mat.emissiveIntensity = Math.max(2, baseI + 2);
+              setTimeout(() => { mat.emissiveIntensity = baseI; }, 220);
+              break;
+            }
+            case "toggleAnim": {
+              const a = mesh.userData.anim as { kind?: string; paused?: boolean } | undefined;
+              if (a) a.paused = !a.paused;
+              break;
+            }
+            case "openUrl": if (inter.url) window.open(inter.url, "_blank"); break;
+          }
+          return;
+        }
+      }
       select(hit ? (hit.object as THREE.Mesh) : null);
     };
     rnd.domElement.addEventListener("click", onClick);
+
+    // Keyboard shortcuts — Delete to delete, Ctrl/Cmd+D to duplicate, F to
+    // frame the selected, Esc clears selection, ? toggles help.
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA") return;
+      if (pointer.isLocked) return;
+      if (e.key === "Delete" || e.key === "Backspace") { api.current.deleteSelected?.(); }
+      else if ((e.key === "d" || e.key === "D") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); api.current.duplicateSelected?.(); }
+      else if (e.key === "f" || e.key === "F") {
+        const m = selected.current; if (m) { const p = m.position; controls.target.set(p.x, p.y, p.z); }
+      } else if (e.key === "Escape") { select(null); }
+      else if (e.key === "?" || (e.shiftKey && e.key === "/")) { api.current.toggleHelp?.(); }
+      else if (e.key === "g" || e.key === "G") { api.current.toggleHelp?.(); }
+    };
+    window.addEventListener("keydown", onKey);
 
     const resize = () => {
       const w = el.clientWidth, h = el.clientHeight;
@@ -471,6 +522,7 @@ export function DigitalBlueprint() {
       rnd.domElement.removeEventListener("click", onClick);
       window.removeEventListener("keydown", kd);
       window.removeEventListener("keyup", ku);
+      window.removeEventListener("keydown", onKey);
       rnd.domElement.removeEventListener("mousedown", fcDown);
       window.removeEventListener("mouseup", fcUp);
       window.removeEventListener("mousemove", fcMove);
@@ -662,6 +714,9 @@ export function DigitalBlueprint() {
     for (const it of items) addShape(it.shape, it.snap);
     saveSceneSnapshot();
   }
+  api.current.deleteSelected = () => del();
+  api.current.duplicateSelected = () => duplicate();
+  api.current.toggleHelp = () => setShowHelp((v) => !v);
   api.current.exportJson = () => {
     const data = { v: 1, atmos, objects: captureScene() };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -693,23 +748,44 @@ export function DigitalBlueprint() {
     // to do: pass 1 = full schema with materials, pass 2 = minimum schema
     // (shape/pos/scale/color), pass 3 = literal "give me 8 lines like this"
     // with a worked example. Whichever pass parses first wins.
+    // The full editor surface, surfaced to the model so it can actually USE
+    // the new shapes / textures / animations / interactions. Three passes
+    // escalate leniency for smaller local models.
+    const SHAPES = '"box"|"sphere"|"cylinder"|"cone"|"torus"|"plane"|"torusKnot"|"capsule"|"tetrahedron"|"octahedron"|"dodecahedron"|"icosahedron"|"ring"|"pyramid"|"wedge"';
+    const TEXTURES = '"none"|"checker"|"grid"|"stripes"|"noise"|"dots"|"brick"|"wood"|"marble"|"cells"';
+    const ANIMS = '{"kind":"spin"|"bob"|"pulse"|"orbitAround"|"colorCycle","speed":number,"amp":number,"axis":"x"|"y"|"z","radius":number}';
+    const INTERACTIONS = '"none"|"toggleVisible"|"swapColor"|"firePulse"|"toggleAnim"|"openUrl"';
+    const FULL_SCHEMA =
+      `{` +
+      `"shape":${SHAPES},"pos":[x,y,z],"scale":[sx,sy,sz],"rot":[xDeg,yDeg,zDeg],` +
+      `"color":"#rrggbb","metal":0-1,"rough":0-1,"glow":"#rrggbb","glowI":0-3,` +
+      `"transmission":0-1,"opacity":0-1,"clearcoat":0-1,"sheen":0-1,"wire":bool,"flat":bool,` +
+      `"texture":${TEXTURES},"textureUrl":"https://…",` +
+      `"label":"short text shown above the object","note":"longer description",` +
+      `"anim":${ANIMS},` +
+      `"interact":${INTERACTIONS},` +
+      `"interactUrl":"https://… (only when interact=openUrl)"` +
+      `}`;
     const prompts = [
       {
         system:
-          "Output a JSON array of 3D primitives and NOTHING else. No prose, no markdown, no code fences. " +
-          'Schema: [{"shape":"box"|"sphere"|"cylinder"|"cone"|"torus"|"plane","pos":[x,y,z],"scale":[sx,sy,sz],"color":"#rrggbb","metal":0-1,"rough":0-1,"glow":"#rrggbb","glowI":0-3}, ...]. ' +
-          "6-14 primitives. y>=0. metal/rough/glow are optional. Stack pieces so they read as a real object.",
+          "You are a 3D scene composer for an editor that supports physical materials, procedural textures, per-object animations, and click-interactions. " +
+          "Output a JSON array of primitives and NOTHING else — no prose, no markdown, no code fences. " +
+          `Every field is optional except shape + pos. Schema per item: ${FULL_SCHEMA}. ` +
+          "Use 6-18 primitives. y>=0. Stack pieces so they read as a real object. Set color/metal/rough/glow that match the material (wood=brown rough, glass=transmission high + low rough, metal=high metalness). " +
+          "When the prompt implies motion (spinning, floating, pulsing, orbiting), set the right anim. When the prompt implies interactivity (clickable, tappable, button, link), set interact. " +
+          "Pick a texture from the list when it matches (brick walls, wood planks, marble floors, cells = scales/honeycomb).",
         user: `Build: ${prompt}\n\nRespond with the JSON array only, starting with [ and ending with ].`,
       },
       {
-        system: "Output ONLY a JSON array. No text before or after. Each item is " +
-          '{"shape":"box"|"sphere"|"cylinder"|"cone"|"torus"|"plane","pos":[x,y,z],"scale":[sx,sy,sz],"color":"#rrggbb"}.' +
-          " 8 to 12 items. y>=0.",
+        system: "Output ONLY a JSON array. No text. Each item is " +
+          `{"shape":${SHAPES},"pos":[x,y,z],"scale":[sx,sy,sz],"color":"#rrggbb","texture":${TEXTURES},"anim":${ANIMS}}.` +
+          " 8 to 12 items. y>=0. Pick texture + anim when they fit.",
         user: `Build: ${prompt}\n\n[`,
       },
       {
-        system: "You output a JSON array. Nothing else. Copy this format EXACTLY: " +
-          '[{"shape":"box","pos":[0,0.5,0],"scale":[2,1,1],"color":"#888888"},{"shape":"sphere","pos":[0,1.6,0],"scale":[0.6,0.6,0.6],"color":"#ffcc88"}]',
+        system: "You output a JSON array. Nothing else. Copy this format EXACTLY (and pick shapes/textures/anims that match the prompt): " +
+          '[{"shape":"box","pos":[0,0.5,0],"scale":[2,1,1],"color":"#8b5a2b","texture":"wood"},{"shape":"sphere","pos":[0,2.0,0],"scale":[0.5,0.5,0.5],"color":"#ffcc88","glow":"#ffcc88","glowI":1.6,"anim":{"kind":"bob","speed":1.2,"amp":0.3}}]',
         user: `Replace the contents with 8-12 primitives that look like: ${prompt}\nReply with the array only.`,
       },
     ];
@@ -741,19 +817,39 @@ export function DigitalBlueprint() {
       const shape = (o.shape as Shape) || "box";
       const pos = (Array.isArray(o.pos) ? o.pos : Array.isArray(o.position) ? o.position : [0, 0.6, 0]) as number[];
       const scl = (Array.isArray(o.scale) ? o.scale : [1, 1, 1]) as number[];
-      const rot = (Array.isArray(o.rotation) ? o.rotation : [0, 0, 0]) as number[];
-      addShape(shape, {
+      const rot = (Array.isArray(o.rot) ? o.rot : Array.isArray(o.rotation) ? o.rotation : [0, 0, 0]) as number[];
+      const mesh = addShape(shape, {
         color: (o.color as string) || "#9ca3af",
         metalness: numOr(o.metal ?? o.metalness, 0.2),
         roughness: numOr(o.rough ?? o.roughness, 0.5),
         emissive: (o.glow as string) ?? (o.emissive as string) ?? "#000000",
         emissiveIntensity: numOr(o.glowI ?? o.emissiveIntensity, 0),
+        opacity: numOr(o.opacity, 1),
+        transmission: numOr(o.transmission, 0),
+        clearcoat: numOr(o.clearcoat, 0),
+        sheen: numOr(o.sheen, 0),
+        wireframe: o.wire === true || o.wireframe === true,
+        flatShading: o.flat === true || o.flatShading === true,
+        texture: (o.texture as string) || "none",
+        textureUrl: (o.textureUrl as string) || (o.texture_url as string) || "",
+        annTitle: (o.label as string) || (o.title as string) || "",
+        annBody:  (o.note  as string) || (o.body  as string) || "",
         px: numOr(pos[0], 0), py: Math.max(0, numOr(pos[1], 0.5)), pz: numOr(pos[2], 0),
         sx: numOr(scl[0], 1), sy: numOr(scl[1], 1), sz: numOr(scl[2], 1),
         rx: numOr(rot[0], 0), ry: numOr(rot[1], 0), rz: numOr(rot[2], 0),
       });
+      // Carry per-object animations and interactions through to the mesh so
+      // Play mode picks them up next frame.
+      if (mesh && o.anim && typeof o.anim === "object") (mesh.userData as Record<string, unknown>).anim = o.anim;
+      if (mesh && o.interact && typeof o.interact === "string" && o.interact !== "none") {
+        (mesh.userData as Record<string, unknown>).interaction = {
+          onClick: o.interact,
+          url: (o.interactUrl as string) || (o.url as string) || "",
+        };
+      }
       n++;
     }
+    saveSceneSnapshot();
     setGenStatus(n > 0 ? `Generated ${n} object${n === 1 ? "" : "s"}.` : "No usable primitives in the parsed JSON.");
   }
   function numOr(v: unknown, fallback: number): number {
@@ -878,6 +974,23 @@ export function DigitalBlueprint() {
               showAll={showAllLabels}
             />
           </div>
+          {/* Help overlay — press ? to toggle */}
+          <button onClick={() => setShowHelp((v) => !v)} style={{ position: "absolute", right: 10, top: 10, width: 28, height: 28, borderRadius: "50%", border: `1px solid ${DB.ink}55`, background: "rgba(10,22,40,0.75)", color: DB.ink, cursor: "pointer", fontFamily: "ui-monospace,monospace", fontSize: 14 }} title="Shortcuts (?)">?</button>
+          {showHelp && (
+            <div style={{ position: "absolute", right: 10, top: 44, padding: "12px 14px", background: "rgba(10,22,40,0.96)", border: `1px solid ${DB.ink}55`, borderRadius: 6, color: DB.ink, fontFamily: "ui-monospace,monospace", fontSize: 11, lineHeight: 1.7, minWidth: 240 }}>
+              <div style={{ fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: DB.accent, marginBottom: 6 }}>Shortcuts</div>
+              <div><b>WASD</b> — move (Walk / Freecam)</div>
+              <div><b>Q / E</b> — up / down (Freecam)</div>
+              <div><b>Shift</b> — sprint</div>
+              <div><b>Space</b> — jump (Walk)</div>
+              <div><b>F</b> — frame selected</div>
+              <div><b>Esc</b> — clear selection / exit walk</div>
+              <div><b>Delete</b> — delete selected</div>
+              <div><b>Ctrl/Cmd+D</b> — duplicate</div>
+              <div><b>Click</b> in Play — fire interaction</div>
+              <div style={{ marginTop: 6, fontSize: 10, color: DB.inkSoft }}>Press <b>?</b> to close.</div>
+            </div>
+          )}
         </div>
         <div className="db-paper" style={{ width: 300, borderLeft: `1px solid ${DB.ink}`, overflow: "auto", padding: 12 }}>
           <Label>Add</Label>
@@ -1039,6 +1152,9 @@ export function DigitalBlueprint() {
               <Label>Animation (runs in Play mode)</Label>
               <AnimationPicker mesh={selected.current} />
 
+              <Label>Click-interaction (in Play mode)</Label>
+              <InteractionPicker mesh={selected.current} />
+
               <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
                 <button className="db-btn" onClick={duplicate} style={{ flex: 1 }}>Duplicate</button>
                 <button className="db-btn" onClick={() => selected.current && toggleVisible(selected.current)} style={{ flex: 1 }}>{selected.current?.visible === false ? "Show" : "Hide"}</button>
@@ -1136,6 +1252,40 @@ function ScenesPanel({ readRegistry, writeRegistry, captureScene, loadCapture, c
 // Per-object animation picker. Reads / writes mesh.userData.anim directly so
 // the play-step loop in the scene effect picks the values up next frame. Local
 // state mirrors mesh.userData.anim for the controlled inputs.
+type InteractKind = "none" | "toggleVisible" | "swapColor" | "firePulse" | "toggleAnim" | "openUrl";
+type InteractData = { onClick?: InteractKind; url?: string; altColor?: string };
+function InteractionPicker({ mesh }: { mesh: { userData: Record<string, unknown> } | null }) {
+  const initial = ((mesh?.userData.interaction as InteractData) || { onClick: "none" });
+  const [kind, setKind] = useState<InteractKind>(initial.onClick || "none");
+  const [url, setUrl] = useState(initial.url || "");
+  const [altColor, setAltColor] = useState(initial.altColor || "#22d3ee");
+  useEffect(() => {
+    if (!mesh) return;
+    if (kind === "none") delete (mesh.userData as Record<string, unknown>).interaction;
+    else (mesh.userData as Record<string, unknown>).interaction = { onClick: kind, url, altColor };
+  }, [kind, url, altColor, mesh]);
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <select value={kind} onChange={(e) => setKind(e.target.value as InteractKind)} style={{ width: "100%", padding: "6px 8px", fontSize: 11 }}>
+        <option value="none">none</option>
+        <option value="toggleVisible">toggle visibility</option>
+        <option value="swapColor">swap color</option>
+        <option value="firePulse">fire emissive pulse</option>
+        <option value="toggleAnim">pause / resume animation</option>
+        <option value="openUrl">open URL in default browser</option>
+      </select>
+      {kind === "openUrl" && (
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" style={{ width: "100%", marginTop: 6, padding: "5px 8px", fontSize: 11 }} />
+      )}
+      {kind === "swapColor" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, fontSize: 11, color: "#9b8fb0" }}>
+          alternate color <input type="color" value={altColor} onChange={(e) => setAltColor(e.target.value)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 type AnimKind = "none" | "spin" | "bob" | "pulse" | "orbitAround" | "colorCycle";
 type AnimData = { kind?: AnimKind; speed?: number; amp?: number; axis?: "x" | "y" | "z"; radius?: number };
 function AnimationPicker({ mesh }: { mesh: { userData: Record<string, unknown> } | null }) {

@@ -17,7 +17,7 @@ import {
 // All new data lives in a sidecar (sfExt.ts) keyed by target id so the
 // original component keeps working.
 
-type View = "targets" | "pipeline" | "ai" | "templates" | "stats" | "settings";
+type View = "today" | "targets" | "pipeline" | "ai" | "templates" | "stats" | "settings";
 
 type Target = {
   id: string; name: string; type: string; niche: string; platform: string;
@@ -58,12 +58,12 @@ function importAll(text: string) {
 }
 
 export function SignalFinder() {
-  const [view, setView] = useState<View>("targets");
+  const [view, setView] = useState<View>("today");
   return (
     <div className="stage" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ display: "flex", gap: 6, alignItems: "center", padding: "8px 14px", borderBottom: "1px solid var(--line)", background: C_BAR_BG }}>
         <span style={{ fontFamily: "ui-monospace,monospace", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "var(--mute)", marginRight: 6 }}>SignalFinder</span>
-        {(["targets", "pipeline", "ai", "templates", "stats", "settings"] as const).map((v) => (
+        {(["today", "targets", "pipeline", "ai", "templates", "stats", "settings"] as const).map((v) => (
           <button key={v} onClick={() => setView(v)} className="btn" style={{
             padding: "6px 14px", fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase",
             color: view === v ? "var(--pink)" : undefined, borderColor: view === v ? "rgba(255,87,119,0.55)" : undefined,
@@ -79,6 +79,7 @@ export function SignalFinder() {
         </label>
       </div>
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {view === "today" && <TodayView onJump={(v) => setView(v)} />}
         {view === "targets" && <SignalFinderTargets />}
         {view === "pipeline" && <PipelineView />}
         {view === "ai" && <AIStudioView />}
@@ -88,6 +89,186 @@ export function SignalFinder() {
       </div>
     </div>
   );
+}
+
+// ── Today — the daily-driver loop ───────────────────────────────────────────
+// Answers: "what should I do RIGHT NOW?"
+// Sections: overdue, due today, recent replies (last 7d), top suggestions
+// (unstarted high-priority targets), follow-up momentum (this week).
+function TodayView({ onJump }: { onJump: (v: View) => void }) {
+  const [targets, setTargets] = useState<Target[]>(loadTargets);
+  const [ext, setExt] = useState(loadAllExt);
+  useEffect(() => { setTargets(loadTargets()); setExt(loadAllExt()); }, []);
+
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const overdue: Target[] = [];
+  const dueToday: Target[] = [];
+  for (const t of targets) {
+    const f = getExt(ext, t.id).followup;
+    if (!f) continue;
+    if (f < todayKey) overdue.push(t);
+    else if (f === todayKey) dueToday.push(t);
+  }
+  overdue.sort((a, b) => (getExt(ext, a.id).followup < getExt(ext, b.id).followup ? -1 : 1));
+
+  const weekAgo = Date.now() - 7 * 86400e3;
+  const recentReplies = targets.filter((t) => t.outreach.some((o) => o.responded && Date.parse(o.date) >= weekAgo));
+
+  // Suggestions: untouched (no outreach) targets in Prospect, ranked by raw
+  // overall score so you know who to ping first today.
+  const suggestions = targets
+    .filter((t) => t.outreach.length === 0 && getExt(ext, t.id).stage === "prospect")
+    .map((t) => ({ t, s: cheapScore(t) }))
+    .sort((a, b) => b.s - a.s)
+    .slice(0, 5)
+    .map((x) => x.t);
+
+  // Momentum: outreach attempts logged in the last 7 days, by day.
+  const momentum: { day: string; n: number }[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86400e3).toISOString().slice(0, 10);
+    momentum.push({ day: d.slice(5), n: targets.reduce((s, t) => s + t.outreach.filter((o) => o.date === d).length, 0) });
+  }
+  const maxMo = Math.max(1, ...momentum.map((m) => m.n));
+
+  function clearFollowup(id: string) {
+    setExt(patchExt(id, { followup: "" }));
+  }
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", padding: 16, minHeight: 0 }}>
+      {/* Top stat strip */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
+        <StatTile label="overdue" value={overdue.length} color="#ef4444" pulse={overdue.length > 0} />
+        <StatTile label="due today" value={dueToday.length} color="#f59e0b" />
+        <StatTile label="recent replies (7d)" value={recentReplies.length} color="#22c55e" />
+        <StatTile label="targets total" value={targets.length} color="#22d3ee" />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        {/* Overdue + due-today */}
+        <div className="panel" style={{ padding: 14 }}>
+          <SecHead color="#ef4444">Follow ups owed</SecHead>
+          {overdue.length === 0 && dueToday.length === 0 ? (
+            <Empty>Nothing owed. Nice.</Empty>
+          ) : (
+            <>
+              {overdue.map((t) => <FollowRow key={t.id} t={t} e={getExt(ext, t.id)} overdue onClear={() => clearFollowup(t.id)} onJump={() => onJump("ai")} />)}
+              {dueToday.map((t) => <FollowRow key={t.id} t={t} e={getExt(ext, t.id)} onClear={() => clearFollowup(t.id)} onJump={() => onJump("ai")} />)}
+            </>
+          )}
+        </div>
+
+        {/* Recent replies */}
+        <div className="panel" style={{ padding: 14 }}>
+          <SecHead color="#22c55e">Recent replies (last 7 days)</SecHead>
+          {recentReplies.length === 0 ? <Empty>No replies this week — keep firing.</Empty> : recentReplies.map((t) => (
+            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+              <ScoreRing pct={Math.min(100, cheapScore(t))} color="#22c55e" size={42} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="mono" style={{ fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+                <div style={{ fontSize: 11, color: "var(--mute)" }}>{t.type}{t.niche ? ` · ${t.niche}` : ""}</div>
+              </div>
+              <span style={{ fontSize: 10, padding: "3px 8px", background: `${STAGE_COLOR[getExt(ext, t.id).stage]}22`, color: STAGE_COLOR[getExt(ext, t.id).stage], borderRadius: 4, fontFamily: "ui-monospace,monospace", letterSpacing: 1, textTransform: "uppercase" }}>{STAGE_LABEL[getExt(ext, t.id).stage]}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Suggestions */}
+        <div className="panel" style={{ padding: 14 }}>
+          <SecHead color="#ff5577">Top suggestions to ping first</SecHead>
+          {suggestions.length === 0 ? <Empty>All prospects already touched. Add new ones on the Targets tab.</Empty> : suggestions.map((t) => (
+            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+              <ScoreRing pct={cheapScore(t)} color="#ff5577" size={48} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="mono" style={{ fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+                <div style={{ fontSize: 11, color: "var(--mute)" }}>{t.type}{t.niche ? ` · ${t.niche}` : ""} · {t.audience.toLocaleString()} audience</div>
+              </div>
+              <button className="btn" onClick={() => onJump("ai")} style={{ fontSize: 11, padding: "5px 11px" }}>Draft message</button>
+            </div>
+          ))}
+        </div>
+
+        {/* Momentum */}
+        <div className="panel" style={{ padding: 14 }}>
+          <SecHead color="#22d3ee">Outreach momentum · last 7 days</SecHead>
+          <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 96, marginTop: 8 }}>
+            {momentum.map((m, i) => (
+              <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                <div style={{ width: "100%", height: `${(m.n / maxMo) * 80}px`, background: "linear-gradient(180deg, #22d3ee, #22d3ee44)", borderRadius: 3, minHeight: 2 }} title={`${m.n} on ${m.day}`} />
+                <span style={{ fontSize: 9, fontFamily: "ui-monospace,monospace", color: "var(--mute)" }}>{m.day}</span>
+                <span style={{ fontSize: 10, fontFamily: "ui-monospace,monospace", color: "var(--ink)" }}>{m.n}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 10, fontSize: 11, color: "var(--mute)" }}>{momentum.reduce((s, m) => s + m.n, 0)} attempts this week.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+function StatTile({ label, value, color, pulse }: { label: string; value: number; color: string; pulse?: boolean }) {
+  return (
+    <div className="panel" style={{ padding: 14, position: "relative", overflow: "hidden", borderColor: pulse ? `${color}aa` : undefined, boxShadow: pulse ? `0 0 18px ${color}33` : undefined }}>
+      {pulse && <div style={{ position: "absolute", inset: 0, background: `radial-gradient(circle at 50% 50%, ${color}1a, transparent 70%)`, animation: "sfPulseBg 2.4s ease-in-out infinite" }} />}
+      <div style={{ position: "relative", fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 32, color, lineHeight: 1, textShadow: `0 0 14px ${color}` }}>{value}</div>
+      <div style={{ position: "relative", fontSize: 10, color: "var(--mute)", letterSpacing: 1.5, textTransform: "uppercase", marginTop: 6 }}>{label}</div>
+      <style>{`@keyframes sfPulseBg { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }`}</style>
+    </div>
+  );
+}
+function SecHead({ children, color }: { children: React.ReactNode; color: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+      <span style={{ fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color }}>{children}</span>
+      <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${color}66, transparent)` }} />
+    </div>
+  );
+}
+function Empty({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 12, color: "var(--mute)", padding: "12px 4px" }}>{children}</div>;
+}
+function FollowRow({ t, e, overdue, onClear, onJump }: { t: Target; e: Ext; overdue?: boolean; onClear: () => void; onJump: () => void }) {
+  const color = overdue ? "#ef4444" : "#f59e0b";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+      <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: color, boxShadow: `0 0 8px ${color}` }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="mono" style={{ fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+        <div style={{ fontSize: 11, color: color }}>{overdue ? "OVERDUE" : "due today"} · {e.followup}{e.tags.length > 0 ? ` · ${e.tags.map((g) => g.label).join(", ")}` : ""}</div>
+      </div>
+      <button className="btn" onClick={onJump} style={{ fontSize: 11, padding: "5px 11px" }}>Draft</button>
+      <button className="btn" onClick={onClear} style={{ fontSize: 11, padding: "5px 11px" }}>Clear</button>
+    </div>
+  );
+}
+// Reusable circular SVG score ring (also used on Targets/Pipeline cards).
+function ScoreRing({ pct, color, size = 56 }: { pct: number; color: string; size?: number }) {
+  const r = size / 2 - 4, c = 2 * Math.PI * r;
+  const v = Math.max(0, Math.min(100, pct));
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="4" />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth="4" strokeLinecap="round"
+        strokeDasharray={c} strokeDashoffset={c - (v / 100) * c} transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        style={{ filter: `drop-shadow(0 0 4px ${color})`, transition: "stroke-dashoffset .35s" }} />
+      <text x={size / 2} y={size / 2 + 4} textAnchor="middle" fontFamily="ui-monospace,monospace" fontSize={size / 4} fill={color}>{v}</text>
+    </svg>
+  );
+}
+// Cheap re-implementation of the original SignalFinder score for use in the
+// new views without importing the original component. Mirrors the same shape.
+function cheapScore(t: Target): number {
+  const acc = t.accessibility / 5, act = t.activity / 5, grw = t.growth / 5, rel = t.relevance / 5;
+  const sizeFactor = 1 / (1 + Math.log10(Math.max(t.audience, 1)) / 6);
+  const recentResponded = t.outreach.some((o) => o.responded);
+  const attempted = t.outreach.length > 0;
+  const warmthBoost = recentResponded ? 0.15 : attempted ? 0.05 : 0;
+  const response = Math.min(1, 0.6 * acc + 0.25 * act + 0.15 * sizeFactor + warmthBoost);
+  const collab = Math.min(1, 0.7 * rel + 0.3 * act);
+  const momentum = 0.6 * grw + 0.4 * act;
+  const timing = 0.6 * act + 0.4 * grw;
+  return Math.round((0.3 * response + 0.2 * collab + 0.2 * momentum + 0.15 * timing + 0.15 * rel) * 100);
 }
 
 // ── Pipeline ────────────────────────────────────────────────────────────────
@@ -164,7 +345,10 @@ function PipelineView() {
                     style={{
                       padding: 8, background: "rgba(20,8,12,0.75)", border: "1px solid var(--line)", borderRadius: 5, cursor: "grab",
                       borderLeft: `3px solid ${STAGE_COLOR[s]}`,
+                      display: "flex", gap: 8, alignItems: "flex-start",
                     }}>
+                    <ScoreRing pct={cheapScore(t)} color={STAGE_COLOR[s]} size={38} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontFamily: "ui-monospace,monospace", fontSize: 12, color: "var(--ink)" }}>{t.name || "(unnamed)"}</div>
                     <div style={{ fontSize: 10, color: "var(--mute)", marginTop: 2 }}>{t.type}{t.niche ? ` · ${t.niche}` : ""}</div>
                     {e.tags.length > 0 && (
@@ -177,6 +361,7 @@ function PipelineView() {
                         f/u {e.followup}{overdue ? " · OVERDUE" : ""}
                       </div>
                     )}
+                    </div>
                   </div>
                 );
               })}
