@@ -82,8 +82,8 @@ export const TOUR_STEPS: TourStep[] = [
     nav: { kind: "ai" },
     selector: '[data-tour="rail-ai"]',
     side: "right",
-    title: "AI Group Chat",
-    body: "Three sub-views: chat, projects, configure. House-model agents (BroBot, Voss, Zip, Dex, Lena, Orion) are silent — they only chime in when you @mention them. @Everyone routes to the outside crew (Claude, Gemini, Codex, OpenCode, Hermes) you wire via CLI.",
+    title: "Group Terminal",
+    body: "Your multi-agent room. Create saved chats and switch between them; pick which AIs are in each chat up front (editable any time) — everyone present reads the conversation and answers each other, no @mentions needed. Stop a turn mid-flight, watch the token estimate, and wire the outside crew (Claude, Gemini, Codex, OpenCode, Hermes) in Configure.",
   },
   {
     nav: { kind: "ai" },

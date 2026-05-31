@@ -17,7 +17,9 @@ const APP_GUIDE =
   "own services: GitHub, Vercel, Supabase, Cloudflare, Tailscale, Twingate, n8n, " +
   "YouTube, Home Assistant, Proxmox, Portainer, Pi-hole, Frigate, ZimaCube, Hermes, " +
   "Hostinger; tokens encrypted on-device via OS keychain). Terminal (real Windows " +
-  "PowerShell via node-pty). AI Group Chat (BroBot + NT5 anchors run on the bundled " +
+  "PowerShell via node-pty). Group Terminal — the multi-agent room: saved chats you " +
+  "switch between, pick the AIs per chat, they all see the conversation and answer " +
+  "each other (BroBot + NT5 anchors run on the bundled " +
   "local model and are always on call; outside crew — Claude, Gemini, Codex, " +
   "OpenCode, Hermes — connect via their CLI tools in Configure). Library (Steam " +
   "auto-detect + Modrinth + Blockbench). " +

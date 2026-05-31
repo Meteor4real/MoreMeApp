@@ -94,7 +94,7 @@ export function App() {
             <RailBtn tour="rail-browser" icon={ICON.browser} label="Browser" active={nav.kind === "browser" && !nav.url} onClick={() => setNav({ kind: "browser" })} />
             <RailBtn tour="rail-control" icon={ICON.control} label="Control Panel" active={nav.kind === "control"} onClick={() => setNav({ kind: "control" })} />
             <RailBtn tour="rail-terminal" icon={ICON.terminal} label="Terminal" active={nav.kind === "terminal"} onClick={() => setNav({ kind: "terminal" })} />
-            <RailBtn tour="rail-ai" icon={ICON.ai} label="AI Group Chat" active={nav.kind === "ai"} onClick={() => setNav({ kind: "ai" })} />
+            <RailBtn tour="rail-ai" icon={ICON.ai} label="Group Terminal" active={nav.kind === "ai"} onClick={() => setNav({ kind: "ai" })} />
             <RailBtn tour="rail-library" icon={ICON.library} label="Library" active={nav.kind === "library"} onClick={() => setNav({ kind: "library" })} />
             <div className="rail-sep" />
             {visibleApps.map((a) => (
