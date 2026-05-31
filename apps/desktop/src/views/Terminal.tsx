@@ -72,12 +72,17 @@ function newSessionId() {
 async function createSession(shell: ShellKind = "default"): Promise<string | null> {
   ensureGlobalListeners();
   const id = newSessionId();
-  const r = await window.hub.terminal.start(id, 100, 30, shell === "default" ? undefined : shell);
-  if (!r.ok) return null;
+  // Register the session BEFORE spawning the PTY. The shell prints its
+  // startup banner the instant it spawns; if the SESSIONS entry doesn't
+  // exist yet, the global term:data listener drops those bytes and the new
+  // tab comes up blank (the bug). Creating the entry first means the banner
+  // is captured into the buffer and replayed when the term mounts.
   const label = SHELLS.find((s) => s.id === shell)?.label || "shell";
   SESSIONS.set(id, { id, title: `${label} ${SESSIONS.size + 1}`, buffer: "", active: true });
   activeId = id;
   notify();
+  const r = await window.hub.terminal.start(id, 100, 30, shell === "default" ? undefined : shell);
+  if (!r.ok) { SESSIONS.delete(id); notify(); return null; }
   return id;
 }
 // Type into the active PTY (used by snippets, agent launchers, AI bar). When
@@ -187,6 +192,9 @@ export function TerminalView() {
     });
     const onResize = () => { try { fit.fit(); window.hub.terminal.resize(id, term.cols, term.rows); } catch { /* ignore */ } };
     window.addEventListener("resize", onResize);
+    // Fit once layout has settled so a freshly-revealed tab gets real cols/rows
+    // (fitting against a 0-size host renders nothing). Also re-sync the PTY.
+    requestAnimationFrame(() => { onResize(); term.focus(); });
 
     xtermRef.current = { term, fit, id };
     return () => {
