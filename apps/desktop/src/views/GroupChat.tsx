@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AGENTS, type AgentDef, agentAvailable, effectiveTransport } from "../ai/agents";
 import { appUnlocked, subscribeCodes } from "../featureGate";
 import { loadPrefs, subscribePrefs } from "../uiPrefs";
+import { loadCustomAgents, saveCustomAgents, subscribeCustomAgents, makeCustomAgent, agentColor, type CustomAgent } from "../ai/customAgents";
 import { loadConfig, saveConfig, type ConfigMap, type AgentConfig } from "../ai/store";
 import { ProjectsView } from "./groupchat/Projects";
 
@@ -11,6 +12,7 @@ type Msg = {
   name: string;
   content: string;
   kind: "user" | "agent" | "system";
+  ts?: number;
 };
 
 const mono = (n: string) => n.replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase();
@@ -58,7 +60,11 @@ export function GroupChat() {
   const [view, setView] = useState<View>("chat");
   const [houseReady, setHouseReady] = useState(false);
   const [prefs, setPrefs] = useState(loadPrefs);
+  const [customAgents, setCustomAgents] = useState<CustomAgent[]>(loadCustomAgents);
   useEffect(() => subscribePrefs(setPrefs), []);
+  useEffect(() => subscribeCustomAgents(setCustomAgents), []);
+  // Full roster = built-ins + user-defined custom agents.
+  const ROSTER = useMemo<AgentDef[]>(() => [...AGENTS, ...customAgents], [customAgents]);
   const scroller = useRef<HTMLDivElement>(null);
 
   // Persist on every change so the conversation survives tab switches and restarts.
@@ -90,12 +96,12 @@ export function GroupChat() {
   // BroBot (gated under 2089) is unlocked / relocked.
   const [, setCodeTick] = useState(0);
   useEffect(() => subscribeCodes(() => setCodeTick((n) => n + 1)), []);
-  const gatedAgents = useMemo(() => AGENTS.filter((a) => appUnlocked(a.id)), [/* re-derived on tick */ houseReady]);
+  const gatedAgents = useMemo(() => ROSTER.filter((a) => appUnlocked(a.id)), [ROSTER, /* re-derived on tick */ houseReady]);
   const available = useMemo(() => gatedAgents.filter((a) => agentAvailable(a, cfg[a.id], houseReady)), [cfg, houseReady, gatedAgents]);
   const unavailable = useMemo(() => gatedAgents.filter((a) => !agentAvailable(a, cfg[a.id], houseReady)), [cfg, houseReady, gatedAgents]);
 
   function push(m: Omit<Msg, "id">) {
-    setMsgs((prev) => [...prev, { ...m, id: String(mid++) }]);
+    setMsgs((prev) => [...prev, { ...m, id: String(mid++), ts: m.ts ?? Date.now() }]);
   }
   function clearChat() {
     setMsgs([]);
@@ -156,9 +162,42 @@ export function GroupChat() {
     return out;
   }
 
+  // Slash commands handled locally before anything hits an agent.
+  function handleSlash(raw: string): boolean {
+    const [cmd, ...rest] = raw.slice(1).split(/\s+/);
+    const arg = rest.join(" ");
+    switch (cmd.toLowerCase()) {
+      case "clear": clearChat(); return true;
+      case "who": {
+        const list = available.map((a) => a.name).join(", ") || "nobody connected";
+        push({ agentId: "system", name: "Hub", kind: "system", content: `On call: ${list}` });
+        return true;
+      }
+      case "help":
+        push({ agentId: "system", name: "Hub", kind: "system", content: "Commands: /clear · /who · /help · /everyone <task>. Mention @Name to target one agent, @Everyone for the outside crew." });
+        return true;
+      case "everyone":
+        if (arg.trim()) { setInput(""); void runFromText(`@Everyone ${arg}`); }
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  async function runFromText(task: string) {
+    push({ agentId: "meteor", name: "Meteor", kind: "user", content: task });
+    const targets = resolveTargets(task);
+    if (targets.length === 0) {
+      push({ agentId: "system", name: "Hub", kind: "system", content: "No matching agent. Mention one by name, or @Everyone to ping the outside crew." });
+      return;
+    }
+    await driveTurn(task, targets);
+  }
+
   async function send() {
     const task = input.trim();
     if (!task || busy) return;
+    if (task.startsWith("/")) { if (handleSlash(task)) { setInput(""); return; } }
     setInput("");
     push({ agentId: "meteor", name: "Meteor", kind: "user", content: task });
 
@@ -168,13 +207,14 @@ export function GroupChat() {
       push({ agentId: "system", name: "Hub", kind: "system", content: "No matching agent. Mention one by name (Voss, Zip, Dex, Lena, Orion, and BroBot only respond when called out directly), or @Everyone to ping the outside crew. (Connect more agents in Configure.)" });
       return;
     }
+    await driveTurn(task, targets);
+  }
 
+  // Runs the coordinator->workers->review turn, then follows AI-to-AI
+  // @mention chains up to the configured depth.
+  async function driveTurn(task: string, targets: AgentDef[]) {
     try {
       await runTurn(targets, task);
-      // AI-to-AI chaining: scan the last few agent messages for @mentions of
-      // OTHER available agents (anchors / BroBot count here too — direct
-      // mention is exactly what they wait for). Cap chain depth so the
-      // crew can't accidentally talk forever.
       for (let depth = 0; depth < prefs.chatChainDepth; depth++) {
         const recent = snapshot().slice(-targets.length).filter((m) => m.kind === "agent");
         const chained = new Set<AgentDef>();
@@ -293,7 +333,7 @@ export function GroupChat() {
         </div>
 
         {view === "config" ? (
-          <ConfigPanel cfg={cfg} houseReady={houseReady} onChange={(next) => { setCfg(next); saveConfig(next); }} />
+          <ConfigPanel cfg={cfg} houseReady={houseReady} roster={ROSTER} customAgents={customAgents} onChange={(next) => { setCfg(next); saveConfig(next); }} />
         ) : view === "projects" ? (
           <ProjectsView availableIds={available.map((a) => a.id)} onBackToChat={() => setView("chat")} />
         ) : (
@@ -313,13 +353,16 @@ export function GroupChat() {
                   </div>
                 </div>
               )}
-              {msgs.map((m) => (
-                <div key={m.id} style={{ marginBottom: 14, opacity: m.kind === "system" ? 0.7 : 1 }}>
-                  <div className="mono" style={{ fontSize: 11, color: m.kind === "user" ? "var(--orange)" : "var(--pink)" }}>{m.name}</div>
-                  <div style={{ fontSize: 14, marginTop: 2, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{m.content}</div>
+              {msgs.map((m) => <Bubble key={m.id} m={m} roster={ROSTER} />)}
+              {busy && (
+                <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
+                  <Avatar agentId={busy} name={busy} roster={ROSTER} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "rgba(255,87,119,0.06)", border: "1px solid var(--line)", borderRadius: 10 }}>
+                    <span className="mono" style={{ fontSize: 12, color: "var(--mute)" }}>{busy} is typing</span>
+                    <TypingDots />
+                  </div>
                 </div>
-              ))}
-              {busy && <div className="mono" style={{ fontSize: 12, color: "var(--mute)" }}>{busy} is working…</div>}
+              )}
             </div>
             <div style={{ display: "flex", gap: 8, padding: 12, borderTop: "1px solid var(--line)" }}>
               <input
@@ -345,14 +388,18 @@ export function GroupChat() {
 function ConfigPanel({
   cfg,
   houseReady,
+  roster,
+  customAgents,
   onChange,
 }: {
   cfg: ConfigMap;
   houseReady: boolean;
+  roster: AgentDef[];
+  customAgents: CustomAgent[];
   onChange: (next: ConfigMap) => void;
 }) {
   function update(id: string, patch: Partial<AgentConfig>) {
-    const def = AGENTS.find((a) => a.id === id)!;
+    const def = roster.find((a) => a.id === id)!;
     const base: AgentConfig = cfg[id] || {
       enabled: true,
       transport: def.defaultTransport,
@@ -371,7 +418,10 @@ function ConfigPanel({
         here. <code>{"{prompt}"}</code> is replaced by the message (or appended if you omit
         it).
       </p>
-      {AGENTS.filter((a) => appUnlocked(a.id)).map((a) => {
+
+      <CustomAgentCreator customAgents={customAgents} />
+
+      {roster.filter((a) => appUnlocked(a.id)).map((a) => {
         const c = cfg[a.id];
         const transport = c?.transport ?? a.defaultTransport;
         return (
@@ -383,6 +433,10 @@ function ConfigPanel({
               <span style={{ marginLeft: "auto", fontSize: 10, color: agentAvailable(a, c, houseReady) ? "var(--pink)" : "var(--mute)" }}>
                 {agentAvailable(a, c, houseReady) ? "ON CALL" : a.silent || effectiveTransport(a, c) === "house" ? "MODEL LOADING" : "NEEDS SETUP"}
               </span>
+              {(a as CustomAgent).custom && (
+                <button className="btn" style={{ fontSize: 10, padding: "3px 8px" }}
+                  onClick={() => saveCustomAgents(customAgents.filter((x) => x.id !== a.id))}>remove</button>
+              )}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8, marginTop: 10 }}>
               <Field label="connect via">
@@ -444,5 +498,156 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {label}
       <div style={{ marginTop: 4 }}>{children}</div>
     </label>
+  );
+}
+
+// ── Message bubble + avatar + typing indicator ──────────────────────────────
+function Avatar({ agentId, name, roster }: { agentId: string; name: string; roster: AgentDef[] }) {
+  const a = roster.find((x) => x.id === agentId) as (AgentDef & { color?: string; avatar?: string }) | undefined;
+  const isUser = agentId === "meteor";
+  const color = isUser ? "var(--orange)" : a ? agentColor(a) : "#9ca3af";
+  const initials = (name || "?").replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
+  if (a?.avatar) {
+    return <span style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, background: `center/cover no-repeat url("${a.avatar}")`, boxShadow: `0 0 8px ${color}66` }} />;
+  }
+  return (
+    <span style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, display: "grid", placeItems: "center",
+      background: isUser ? "linear-gradient(135deg, var(--red), var(--orange))" : `linear-gradient(135deg, ${color}, #0a0820)`,
+      color: "#fff", fontFamily: "ui-monospace,monospace", fontSize: 11, fontWeight: 700, boxShadow: `0 0 8px ${color}55` }}>
+      {initials}
+    </span>
+  );
+}
+
+function TypingDots() {
+  return (
+    <span style={{ display: "inline-flex", gap: 3 }}>
+      {[0, 1, 2].map((i) => (
+        <span key={i} style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--pink)", animation: `gcblink 1.2s ${i * 0.18}s infinite` }} />
+      ))}
+      <style>{`@keyframes gcblink { 0%,80%,100% { opacity: 0.25; } 40% { opacity: 1; } }`}</style>
+    </span>
+  );
+}
+
+function Bubble({ m, roster }: { m: Msg; roster: AgentDef[] }) {
+  if (m.kind === "system") {
+    return (
+      <div style={{ textAlign: "center", margin: "10px 0" }}>
+        <span className="mono" style={{ fontSize: 11, color: "var(--mute)", background: "rgba(255,255,255,0.04)", padding: "4px 12px", borderRadius: 20 }}>{m.content}</span>
+      </div>
+    );
+  }
+  const isUser = m.kind === "user";
+  const a = roster.find((x) => x.id === m.agentId) as (AgentDef & { color?: string }) | undefined;
+  const color = isUser ? "var(--orange)" : a ? agentColor(a) : "var(--pink)";
+  const time = m.ts ? new Date(m.ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "";
+  return (
+    <div style={{ display: "flex", gap: 10, marginBottom: 14, flexDirection: isUser ? "row-reverse" : "row" }}>
+      <Avatar agentId={m.agentId} name={m.name} roster={roster} />
+      <div style={{ maxWidth: "76%", minWidth: 0 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "baseline", justifyContent: isUser ? "flex-end" : "flex-start", marginBottom: 3 }}>
+          <span className="mono" style={{ fontSize: 11, color }}>{m.name}{a?.role ? <span style={{ color: "var(--mute)" }}> · {a.role.split(" · ")[0]}</span> : null}</span>
+          {time && <span style={{ fontSize: 9, color: "var(--mute)" }}>{time}</span>}
+        </div>
+        <div style={{
+          background: isUser ? "rgba(255,122,45,0.10)" : "rgba(255,255,255,0.035)",
+          border: `1px solid ${isUser ? "rgba(255,122,45,0.3)" : "var(--line)"}`,
+          borderRadius: 12, padding: "9px 12px", fontSize: 14, lineHeight: 1.55,
+        }}>
+          <MessageBody text={m.content} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Lightweight renderer: fenced ```code``` blocks, `inline code`, and **bold**.
+function MessageBody({ text }: { text: string }) {
+  const blocks = text.split(/```/);
+  return (
+    <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+      {blocks.map((b, i) => {
+        if (i % 2 === 1) {
+          const body = b.replace(/^[a-zA-Z0-9]*\n/, "");
+          return (
+            <pre key={i} style={{ background: "rgba(0,0,0,0.55)", border: "1px solid var(--line)", borderRadius: 8, padding: 10, overflowX: "auto", fontFamily: "ui-monospace,monospace", fontSize: 12.5, margin: "6px 0" }}>
+              <code>{body}</code>
+            </pre>
+          );
+        }
+        return <span key={i}>{inlineFmt(b)}</span>;
+      })}
+    </div>
+  );
+}
+function inlineFmt(s: string): (string | JSX.Element)[] {
+  const out: (string | JSX.Element)[] = [];
+  const re = /`([^`]+)`|\*\*([^*]+)\*\*/g;
+  let last = 0; let m: RegExpExecArray | null; let k = 0;
+  while ((m = re.exec(s))) {
+    if (m.index > last) out.push(s.slice(last, m.index));
+    if (m[1] !== undefined) out.push(<code key={k++} style={{ background: "rgba(0,0,0,0.5)", padding: "1px 5px", borderRadius: 4, fontFamily: "ui-monospace,monospace", fontSize: 12.5 }}>{m[1]}</code>);
+    else out.push(<b key={k++}>{m[2]}</b>);
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) out.push(s.slice(last));
+  return out;
+}
+
+// ── Custom agent creator (Configure panel) ──────────────────────────────────
+function CustomAgentCreator({ customAgents }: { customAgents: CustomAgent[] }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("");
+  const [personality, setPersonality] = useState("");
+  const [transport, setTransport] = useState<AgentConfig["transport"]>("house");
+  const [model, setModel] = useState("");
+  const [cmd, setCmd] = useState("");
+  const [color, setColor] = useState("#22d3ee");
+  const [silent, setSilent] = useState(false);
+
+  function create() {
+    if (!name.trim()) return;
+    const agent = makeCustomAgent({ name, role, personality, transport: transport ?? "house", model, cmd, color, silent });
+    saveCustomAgents([...customAgents, agent]);
+    setName(""); setRole(""); setPersonality(""); setModel(""); setCmd(""); setSilent(false); setOpen(false);
+  }
+
+  if (!open) {
+    return (
+      <button className="btn" style={{ marginBottom: 12 }} onClick={() => setOpen(true)}>+ Create custom agent</button>
+    );
+  }
+  return (
+    <div className="panel" style={{ padding: 12, marginBottom: 12, border: "1px solid rgba(255,87,119,0.4)" }}>
+      <div className="mono glow-text" style={{ fontSize: 12, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>New custom agent</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8 }}>
+        <Field label="name"><input style={fieldStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Sage" /></Field>
+        <Field label="role / tagline"><input style={fieldStyle} value={role} onChange={(e) => setRole(e.target.value)} placeholder="e.g. Lore keeper" /></Field>
+        <Field label="connect via">
+          <select value={transport} onChange={(e) => setTransport(e.target.value as AgentConfig["transport"])} style={fieldStyle}>
+            <option value="house">House model (bundled)</option>
+            <option value="cli">Terminal (CLI)</option>
+            <option value="api">API (key)</option>
+          </select>
+        </Field>
+        {transport === "cli" && <Field label="terminal command"><input style={fieldStyle} value={cmd} onChange={(e) => setCmd(e.target.value)} placeholder='tool -p "{prompt}"' /></Field>}
+        {transport === "api" && <Field label="model"><input style={fieldStyle} value={model} onChange={(e) => setModel(e.target.value)} placeholder="model id" /></Field>}
+        <Field label="avatar color"><input type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ ...fieldStyle, padding: 2, height: 32 }} /></Field>
+      </div>
+      <Field label="personality / system prompt">
+        <textarea style={{ ...fieldStyle, minHeight: 70, resize: "vertical" }} value={personality} onChange={(e) => setPersonality(e.target.value)}
+          placeholder="Who is this agent? Voice, expertise, quirks. e.g. 'You are Sage, a calm lore-keeper who answers in concise, vivid prose.'" />
+      </Field>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--ink)", margin: "6px 0" }}>
+        <input type="checkbox" checked={silent} onChange={(e) => setSilent(e.target.checked)} />
+        Mention-only (won't join @Everyone — only responds when named)
+      </label>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button className="btn" onClick={create}>Create</button>
+        <button className="btn" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+    </div>
   );
 }
