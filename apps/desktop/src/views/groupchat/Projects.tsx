@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AGENTS, type AgentDef, effectiveTransport } from "../../ai/agents";
 import { loadConfig, type ConfigMap } from "../../ai/store";
+import { toolsPromptBlock, parseToolCall, runTool, agentMemory } from "../../ai/agentTools";
 import {
   type Project, type ProjectMsg, addTask, appendMessage, createProject,
   loadProjects, projectContext, removeProject, removeTask, subscribeProjects,
@@ -168,8 +169,10 @@ function ProjectDetail({ project, availableIds }: { project: Project; availableI
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [houseReady, setHouseReady] = useState(false);
+  const stopRef = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
   const cfg: ConfigMap = useMemo(() => loadConfig(), []);
+  const myName = "Meteor";
 
   useEffect(() => {
     let cancelled = false;
@@ -192,38 +195,80 @@ function ProjectDetail({ project, availableIds }: { project: Project; availableI
 
   const assigned = AGENTS.filter((a) => project.agents.includes(a.id));
 
-  async function callAgent(a: AgentDef, task: string) {
-    const system = a.system
-      + "\n\nYou are part of an ACTIVE PROJECT — keep the goal, tasks, and preferences in mind every turn."
-      + "\n" + projectContext(project)
-      + "\n\nParticipants: " + assigned.map((x) => x.name).join(", ") + ", Meteor (boss)."
-      + "\nRespond only as " + a.name + ". Be concrete and brief. To pull in a teammate, @mention them.";
-    const transcript = project.messages.slice(-30).map((m) => `${m.name}: ${m.content}`).join("\n");
-    const userContent = (transcript ? `Project chat so far:\n${transcript}\n\n` : "") + `New input: ${task}\n\nRespond as ${a.name}:`;
-
+  async function runModel(a: AgentDef, system: string, userContent: string): Promise<string> {
     const c = cfg[a.id];
     const t = effectiveTransport(a, c);
     let res: { ok: boolean; text?: string; error?: string };
-    if (t === "house") {
-      res = await window.hub.llm.chat(system, userContent);
-    } else if (t === "cli") {
-      res = await window.hub.agentRun(c?.cmd || a.defaultCmd || "", `${system}\n\n${userContent}`);
-    } else {
-      res = await window.hub.aiChat({
-        provider: c?.provider ?? a.defaultProvider,
-        endpoint: c?.endpoint,
-        apiKey: c?.apiKey,
-        model: c?.model || a.defaultModel,
-        system,
-        messages: [{ role: "user", content: userContent }],
-      });
+    if (t === "house") res = await window.hub.llm.chat(system, userContent, { temperature: 0.6, maxTokens: 1024 });
+    else if (t === "cli") res = await window.hub.agentRun(c?.cmd || a.defaultCmd || "", `${system}\n\n${userContent}`);
+    else res = await window.hub.aiChat({ provider: c?.provider ?? a.defaultProvider, endpoint: c?.endpoint, apiKey: c?.apiKey, model: c?.model || a.defaultModel, system, messages: [{ role: "user", content: userContent }] });
+    return res.ok ? (res.text || "(no output)") : `[${a.name} couldn't reach their tool: ${res.error}]`;
+  }
+
+  // Project turn with a bounded tool-use loop (same tools as the chat) so the
+  // crew can actually do work — run commands, read/write files — toward tasks.
+  async function callAgent(a: AgentDef, task: string) {
+    const mem = agentMemory(a.id);
+    const system = a.system
+      + "\n\nYou are part of an ACTIVE PROJECT — keep the goal, tasks, and preferences in mind every turn."
+      + "\n" + projectContext(project)
+      + "\n\nParticipants: " + assigned.map((x) => x.name).join(", ") + ", " + (myName) + " (boss)."
+      + "\nRespond only as " + a.name + ". Be concrete. Ground every claim; use a tool to check rather than guess. When you finish a task, end your message with a line `TASK DONE: <exact task text>`. To pull in a teammate, @mention them."
+      + (mem.length ? "\n\nYour saved memory:\n" + mem.map((m) => "- " + m).join("\n") : "")
+      + "\n\n" + toolsPromptBlock();
+    let transcript = project.messages.slice(-30).map((m) => `${m.name}: ${m.content}`).join("\n");
+    let userContent = (transcript ? `Project chat so far:\n${transcript}\n\n` : "") + `New input: ${task}\n\nRespond as ${a.name}:`;
+    let finalText = "";
+    for (let step = 0; step <= 4; step++) {
+      if (stopRef.current) break;
+      const out = await runModel(a, system, userContent);
+      const call = step < 4 ? parseToolCall(out) : null;
+      if (!call) { finalText = out; break; }
+      appendMessage(project.id, { agentId: a.id, name: a.name, kind: "system", content: `${a.name} ▸ ${call.tool}(${JSON.stringify(call.args)})` });
+      setBusy(`${a.name} · ${call.tool}`);
+      const result = await runTool(call.tool, call.args, { agentId: a.id });
+      appendMessage(project.id, { agentId: "system", name: call.tool, kind: "system", content: (result.ok ? "" : "[error] ") + result.output.slice(0, 3000) });
+      setBusy(a.name);
+      transcript = (loadProjects().find((p) => p.id === project.id)?.messages || []).slice(-30).map((m) => `${m.name}: ${m.content}`).join("\n");
+      userContent = `Project chat so far:\n${transcript}\n\nThe ${call.tool} tool returned the result above. Continue working as ${a.name} (call another tool or give your reply).`;
     }
-    appendMessage(project.id, {
-      agentId: a.id,
-      name: a.name,
-      kind: "agent",
-      content: res.ok ? res.text || "(no output)" : `[${a.name} couldn't reach their tool: ${res.error}]`,
-    });
+    if (finalText) {
+      appendMessage(project.id, { agentId: a.id, name: a.name, kind: "agent", content: finalText });
+      // Auto-complete tasks the agent declared done.
+      for (const line of finalText.split("\n")) {
+        const m = line.match(/TASK DONE:\s*(.+)/i);
+        if (m) {
+          const target = m[1].trim().toLowerCase();
+          const live = loadProjects().find((p) => p.id === project.id);
+          const task = live?.tasks.find((t) => !t.done && (t.text.toLowerCase() === target || t.text.toLowerCase().includes(target) || target.includes(t.text.toLowerCase())));
+          if (task) toggleTask(project.id, task.id);
+        }
+      }
+    }
+  }
+
+  // Multi-round autonomous work session: each assigned agent works the next
+  // open task in turn; stops when tasks are all done, rounds run out, or Stop.
+  async function runWorkSession(rounds = 3) {
+    if (busy || assigned.length === 0) return;
+    stopRef.current = false;
+    appendMessage(project.id, { agentId: "system", name: "Hub", kind: "system", content: `Work session started (${rounds} rounds). The crew will push the open tasks forward.` });
+    try {
+      for (let r = 0; r < rounds && !stopRef.current; r++) {
+        const live = loadProjects().find((p) => p.id === project.id);
+        const open = (live?.tasks || []).filter((t) => !t.done);
+        if (live?.tasks.length && open.length === 0) {
+          appendMessage(project.id, { agentId: "system", name: "Hub", kind: "system", content: "All tasks complete." });
+          break;
+        }
+        const directive = `Work round ${r + 1}. Make concrete progress on the next open task${open[0] ? `: "${open[0].text}"` : ""}. Use tools to actually do it. Report what you did; mark anything finished with TASK DONE.`;
+        for (const a of assigned) {
+          if (stopRef.current) break;
+          setBusy(a.name);
+          await callAgent(a, directive);
+        }
+      }
+    } finally { setBusy(null); stopRef.current = false; }
   }
 
   async function send() {
@@ -296,6 +341,8 @@ function ProjectDetail({ project, availableIds }: { project: Project; availableI
           <input style={{ ...inp, fontSize: 16, fontWeight: 600, flex: 1, minWidth: 220 }} value={project.title} onChange={(e) => patchTitle(e.target.value)} />
           <input type="date" style={inp} value={project.deadline || ""} onChange={(e) => patchDeadline(e.target.value)} />
           <button className="btn" onClick={() => void kickoff()} disabled={!!busy || assigned.length === 0}>Kickoff</button>
+          <button className="btn" style={{ color: "var(--pink)", borderColor: "rgba(255,87,119,0.6)" }} onClick={() => void runWorkSession(3)} disabled={!!busy || assigned.length === 0}>Work session</button>
+          {busy && <button className="btn" style={{ color: "#ef4444", borderColor: "rgba(239,68,68,0.5)" }} onClick={() => { stopRef.current = true; }}>■ Stop</button>}
           <button className="btn" onClick={() => { if (confirm("Delete this project?")) removeProject(project.id); }} style={{ borderColor: "rgba(255,87,119,0.5)" }}>Delete</button>
         </div>
         <div style={{ marginTop: 8, fontSize: 11, color: "var(--mute)" }}>

@@ -101,9 +101,20 @@ function closeSession(id: string) {
 }
 function setActive(id: string) { if (SESSIONS.has(id)) { activeId = id; notify(); } }
 
+// Recent visible output of the active shell, ANSI-stripped — fed to the AI
+// for "explain" / "fix" so it reads what actually happened.
+function activeBufferTail(maxChars = 4000): string {
+  if (!activeId) return "";
+  const raw = SESSIONS.get(activeId)?.buffer || "";
+  // eslint-disable-next-line no-control-regex
+  const clean = raw.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").replace(/\x1b\][^\x07]*\x07/g, "").replace(/\r/g, "");
+  return clean.slice(-maxChars);
+}
+
 export function TerminalView() {
   const [, setTick] = useState(0);
   const [err, setErr] = useState<string | null>(null);
+  const [split, setSplit] = useState(false);
   const host = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<{ term: XTerm; fit: FitAddon; id: string } | null>(null);
 
@@ -112,6 +123,14 @@ export function TerminalView() {
     const off = subscribe(() => setTick((n) => n + 1));
     return () => { off(); };
   }, []);
+
+  // Re-fit the main pane when the split toggles (its width changes without a
+  // window resize event firing).
+  useEffect(() => {
+    const r = xtermRef.current; if (!r) return;
+    const t = setTimeout(() => { try { r.fit.fit(); window.hub.terminal.resize(r.id, r.term.cols, r.term.rows); } catch { /* ignore */ } }, 60);
+    return () => clearTimeout(t);
+  }, [split]);
 
   // Bootstrap: if no sessions, spawn one.
   useEffect(() => {
@@ -229,6 +248,11 @@ export function TerminalView() {
           </div>
         ))}
         <NewShellButton onCreate={(k) => void createSession(k)} />
+        <button className="btn" style={{ padding: "2px 10px", fontSize: 11, marginLeft: 4, color: split ? "var(--pink)" : undefined, borderColor: split ? "rgba(255,87,119,0.5)" : undefined }}
+          title="Show a second terminal side-by-side" onClick={async () => {
+            if (!split && sessions.length < 2) await createSession();
+            setSplit((s) => !s);
+          }}>{split ? "unsplit" : "split"}</button>
       </div>
 
       {/* Snippets + agent quick-launch + AI command bar */}
@@ -253,9 +277,47 @@ export function TerminalView() {
           </div>
         </div>
       )}
-      <div ref={host} style={{ flex: 1, padding: 8, background: "#0a0a0c", display: err || SESSIONS.size === 0 ? "none" : "block" }} />
+      <div style={{ flex: 1, minHeight: 0, display: err || SESSIONS.size === 0 ? "none" : "flex" }}>
+        <div ref={host} style={{ flex: 1, minWidth: 0, padding: 8, background: "#0a0a0c" }} />
+        {split && (() => {
+          const secondId = [...SESSIONS.keys()].filter((k) => k !== activeId).slice(-1)[0];
+          if (!secondId) return null;
+          return (
+            <div style={{ flex: 1, minWidth: 0, borderLeft: "1px solid var(--line)", display: "flex", flexDirection: "column" }}>
+              <div className="mono" style={{ fontSize: 10, color: "var(--mute)", padding: "3px 8px", borderBottom: "1px solid var(--line)" }}>{SESSIONS.get(secondId)?.title} · pane 2</div>
+              <TermPane sessionId={secondId} />
+            </div>
+          );
+        })()}
+      </div>
     </div>
   );
+}
+
+// A self-contained xterm bound to a session id — used for the split second
+// pane. Manages its own terminal + live data subscription + resize.
+function TermPane({ sessionId }: { sessionId: string }) {
+  const host = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!host.current) return;
+    const term = new XTerm({ fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 13, cursorBlink: true, allowProposedApi: true, scrollback: 8000, theme: { background: "#0a0a0c", foreground: "#e8e8ee", cursor: "#ff5577", selectionBackground: "#ff2d4a55" } });
+    const fit = new FitAddon(); term.loadAddon(fit); term.open(host.current); fit.fit();
+    const s = SESSIONS.get(sessionId); if (s?.buffer) term.write(s.buffer);
+    term.onData((d) => window.hub.terminal.input(sessionId, d));
+    term.attachCustomKeyEventHandler((e) => {
+      const mod = e.ctrlKey || e.metaKey; if (e.type !== "keydown") return true;
+      if (mod && e.key.toLowerCase() === "c" && term.hasSelection()) { navigator.clipboard.writeText(term.getSelection()).catch(() => undefined); return false; }
+      if (mod && e.key.toLowerCase() === "v") { navigator.clipboard.readText().then((t) => t && window.hub.terminal.input(sessionId, t)).catch(() => undefined); return false; }
+      return true;
+    });
+    const liveOff = window.hub.terminal.onData((sid, data) => { if (sid === sessionId) term.write(data); });
+    const exitOff = window.hub.terminal.onExit((sid) => { if (sid === sessionId) term.write("\r\n\x1b[2m[shell exited]\x1b[0m\r\n"); });
+    const onResize = () => { try { fit.fit(); window.hub.terminal.resize(sessionId, term.cols, term.rows); } catch { /* ignore */ } };
+    window.addEventListener("resize", onResize);
+    requestAnimationFrame(onResize);
+    return () => { liveOff(); exitOff(); window.removeEventListener("resize", onResize); try { term.dispose(); } catch { /* ignore */ } };
+  }, [sessionId]);
+  return <div ref={host} style={{ flex: 1, minHeight: 0, padding: 8, background: "#0a0a0c" }} />;
 }
 
 // "+ new shell" with a shell-kind dropdown.
@@ -289,6 +351,29 @@ function TerminalToolbar() {
   const [cmd, setCmd] = useState("");
   const [ai, setAi] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [fixCmd, setFixCmd] = useState<string | null>(null);
+
+  async function explain() {
+    const tail = activeBufferTail(); if (!tail.trim() || aiBusy) return;
+    setAiBusy(true); setNote("…"); setFixCmd(null);
+    try {
+      const r = await houseChat("You explain terminal output to the user in 2-4 plain sentences. No markdown headers. Be concrete about what happened.", `Terminal output:\n${tail}\n\nExplain what just happened.`);
+      setNote(r.ok ? (r.text || "").trim() : "couldn't reach the model");
+    } finally { setAiBusy(false); }
+  }
+  async function fixIt() {
+    const tail = activeBufferTail(); if (!tail.trim() || aiBusy) return;
+    setAiBusy(true); setNote("…"); setFixCmd(null);
+    try {
+      const plat = navigator.platform || "this machine";
+      const r = await houseChat(`You read terminal output that likely contains an error on ${plat}. Reply with a SHORT explanation of the fix (1-2 sentences), then on the FINAL line output exactly: CMD: <the corrected command to run>. If no command applies, omit the CMD line.`, `Terminal output:\n${tail}\n\nWhat went wrong and how do I fix it?`);
+      const text = r.ok ? (r.text || "") : "couldn't reach the model";
+      const m = text.match(/CMD:\s*(.+)\s*$/m);
+      setNote(text.replace(/CMD:\s*.+\s*$/m, "").trim());
+      setFixCmd(m ? m[1].trim() : null);
+    } finally { setAiBusy(false); }
+  }
 
   function addSnip() {
     if (!cmd.trim()) return;
@@ -342,7 +427,18 @@ function TerminalToolbar() {
           style={{ ...tbInp, flex: 1 }} />
         <button className="btn" style={{ fontSize: 11 }} disabled={aiBusy} onClick={() => void askAi(false)} title="Insert command (don't run)">{aiBusy ? "…" : "Insert"}</button>
         <button className="btn" style={{ fontSize: 11, color: "var(--pink)" }} disabled={aiBusy} onClick={() => void askAi(true)} title="Insert and run">Run</button>
+        <span style={{ width: 1, height: 16, background: "var(--line)", margin: "0 2px" }} />
+        <button className="btn" style={{ fontSize: 11 }} disabled={aiBusy} onClick={() => void explain()} title="Explain the last output">Explain</button>
+        <button className="btn" style={{ fontSize: 11 }} disabled={aiBusy} onClick={() => void fixIt()} title="Diagnose an error and suggest a fix">Fix error</button>
       </div>
+      {note && (
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-start", background: "rgba(34,211,238,0.06)", border: "1px solid rgba(34,211,238,0.25)", borderRadius: 6, padding: "6px 10px" }}>
+          <div style={{ flex: 1, fontSize: 12, color: "#cfe9f2", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{note}</div>
+          {fixCmd && <button className="btn" style={{ fontSize: 11 }} onClick={() => sendToActive(fixCmd, false)} title={fixCmd}>Insert fix</button>}
+          {fixCmd && <button className="btn" style={{ fontSize: 11, color: "var(--pink)" }} onClick={() => { sendToActive(fixCmd, true); setNote(null); setFixCmd(null); }}>Run fix</button>}
+          <span onClick={() => { setNote(null); setFixCmd(null); }} style={{ cursor: "pointer", color: "var(--mute)", fontSize: 12 }}>✕</span>
+        </div>
+      )}
     </div>
   );
 }
