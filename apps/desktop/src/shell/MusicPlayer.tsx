@@ -1,16 +1,37 @@
 import { useEffect, useRef, useState } from "react";
 import { ost, TRACKS } from "../audio/ost";
+import { loadPrefs } from "../uiPrefs";
 
 // Surfaced OST player. A small tile shows the current track's brand color and
 // vibe, with prev/play/next and a track-picker that lifts the entire stable
 // out of the rest of the chrome. Hover the volume to expand.
 
 export function MusicPlayer() {
+  const prefs0 = loadPrefs();
+  const startIdx = Math.max(0, TRACKS.findIndex((t) => t.id === prefs0.musicDefaultTrack));
   const [playing, setPlaying] = useState(false);
-  const [idx, setIdx] = useState(0);
-  const [vol, setVol] = useState(0.45);
+  const [idx, setIdx] = useState(startIdx === -1 ? 0 : startIdx);
+  const [vol, setVol] = useState(prefs0.musicDefaultVolume);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  // Honor Settings → Music: default volume, default track, autoplay (with
+  // optional fade-in). Runs once on mount.
+  useEffect(() => {
+    ost.setVolume(prefs0.musicDefaultVolume);
+    if (prefs0.musicAutoplay) {
+      const startI = startIdx === -1 ? 0 : startIdx;
+      if (prefs0.musicFadeIn) {
+        ost.setVolume(0);
+        ost.play(startI); setPlaying(true);
+        const target = prefs0.musicDefaultVolume; let v = 0;
+        const t = setInterval(() => { v = Math.min(target, v + target / 30); ost.setVolume(v); if (v >= target) clearInterval(t); }, 100);
+      } else {
+        ost.play(startI); setPlaying(true);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {

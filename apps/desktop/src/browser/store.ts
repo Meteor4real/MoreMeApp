@@ -38,9 +38,22 @@ type TabsState = { tabs: Tab[]; activeId: string };
 const tabsSubs = new Set<(s: TabsState) => void>();
 let tabsState: TabsState | null = null;
 
+// Settings → Browser → "Restore tabs on launch". When off, we ignore the
+// persisted tab set on first read this session and open a single start tab.
+let restoredThisSession = false;
+function shouldRestore(): boolean {
+  try {
+    const raw = localStorage.getItem("nchub.uiprefs.v1");
+    if (raw) { const p = JSON.parse(raw); if (p && p.restoreTabsOnLaunch === false) return false; }
+  } catch { /* ignore */ }
+  return true;
+}
+
 function ensureTabs(): TabsState {
   if (tabsState) return tabsState;
-  const stored = safeLoad<TabsState | null>(TABS_KEY, null);
+  const allowRestore = restoredThisSession || shouldRestore();
+  restoredThisSession = true;
+  const stored = allowRestore ? safeLoad<TabsState | null>(TABS_KEY, null) : null;
   if (stored && Array.isArray(stored.tabs) && stored.tabs.length) {
     tabsState = stored;
   } else {

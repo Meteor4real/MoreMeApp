@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AGENTS, type AgentDef, agentAvailable, effectiveTransport } from "../ai/agents";
 import { appUnlocked, subscribeCodes } from "../featureGate";
+import { loadPrefs, subscribePrefs } from "../uiPrefs";
 import { loadConfig, saveConfig, type ConfigMap, type AgentConfig } from "../ai/store";
 import { ProjectsView } from "./groupchat/Projects";
 
@@ -56,16 +57,19 @@ export function GroupChat() {
   const [busy, setBusy] = useState<string | null>(null);
   const [view, setView] = useState<View>("chat");
   const [houseReady, setHouseReady] = useState(false);
+  const [prefs, setPrefs] = useState(loadPrefs);
+  useEffect(() => subscribePrefs(setPrefs), []);
   const scroller = useRef<HTMLDivElement>(null);
 
   // Persist on every change so the conversation survives tab switches and restarts.
   useEffect(() => { saveMsgs(msgs); }, [msgs]);
 
-  // Always auto-scroll to bottom on new messages or busy state.
+  // Auto-scroll to bottom on new messages — gated by Settings → AI Group Chat.
   useEffect(() => {
+    if (!prefs.chatAutoScroll) return;
     const el = scroller.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [msgs, busy]);
+  }, [msgs, busy, prefs.chatAutoScroll]);
 
   // The "online" dot has to mean something — house agents are only actually
   // available once the local model has finished downloading.
@@ -99,10 +103,12 @@ export function GroupChat() {
   }
 
   async function callAgent(a: AgentDef, task: string, history: Msg[]): Promise<void> {
+    const toneHint = { casual: "Keep it casual and friendly.", professional: "Keep it professional and precise.", hype: "Be energetic and hype.", short: "Be extremely terse." }[prefs.chatDefaultTone];
+    const lenHint = { short: "One to two sentences.", medium: "One short paragraph.", long: "A few paragraphs if it helps." }[prefs.chatResponseLength];
     const system =
       a.system +
       `\nParticipants: ${available.map((x) => x.name).join(", ")}, Meteor (boss).` +
-      `\nRespond only as ${a.name}. Be brief. Do not prefix your reply with your name.`;
+      `\nRespond only as ${a.name}. ${toneHint} ${lenHint} Do not prefix your reply with your name.`;
     const convo = transcriptText(history);
     const userContent =
       (convo ? `Conversation so far:\n${convo}\n\n` : "") +
@@ -169,7 +175,7 @@ export function GroupChat() {
       // OTHER available agents (anchors / BroBot count here too — direct
       // mention is exactly what they wait for). Cap chain depth so the
       // crew can't accidentally talk forever.
-      for (let depth = 0; depth < 3; depth++) {
+      for (let depth = 0; depth < prefs.chatChainDepth; depth++) {
         const recent = snapshot().slice(-targets.length).filter((m) => m.kind === "agent");
         const chained = new Set<AgentDef>();
         for (const m of recent) {
@@ -247,15 +253,17 @@ export function GroupChat() {
       </div>
 
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-        {/* Roster — only agents that can actually answer right now. */}
+        {/* Roster — only agents that can actually answer right now. Silent
+            (mention-only) anchors are hidden when chatShowSilent is off. */}
         <div style={{ width: 220, borderRight: "1px solid var(--line)", padding: 10, overflow: "auto" }}>
+          {(() => { const rosterList = available.filter((a) => prefs.chatShowSilent || !a.silent); return (<>
           <div className="mono" style={{ fontSize: 10, color: "var(--mute)", letterSpacing: 1, marginBottom: 8 }}>
-            ON CALL ({available.length})
+            ON CALL ({rosterList.length})
           </div>
-          {available.length === 0 && (
+          {rosterList.length === 0 && (
             <div style={{ fontSize: 12, color: "var(--mute)" }}>Nobody's wired yet. Open Configure to connect agents.</div>
           )}
-          {available.map((a) => (
+          {rosterList.map((a) => (
             <div key={a.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 0" }}>
               <span className="mono glow-text" style={{ fontSize: 12, width: 22, textAlign: "center" }}>{mono(a.name)}</span>
               <div style={{ minWidth: 0, flex: 1 }}>
@@ -281,6 +289,7 @@ export function GroupChat() {
               <button className="btn" style={{ marginTop: 10, width: "100%", justifyContent: "center" }} onClick={() => setView("config")}>Connect more</button>
             </>
           )}
+          </>); })()}
         </div>
 
         {view === "config" ? (

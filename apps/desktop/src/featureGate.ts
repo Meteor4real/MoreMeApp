@@ -22,17 +22,42 @@ export type CodeKey = keyof typeof KNOWN_CODES;
 export const ALL_GATED_APPS = ["halos", "brobot", "moreme", "blueprint"] as const;
 export type GatedAppId = typeof ALL_GATED_APPS[number];
 
+// Codes are stored encrypted in the OS keychain via the main process
+// (gate:get / gate:set). We keep a synchronous in-memory cache so render
+// paths stay sync; the cache hydrates from the keychain once on boot and
+// notifies subscribers, so a late hydration re-renders the rail / roster.
+// A localStorage mirror is kept only as an instant-boot fallback before the
+// async keychain read returns.
+let hydrated = false;
 export function loadCodes(): Set<string> {
-  if (cache) return cache;
+  if (cache) {
+    if (!hydrated) void hydrateFromKeychain();
+    return cache;
+  }
   try {
     const raw = localStorage.getItem(KEY);
     cache = new Set<string>(raw ? (JSON.parse(raw) as string[]) : []);
   } catch { cache = new Set<string>(); }
+  void hydrateFromKeychain();
   return cache;
+}
+async function hydrateFromKeychain() {
+  if (hydrated) return;
+  hydrated = true;
+  try {
+    const codes = await window.hub.gate.get();
+    if (Array.isArray(codes)) {
+      cache = new Set<string>(codes);
+      try { localStorage.setItem(KEY, JSON.stringify(codes)); } catch { /* ignore */ }
+      subs.forEach((fn) => fn(new Set(cache!)));
+    }
+  } catch { /* keychain unavailable — keep localStorage fallback */ }
 }
 function persist() {
   if (!cache) return;
-  try { localStorage.setItem(KEY, JSON.stringify([...cache])); } catch { /* ignore */ }
+  const arr = [...cache];
+  try { localStorage.setItem(KEY, JSON.stringify(arr)); } catch { /* ignore */ }
+  void window.hub.gate.set(arr).catch(() => undefined);
   subs.forEach((fn) => fn(new Set(cache!)));
 }
 

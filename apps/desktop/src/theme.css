@@ -29,7 +29,44 @@ body {
   color: var(--ink);
   font-family: Inter, system-ui, -apple-system, sans-serif;
   overflow: hidden;
+  /* Font-size scale driven by Settings → Appearance → Font size. */
+  font-size: calc(1rem * var(--ui-scale, 1));
 }
+
+/* Reduce motion — kills the decorative theme animations + transitions. */
+body.reduce-motion *,
+body.reduce-motion *::before,
+body.reduce-motion *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* Compact density — tightens the common padding utilities. */
+body.compact-density .panel { padding: 8px !important; }
+body.compact-density .btn { padding: 5px 10px; min-height: 28px; }
+
+/* Wide rail (Settings → Appearance → Show rail labels). */
+.rail-label { display: none; }
+.rail.rail-wide { align-items: stretch; }
+.rail.rail-wide .rail-btn {
+  width: 100%;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  justify-content: flex-start;
+}
+.rail.rail-wide .rail-label {
+  display: inline;
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rail.rail-wide .rail-logo { width: 100%; }
 
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;

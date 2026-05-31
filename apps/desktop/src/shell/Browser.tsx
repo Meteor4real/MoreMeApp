@@ -115,7 +115,12 @@ export function Browser({
     setOmni(isPanel(url) ? "" : url);
   }
   function newTab(url?: string) {
-    addTab(url || (prefs.homePage || START_URL));
+    if (url) { addTab(url); return; }
+    // Honor Settings → Browser → Default new tab page.
+    const dest = prefs.defaultNewTabPage === "homepage" ? (prefs.homePage || START_URL)
+      : prefs.defaultNewTabPage === "blank" ? "about:blank"
+      : START_URL;
+    addTab(dest);
   }
   function refresh() { viewRefs.current.get(activeId)?.reload(); }
   function back() { viewRefs.current.get(activeId)?.goBack(); }
@@ -269,7 +274,8 @@ export function Browser({
               }}
               src={t.url}
               partition="persist:hub"
-              allowpopups={true}
+              {...(prefs.blockPopups ? {} : { allowpopups: true })}
+              webpreferences={prefs.blockAutoplay ? "autoplayPolicy=document-user-activation-required" : "autoplayPolicy=no-user-gesture-required"}
               style={{ display: show ? "block" : "none" }}
             />
           );

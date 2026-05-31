@@ -147,6 +147,25 @@ export const DEFAULT_PREFS: UiPrefs = {
   privacyDntGpc: true,
 };
 
+// Apply the visual / appearance prefs to the document so they actually take
+// effect: body classes for CSS hooks, a root font-size scale, and accent
+// glow intensity. Also pushes the session-level privacy state to the main
+// process. Called on boot and on every prefs change.
+export function applyUiPrefs(p: UiPrefs = loadPrefs()): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  const body = document.body;
+  // Font size scale.
+  root.style.setProperty("--ui-scale", p.fontSize === "small" ? "0.92" : p.fontSize === "large" ? "1.12" : "1");
+  // Accent glow intensity (multiplier applied where --glow shadows are used).
+  root.style.setProperty("--glow-intensity", p.accentIntensity === "soft" ? "0.5" : p.accentIntensity === "loud" ? "1.6" : "1");
+  // Body classes (CSS in theme.css reacts to these).
+  body.classList.toggle("reduce-motion", p.reduceMotion);
+  body.classList.toggle("compact-density", p.compactDensity);
+  // Push privacy state to the main session.
+  try { window.hub.privacy?.apply({ dntGpc: p.privacyDntGpc, block3p: p.privacyBlock3pCookies }); } catch { /* ignore */ }
+}
+
 // Compose the owner-profile block injected into every AI system prompt.
 // Keep it compact but rich enough to ground a small local model.
 export function ownerProfileContext(p: UiPrefs = loadPrefs()): string {

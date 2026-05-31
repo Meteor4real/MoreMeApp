@@ -178,8 +178,13 @@ function harden(ses: Electron.Session) {
   });
 
   ses.webRequest.onBeforeSendHeaders((details, cb) => {
-    details.requestHeaders["DNT"] = "1";
-    details.requestHeaders["Sec-GPC"] = "1";
+    if (privacyState.dntGpc) {
+      details.requestHeaders["DNT"] = "1";
+      details.requestHeaders["Sec-GPC"] = "1";
+    } else {
+      delete details.requestHeaders["DNT"];
+      delete details.requestHeaders["Sec-GPC"];
+    }
     cb({ requestHeaders: details.requestHeaders });
   });
 
@@ -568,8 +573,8 @@ function registerIpc() {
   //     no API key. Model downloads once on first use. ---
   ipcMain.handle("llm:status", () => ({ ready: llmReady, downloading: llmDownloading, progress: llmProgress }));
   ipcMain.handle("llm:ensure", (e) => ensureLlm((p) => e.sender.send("llm:progress", p)));
-  ipcMain.handle("llm:chat", (_e, system: string, prompt: string) =>
-    llmChat(system, prompt).catch((err) => ({ ok: false, error: String(err) }))
+  ipcMain.handle("llm:chat", (_e, system: string, prompt: string, opts?: { temperature?: number; maxTokens?: number }) =>
+    llmChat(system, prompt, opts).catch((err) => ({ ok: false, error: String(err) }))
   );
 
   // --- Per-user connection vault (secure, on-device) ---
@@ -579,6 +584,39 @@ function registerIpc() {
     vaultSet(service, token, baseUrl)
   );
   ipcMain.handle("vault:delete", (_e, service: string) => vaultDelete(service));
+
+  // Dev-code unlock flags — encrypted on-device like service tokens. Codes are
+  // access flags, not secrets, but the owner asked for keychain storage.
+  ipcMain.handle("gate:get", () => {
+    try {
+      const p = path.join(app.getPath("userData"), "devcodes.json");
+      const raw = fs.readFileSync(p, "utf8");
+      const dec1 = dec(raw);
+      const arr = JSON.parse(dec1 || "[]");
+      return Array.isArray(arr) ? arr : [];
+    } catch { return []; }
+  });
+  ipcMain.handle("gate:set", (_e, codes: string[]) => {
+    try {
+      const p = path.join(app.getPath("userData"), "devcodes.json");
+      fs.writeFileSync(p, enc(JSON.stringify(Array.isArray(codes) ? codes : [])), "utf8");
+      return { ok: true };
+    } catch { return { ok: false }; }
+  });
+
+  // Privacy controls applied at the session level (renderer can't reach the
+  // session directly). Re-applied on boot and whenever the user toggles them.
+  ipcMain.handle("privacy:apply", (_e, p: { dntGpc?: boolean; block3p?: boolean }) => {
+    try { applyPrivacy(p); return { ok: true }; } catch { return { ok: false }; }
+  });
+}
+
+// Live privacy state, consulted by the header/cookie hooks installed in
+// hardenSessions(). Defaults match the DDG-grade posture.
+const privacyState = { dntGpc: true, block3p: true };
+function applyPrivacy(p: { dntGpc?: boolean; block3p?: boolean }) {
+  if (typeof p.dntGpc === "boolean") privacyState.dntGpc = p.dntGpc;
+  if (typeof p.block3p === "boolean") privacyState.block3p = p.block3p;
 }
 
 // ---------------------------------------------------------------------------
@@ -648,7 +686,7 @@ async function ensureLlm(onProgress?: (p: number) => void): Promise<{ ok: boolea
   }
 }
 
-async function llmChat(system: string, prompt: string): Promise<{ ok: boolean; text?: string; error?: string }> {
+async function llmChat(system: string, prompt: string, opts?: { temperature?: number; maxTokens?: number }): Promise<{ ok: boolean; text?: string; error?: string }> {
   if (!llmReady) {
     const r = await ensureLlm();
     if (!r.ok) return { ok: false, error: r.error || "model not ready" };
@@ -658,7 +696,9 @@ async function llmChat(system: string, prompt: string): Promise<{ ok: boolean; t
   const context = await llamaModel.createContext();
   try {
     const session = new mod.LlamaChatSession({ contextSequence: context.getSequence(), systemPrompt: system });
-    const text = await session.prompt(prompt, { maxTokens: 700 });
+    const maxTokens = Math.max(64, Math.min(4096, opts?.maxTokens ?? 700));
+    const temperature = Math.max(0, Math.min(1.5, opts?.temperature ?? 0.7));
+    const text = await session.prompt(prompt, { maxTokens, temperature });
     return { ok: true, text };
   } finally {
     try {
