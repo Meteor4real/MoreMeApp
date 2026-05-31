@@ -42,7 +42,10 @@ const DB_STYLE = `
 // that turns a prompt into placeable, editable objects. No mesh authoring —
 // scope is exactly "Blender minus making models yourself".
 
-type Shape = "box" | "sphere" | "cylinder" | "cone" | "torus" | "plane";
+type Shape =
+  | "box" | "sphere" | "cylinder" | "cone" | "torus" | "plane"
+  | "torusKnot" | "capsule" | "tetrahedron" | "octahedron"
+  | "dodecahedron" | "icosahedron" | "ring" | "pyramid" | "wedge";
 
 function geom(shape: Shape): THREE.BufferGeometry {
   switch (shape) {
@@ -51,6 +54,32 @@ function geom(shape: Shape): THREE.BufferGeometry {
     case "cone": return new THREE.ConeGeometry(0.6, 1.2, 48);
     case "torus": return new THREE.TorusGeometry(0.5, 0.2, 24, 64);
     case "plane": return new THREE.PlaneGeometry(1.5, 1.5);
+    case "torusKnot": return new THREE.TorusKnotGeometry(0.5, 0.16, 96, 16);
+    case "capsule": return new THREE.CapsuleGeometry(0.4, 0.9, 8, 16);
+    case "tetrahedron": return new THREE.TetrahedronGeometry(0.7);
+    case "octahedron": return new THREE.OctahedronGeometry(0.7);
+    case "dodecahedron": return new THREE.DodecahedronGeometry(0.7);
+    case "icosahedron": return new THREE.IcosahedronGeometry(0.7);
+    case "ring": return new THREE.RingGeometry(0.3, 0.7, 48);
+    case "pyramid": return new THREE.ConeGeometry(0.7, 1.1, 4);
+    case "wedge": {
+      // Right-triangular prism: a wedge / ramp.
+      const g = new THREE.BufferGeometry();
+      const v = new Float32Array([
+        -0.5,-0.5,-0.5,  0.5,-0.5,-0.5,  0.5, 0.5,-0.5,
+        -0.5,-0.5, 0.5,  0.5,-0.5, 0.5,  0.5, 0.5, 0.5,
+      ]);
+      const i = new Uint16Array([
+        0,1,2,        3,5,4,
+        0,2,5, 0,5,3,
+        1,4,5, 1,5,2,
+        0,3,4, 0,4,1,
+      ]);
+      g.setAttribute("position", new THREE.BufferAttribute(v, 3));
+      g.setIndex(new THREE.BufferAttribute(i, 1));
+      g.computeVertexNormals();
+      return g;
+    }
     default: return new THREE.BoxGeometry(1, 1, 1);
   }
 }
@@ -146,11 +175,29 @@ export function DigitalBlueprint() {
   const selected = useRef<THREE.Mesh | null>(null);
   const hemi = useRef<THREE.HemisphereLight>();
   const sun = useRef<THREE.DirectionalLight>();
-  const api = useRef<{ setWalk: (b: boolean) => void; importGlb: (f: File) => void }>({
+  const api = useRef<{
+    setWalk: (b: boolean) => void;
+    importGlb: (f: File) => void;
+    mode: "orbit" | "walk" | "freecam";
+    setMode: (m: "orbit" | "walk" | "freecam") => void;
+    playStep: (dt: number, t: number) => void;
+    exportPng: () => void;
+    exportJson: () => void;
+    importJson: (text: string) => void;
+  }>({
     setWalk: () => {},
     importGlb: () => {},
+    mode: "orbit",
+    setMode: () => {},
+    playStep: () => {},
+    exportPng: () => {},
+    exportJson: () => {},
+    importJson: () => {},
   });
-  const [mode, setMode] = useState<"orbit" | "walk">("orbit");
+  const [mode, setMode] = useState<"orbit" | "walk" | "freecam">("orbit");
+  const [playMode, setPlayMode] = useState(false);
+  const playRef = useRef(false);
+  useEffect(() => { playRef.current = playMode; }, [playMode]);
   const [snap, setSnap] = useState<Snap | null>(null);
   const [prompt, setPrompt] = useState("a small sci-fi reactor: a glowing core sphere flanked by metal pillars");
   const [genStatus, setGenStatus] = useState<string | null>(null);
@@ -214,6 +261,74 @@ export function DigitalBlueprint() {
         controls.enabled = true;
       }
     };
+    // Freecam: WASDQE move, mouse-drag look, no pointer-lock, no gravity. Lets
+    // you fly the camera without losing the cursor (good for screenshots and
+    // precise framing).
+    const freecamYaw = { val: 0 };
+    const freecamPitch = { val: 0 };
+    let freecamDragging = false;
+    let freecamLastX = 0, freecamLastY = 0;
+    const fcDown = (e: MouseEvent) => { if (api.current.mode !== "freecam") return; freecamDragging = true; freecamLastX = e.clientX; freecamLastY = e.clientY; };
+    const fcUp = () => { freecamDragging = false; };
+    const fcMove = (e: MouseEvent) => {
+      if (!freecamDragging || api.current.mode !== "freecam") return;
+      const dx = e.clientX - freecamLastX; const dy = e.clientY - freecamLastY;
+      freecamLastX = e.clientX; freecamLastY = e.clientY;
+      freecamYaw.val -= dx * 0.0035;
+      freecamPitch.val -= dy * 0.0035;
+      freecamPitch.val = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, freecamPitch.val));
+      const euler = new THREE.Euler(freecamPitch.val, freecamYaw.val, 0, "YXZ");
+      cam.quaternion.setFromEuler(euler);
+    };
+    rnd.domElement.addEventListener("mousedown", fcDown);
+    window.addEventListener("mouseup", fcUp);
+    window.addEventListener("mousemove", fcMove);
+    api.current.mode = "orbit";
+    api.current.setMode = (m: "orbit" | "walk" | "freecam") => {
+      api.current.mode = m;
+      if (m === "walk") { controls.enabled = false; pointer.lock(); }
+      else if (m === "orbit") { try { pointer.unlock(); } catch { /* ignore */ } controls.enabled = true; }
+      else if (m === "freecam") {
+        try { pointer.unlock(); } catch { /* ignore */ }
+        controls.enabled = false;
+        // Seed freecam yaw/pitch from current camera orientation.
+        const euler = new THREE.Euler().setFromQuaternion(cam.quaternion, "YXZ");
+        freecamYaw.val = euler.y; freecamPitch.val = euler.x;
+      }
+      setMode(m);
+    };
+    // Per-object animations driven by mesh.userData.anim in Play mode.
+    api.current.playStep = (dt: number, t: number) => {
+      if (!playRef.current) return;
+      for (const m of objects.current) {
+        const a = (m.userData.anim as { kind?: string; speed?: number; axis?: string; amp?: number; baseY?: number; basePx?: number; basePz?: number; baseScale?: number; baseColor?: string; centerX?: number; centerZ?: number; radius?: number } | undefined);
+        if (!a || !a.kind || a.kind === "none") continue;
+        const sp = a.speed ?? 1;
+        if (a.kind === "spin") {
+          const ax = a.axis || "y";
+          if (ax === "x") m.rotation.x += sp * dt;
+          else if (ax === "z") m.rotation.z += sp * dt;
+          else m.rotation.y += sp * dt;
+        } else if (a.kind === "bob") {
+          if (a.baseY == null) a.baseY = m.position.y;
+          m.position.y = a.baseY + (a.amp || 0.3) * Math.sin(t * sp * 2);
+        } else if (a.kind === "pulse") {
+          if (a.baseScale == null) a.baseScale = m.scale.x;
+          const s = (a.baseScale || 1) * (1 + (a.amp || 0.2) * Math.sin(t * sp * 2));
+          m.scale.setScalar(s);
+        } else if (a.kind === "orbitAround") {
+          if (a.basePx == null) a.basePx = m.position.x;
+          if (a.basePz == null) a.basePz = m.position.z;
+          const r = a.radius || 1.5;
+          const cx = a.centerX ?? 0; const cz = a.centerZ ?? 0;
+          m.position.x = cx + r * Math.cos(t * sp);
+          m.position.z = cz + r * Math.sin(t * sp);
+        } else if (a.kind === "colorCycle") {
+          const mat = m.material as THREE.MeshPhysicalMaterial;
+          mat.color.setHSL(((t * sp * 0.1) % 1 + 1) % 1, 0.6, 0.55);
+        }
+      }
+    };
     api.current.importGlb = (file: File) => {
       file.arrayBuffer().then((buf) => {
         new GLTFLoader().parse(buf, "", (gltf) => {
@@ -250,17 +365,43 @@ export function DigitalBlueprint() {
 
     let raf = 0;
     let frame = 0;
+    let elapsed = 0;
+    // Walk-mode gravity / jump.
+    let walkVy = 0;
+    const WALK_GRAVITY = -14;
+    const WALK_HEIGHT = 1.6;
     const loop = () => {
       const dt = clock.getDelta();
+      elapsed += dt;
       if (pointer.isLocked) {
-        const sp = 4 * dt;
+        const fast = keys["ShiftLeft"] || keys["ShiftRight"];
+        const sp = (fast ? 9 : 4) * dt;
         if (keys["KeyW"]) pointer.moveForward(sp);
         if (keys["KeyS"]) pointer.moveForward(-sp);
         if (keys["KeyA"]) pointer.moveRight(-sp);
         if (keys["KeyD"]) pointer.moveRight(sp);
+        // Jump + gravity. Floor is y=0; eye height at WALK_HEIGHT.
+        if (keys["Space"] && cam.position.y <= WALK_HEIGHT + 0.05) walkVy = 5.5;
+        walkVy += WALK_GRAVITY * dt;
+        cam.position.y += walkVy * dt;
+        if (cam.position.y < WALK_HEIGHT) { cam.position.y = WALK_HEIGHT; walkVy = 0; }
+      } else if (api.current.mode === "freecam") {
+        const fast = keys["ShiftLeft"] || keys["ShiftRight"];
+        const sp = (fast ? 9 : 4) * dt;
+        const fwd = new THREE.Vector3(); cam.getWorldDirection(fwd);
+        const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+        const up = new THREE.Vector3(0, 1, 0);
+        if (keys["KeyW"]) cam.position.addScaledVector(fwd, sp);
+        if (keys["KeyS"]) cam.position.addScaledVector(fwd, -sp);
+        if (keys["KeyD"]) cam.position.addScaledVector(right, sp);
+        if (keys["KeyA"]) cam.position.addScaledVector(right, -sp);
+        if (keys["KeyE"] || keys["Space"]) cam.position.addScaledVector(up, sp);
+        if (keys["KeyQ"] || keys["ControlLeft"]) cam.position.addScaledVector(up, -sp);
       } else {
         controls.update();
       }
+      // Per-object animations + interactions only while Play mode is on.
+      api.current.playStep(dt, elapsed);
       rnd.render(sc, cam);
       // Drive the annotation overlay at ~20 Hz so labels track the camera
       // without re-rendering the React tree on every frame.
@@ -270,12 +411,24 @@ export function DigitalBlueprint() {
     };
     loop();
 
+    // PNG export — grab a screenshot of the current viewport.
+    api.current.exportPng = () => {
+      rnd.render(sc, cam);
+      try {
+        const url = rnd.domElement.toDataURL("image/png");
+        const a = document.createElement("a"); a.href = url;
+        a.download = `blueprint-${Date.now()}.png`; a.click();
+      } catch { /* ignore */ }
+    };
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
       rnd.domElement.removeEventListener("click", onClick);
       window.removeEventListener("keydown", kd);
       window.removeEventListener("keyup", ku);
+      rnd.domElement.removeEventListener("mousedown", fcDown);
+      window.removeEventListener("mouseup", fcUp);
+      window.removeEventListener("mousemove", fcMove);
       controls.dispose();
       pointer.dispose();
       pmrem.dispose();
@@ -597,7 +750,7 @@ export function DigitalBlueprint() {
     catch { return null; }
   }
 
-  const shapes: Shape[] = ["box", "sphere", "cylinder", "cone", "torus", "plane"];
+  const shapes: Shape[] = ["box", "sphere", "cylinder", "cone", "torus", "plane", "torusKnot", "capsule", "tetrahedron", "octahedron", "dodecahedron", "icosahedron", "ring", "pyramid", "wedge"];
 
   return (
     <div className="stage db-embed">
@@ -646,12 +799,16 @@ export function DigitalBlueprint() {
               className="db-btn"
               onClick={() => {
                 const next = mode !== "walk";
-                api.current.setWalk(next);
-                setMode(next ? "walk" : "orbit");
+                api.current.setMode("orbit");
               }}
-            >
-              {mode === "walk" ? "Exit walk" : "Walk mode"}
-            </button>
+            >Orbit</button>
+            <button className="db-btn" style={mode === "freecam" ? { background: DB.ink, color: DB.paper } : undefined}
+              onClick={() => api.current.setMode("freecam")}>Freecam</button>
+            <button className="db-btn" style={mode === "walk" ? { background: DB.ink, color: DB.paper } : undefined}
+              onClick={() => api.current.setMode("walk")}>Walk</button>
+            <button className="db-btn" style={playMode ? { background: DB.accent, color: DB.paper, borderColor: DB.accent } : undefined}
+              onClick={() => setPlayMode((p) => !p)}>{playMode ? "Stop play" : "Play"}</button>
+            <button className="db-btn" onClick={() => api.current.exportPng()}>PNG</button>
             <label className="db-btn" style={{ cursor: "pointer" }}>
               Import GLB
               <input
@@ -669,7 +826,17 @@ export function DigitalBlueprint() {
           </div>
           {mode === "walk" && (
             <div style={{ fontSize: 11, color: DB.inkLight, marginBottom: 10 }}>
-              WASD to move · mouse to look · Esc to exit
+              WASD move · Shift sprint · Space jump · mouse look · Esc to exit
+            </div>
+          )}
+          {mode === "freecam" && (
+            <div style={{ fontSize: 11, color: DB.inkLight, marginBottom: 10 }}>
+              WASD move · Q/E up-down · Shift sprint · mouse-drag to look
+            </div>
+          )}
+          {playMode && (
+            <div style={{ fontSize: 11, color: DB.accent, marginBottom: 10 }}>
+              Play mode ON — per-object animations are running.
             </div>
           )}
 
@@ -732,6 +899,9 @@ export function DigitalBlueprint() {
               <Vec l="scale" a={snap.sx} b={snap.sy} c={snap.sz} step={0.1} on={(x, y, z) => patch({ sx: x, sy: y, sz: z })} />
               <Vec l="rotation°" a={snap.rx} b={snap.ry} c={snap.rz} step={15} on={(x, y, z) => patch({ rx: x, ry: y, rz: z })} />
 
+              <Label>Animation (runs in Play mode)</Label>
+              <AnimationPicker mesh={selected.current} />
+
               <button className="db-btn" style={{ marginTop: 12, borderColor: DB.accent2, color: DB.accent2 }} onClick={del}>Delete object</button>
             </>
           )}
@@ -773,6 +943,52 @@ function SliderInt({ l, v, on, min = 0, max = 100 }: { l: string; v: number; on:
     <div style={{ marginBottom: 6 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: DB.inkSoft }}><span>{l}</span><span>{v}</span></div>
       <input type="range" min={min} max={max} step={1} value={v} onChange={(e) => on(Number(e.target.value))} style={{ width: "100%" }} />
+    </div>
+  );
+}
+
+// Per-object animation picker. Reads / writes mesh.userData.anim directly so
+// the play-step loop in the scene effect picks the values up next frame. Local
+// state mirrors mesh.userData.anim for the controlled inputs.
+type AnimKind = "none" | "spin" | "bob" | "pulse" | "orbitAround" | "colorCycle";
+type AnimData = { kind?: AnimKind; speed?: number; amp?: number; axis?: "x" | "y" | "z"; radius?: number };
+function AnimationPicker({ mesh }: { mesh: { userData: Record<string, unknown> } | null }) {
+  const initial = ((mesh?.userData.anim as AnimData) || { kind: "none", speed: 1, amp: 0.3, axis: "y", radius: 1.5 });
+  const [kind, setKind] = useState<AnimKind>(initial.kind || "none");
+  const [speed, setSpeed] = useState(initial.speed ?? 1);
+  const [amp, setAmp] = useState(initial.amp ?? 0.3);
+  const [axis, setAxis] = useState<"x" | "y" | "z">(initial.axis || "y");
+  const [radius, setRadius] = useState(initial.radius ?? 1.5);
+  useEffect(() => {
+    if (mesh) (mesh.userData as Record<string, unknown>).anim = { kind, speed, amp, axis, radius };
+  }, [kind, speed, amp, axis, radius, mesh]);
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <select value={kind} onChange={(e) => setKind(e.target.value as AnimKind)} style={{ width: "100%", padding: "6px 8px", fontSize: 11 }}>
+        <option value="none">none</option>
+        <option value="spin">spin (axis + speed)</option>
+        <option value="bob">bob (float up/down)</option>
+        <option value="pulse">pulse (scale)</option>
+        <option value="orbitAround">orbit around origin</option>
+        <option value="colorCycle">color cycle (HSL)</option>
+      </select>
+      {kind !== "none" && (
+        <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, alignItems: "center", fontSize: 11, color: DB.inkSoft }}>
+          <span>speed</span><input type="number" step={0.1} value={speed} onChange={(e) => setSpeed(Number(e.target.value))} style={{ padding: "4px 6px", fontSize: 11 }} />
+          {(kind === "bob" || kind === "pulse") && <>
+            <span>amplitude</span><input type="number" step={0.05} value={amp} onChange={(e) => setAmp(Number(e.target.value))} style={{ padding: "4px 6px", fontSize: 11 }} />
+          </>}
+          {kind === "spin" && <>
+            <span>axis</span>
+            <select value={axis} onChange={(e) => setAxis(e.target.value as "x" | "y" | "z")} style={{ padding: "4px 6px", fontSize: 11 }}>
+              <option value="x">x</option><option value="y">y</option><option value="z">z</option>
+            </select>
+          </>}
+          {kind === "orbitAround" && <>
+            <span>radius</span><input type="number" step={0.25} value={radius} onChange={(e) => setRadius(Number(e.target.value))} style={{ padding: "4px 6px", fontSize: 11 }} />
+          </>}
+        </div>
+      )}
     </div>
   );
 }
