@@ -115,7 +115,12 @@ body {
 .app {
   display: grid;
   grid-template-columns: 64px 1fr;
+  /* Bound the row so embedded views with internal overflow:auto actually
+     scroll instead of expanding the whole document. */
+  grid-template-rows: minmax(0, 1fr);
   height: 100vh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .rail {
@@ -244,16 +249,24 @@ body {
   border: 1px solid var(--line);
   background: rgba(0, 0, 0, 0.5);
   color: var(--ink);
-  border-radius: 8px;
-  padding: 6px 10px;
+  border-radius: 9px;
+  padding: 8px 14px;
   cursor: pointer;
   font-family: ui-monospace, monospace;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  min-height: 34px;
+  line-height: 1.1;
+  transition: background 0.15s, box-shadow 0.15s, border-color 0.15s, transform 0.08s, color 0.15s;
 }
 .btn:hover {
   border-color: rgba(255, 87, 119, 0.6);
   color: #fff;
+  background: rgba(255, 45, 74, 0.08);
+  box-shadow: 0 0 14px var(--glow);
 }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
 
 .placeholder {
   flex: 1;
