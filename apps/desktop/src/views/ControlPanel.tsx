@@ -44,6 +44,7 @@ const SERVICES: Service[] = [
   { id: "hostinger", name: "Hostinger", group: "AI & Hosting", tokenLabel: "API token", hint: "VPS inventory & power" },
   { id: "pexels", name: "Pexels", group: "Media", tokenLabel: "API key", console: "https://www.pexels.com/api/new/", hint: "NT5 Studio B-roll source" },
   { id: "googledocs", name: "Google Docs", group: "Content", tokenLabel: "", hint: "powers the Documents tab — sign in inside the app", noAuth: true },
+  { id: "steam", name: "Steam", group: "Games", tokenLabel: "Web API key", needsBaseUrl: true, console: "https://steamcommunity.com/dev/apikey", hint: "Library playtime + achievements + dev news (paste your SteamID64 in the base URL)" },
   { id: "modrinth", name: "Modrinth", group: "Local Apps", launcher: "modrinth", noAuth: true, hint: "launch the Modrinth client", tokenLabel: "" },
   { id: "blockbench", name: "Blockbench", group: "Local Apps", launcher: "blockbench", noAuth: true, hint: "launch Blockbench", tokenLabel: "" },
 ];
