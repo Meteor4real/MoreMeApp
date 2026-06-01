@@ -3,6 +3,8 @@
 // result, and lets the agent continue with the result. Everything here is the
 // same machine access the Terminal has, plus web + memory.
 
+import { cpLiveSummaries, cpRecentEvents } from "../controlPanelFeed";
+
 export type ToolResult = { ok: boolean; output: string };
 
 export type ToolSpec = {
@@ -93,6 +95,49 @@ export const TOOLS: ToolSpec[] = [
     name: "remember", args: '{"fact": "Davis prefers concise replies"}',
     desc: "Save a durable note to YOUR own memory so you recall it in future chats.",
     run: async (a, ctx) => { rememberFact(ctx.agentId, str(a.fact)); return { ok: true, output: "remembered." }; },
+  },
+  {
+    name: "control_panel_status", args: "{}",
+    desc: "Get the live Control Panel board: one line per connected service with summary, row count, push-channel kind, and hot-row count. Use this before answering 'what's deploying / how's the homelab / any errors right now'.",
+    run: async () => {
+      const live = cpLiveSummaries();
+      if (!live.length) return { ok: true, output: "(no services connected, or the Control Panel hasn't been opened yet)" };
+      const lines = live.map((s) => {
+        const head = `${s.service}: ${s.error ? "ERROR " + s.error : s.summary || "(no summary)"} · ${s.rowCount} rows`;
+        const tags: string[] = [];
+        if (s.pushKind) tags.push(`push:${s.pushKind}`);
+        if (s.hotRowCount) tags.push(`hot:${s.hotRowCount}`);
+        return tags.length ? `${head} [${tags.join(" ")}]` : head;
+      });
+      return { ok: true, output: lines.join("\n") };
+    },
+  },
+  {
+    name: "control_panel_service", args: '{"service": "Vercel"}',
+    desc: "Get the detailed rows for one Control Panel service (table groups, up to 12 rows each). Use after control_panel_status to drill into specifics.",
+    run: async (a) => {
+      const name = str(a.service).trim().toLowerCase();
+      const live = cpLiveSummaries();
+      const s = live.find((x) => x.service.toLowerCase() === name) || live.find((x) => x.service.toLowerCase().includes(name));
+      if (!s) return { ok: false, output: `no connected service matches "${str(a.service)}". Try control_panel_status first.` };
+      if (s.error) return { ok: true, output: `${s.service}: ERROR ${s.error}` };
+      const parts: string[] = [`${s.service}: ${s.summary} (${s.rowCount} rows)`];
+      for (const g of s.groups) {
+        parts.push(`\n# ${g.title}`);
+        for (const r of g.rows) parts.push(`- ${r.cells.join(" · ")}`);
+      }
+      return { ok: true, output: parts.join("\n") };
+    },
+  },
+  {
+    name: "control_panel_events", args: '{"limit": 10}',
+    desc: "Get recent Control Panel events (pull errors, hot-row arrivals, action results). Use to answer 'what just happened in my homelab/deploys'.",
+    run: async (a) => {
+      const limit = Math.max(1, Math.min(40, Number(a.limit) || 10));
+      const evs = cpRecentEvents(limit);
+      if (!evs.length) return { ok: true, output: "(no recent CP events)" };
+      return { ok: true, output: evs.map((e) => `[${new Date(e.ts).toLocaleTimeString()}] ${e.severity.toUpperCase()} · ${e.service}: ${e.text}`).join("\n") };
+    },
   },
   {
     name: "list_docs", args: "{}",

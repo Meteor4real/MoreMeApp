@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ADAPTERS, type ManageGroup, type ManageResult, type ManageRow, type RowAction } from "./controlPanelAdapters";
 import { PUSH_APIS, detectHotRows, type PushHandle } from "./controlPanelPush";
 import { docsConnected, setConnected as setDocsConnected, subscribeDocs } from "../embedded/documents/docsStore";
+import { pushCpEvent, setCpLiveSummaries, type CpLiveSummary } from "../controlPanelFeed";
 
 // The Control Panel, reimplemented natively in-app (Option 2). Each user
 // connects THEIR OWN services here; tokens are stored in the OS-keychain vault
@@ -139,15 +140,42 @@ export function ControlPanel() {
         const cred = await window.hub.vault.get(s.id);
         const res = await ADAPTERS[s.id].pull!(cred);
         setLive((l) => ({ ...l, [s.id]: res }));
-        // Recompute hot rows for the push layer.
+        // Recompute hot rows for the push layer. Capture which row IDs are
+        // newly hot so we can notify exactly once per arrival.
         const allRows: { id: string; cells: unknown[] }[] = [];
         for (const g of res.groups) for (const r of g.rows) allRows.push({ id: r.id, cells: r.cells });
-        hotRowsRef.current[s.id] = detectHotRows(s.id, allRows);
+        const prev = hotRowsRef.current[s.id] || new Set<string>();
+        const next = detectHotRows(s.id, allRows);
+        hotRowsRef.current[s.id] = next;
+        const fresh = [...next].filter((id) => !prev.has(id));
+        if (fresh.length && prev.size > 0) {
+          pushCpEvent(s.name, `${fresh.length} hot row${fresh.length === 1 ? "" : "s"} · ${res.summary}`, "info");
+        }
       } catch (e) {
-        setLive((l) => ({ ...l, [s.id]: { summary: "", groups: [], error: String(e) } }));
+        const msg = String(e);
+        setLive((l) => ({ ...l, [s.id]: { summary: "", groups: [], error: msg } }));
+        pushCpEvent(s.name, `pull failed — ${msg.slice(0, 120)}`, "error");
       }
     }));
     if (!serviceId) setCountdown(REFRESH_SEC);
+    // Publish a flat live-state snapshot for AI tools.
+    setLive((l) => {
+      const summaries: CpLiveSummary[] = SERVICES.filter((s) => isConnected(s.id)).map((s) => {
+        const r = l[s.id];
+        const handle = pushHandlesRef.current[s.id];
+        if (!r || r === "loading") return { service: s.name, summary: "loading", rowCount: 0, groups: [], pushKind: handle?.kind, hotRowCount: hotRowsRef.current[s.id]?.size || 0 };
+        if (r.error) return { service: s.name, summary: "", error: r.error, rowCount: 0, groups: [], pushKind: handle?.kind, hotRowCount: hotRowsRef.current[s.id]?.size || 0 };
+        return {
+          service: s.name, summary: r.summary,
+          rowCount: r.groups.reduce((n, g) => n + g.rows.length, 0),
+          groups: r.groups.map((g) => ({ title: g.title, rows: g.rows.slice(0, 12).map((rw) => ({ id: rw.id, cells: rw.cells.map((c) => typeof c === "string" || typeof c === "number" ? String(c) : (c && typeof c === "object" && "__dot" in (c as object)) ? "•" : "") })) })),
+          pushKind: handle?.kind,
+          hotRowCount: hotRowsRef.current[s.id]?.size || 0,
+        };
+      });
+      setCpLiveSummaries(summaries);
+      return l;
+    });
   }
   pullRef.current = (serviceId?: string) => void pullManage(false, serviceId);
 
@@ -210,11 +238,13 @@ export function ControlPanel() {
       return;
     }
     if (!a.run) return;
+    const svcName = SERVICES.find((s) => s.id === serviceId)?.name || serviceId;
     setActMsg("…");
     try {
       const msg = await a.run();
       setActMsg(msg);
-    } catch (e) { setActMsg(String(e)); }
+      pushCpEvent(svcName, `${a.label}: ${msg}`.slice(0, 200), "info");
+    } catch (e) { setActMsg(String(e)); pushCpEvent(svcName, `${a.label} failed — ${String(e).slice(0, 120)}`, "error"); }
     // Re-pull just this service so the row reflects the new state.
     try {
       const cred = await window.hub.vault.get(serviceId);

@@ -13,6 +13,9 @@ type Overrides = Record<string, Override>;
 
 type SteamOwned = { appid: number; name: string; playtime_forever: number; playtime_2weeks?: number; rtime_last_played?: number; img_icon_url?: string };
 type SteamNews = { gid: string; title: string; url: string; author?: string; contents?: string; feedlabel?: string; date: number; appid: number };
+type SteamAch = { apiname: string; achieved: number; unlocktime: number };
+type SchemaAch = { name: string; displayName: string; description?: string; icon?: string; icongray?: string; hidden?: number };
+type AchSummary = { appid: number; gameName: string; unlocked: number; total: number; recent: { name: string; displayName: string; unlocktime: number; icon?: string; appid: number; gameName: string }[] };
 
 const OVR_KEY = "nchub.library.overrides.v2";
 const SIZE_PX: Record<IconSize, number> = { s: 130, m: 180, l: 260 };
@@ -48,6 +51,7 @@ export function Library() {
   const [news, setNews] = useState<SteamNews[]>([]);
   const [steamErr, setSteamErr] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [achievements, setAchievements] = useState<Map<string, AchSummary>>(new Map());
 
   useEffect(() => {
     window.hub.steamList()
@@ -82,6 +86,35 @@ export function Library() {
       }));
       allNews.sort((a, b) => b.date - a.date);
       setNews(allNews.slice(0, 12));
+
+      // Achievements — top 10 played games. Some games have no achievements;
+      // Steam returns 403/400/empty in those cases. Swallow per-game errors.
+      const playedTop = [...list].filter((g) => (g.playtime_forever || 0) > 0).sort((a, b) => (b.playtime_forever || 0) - (a.playtime_forever || 0)).slice(0, 10);
+      const achMap = new Map<string, AchSummary>();
+      await Promise.all(playedTop.map(async (g) => {
+        try {
+          const [pa, sc] = await Promise.all([
+            window.hub.net({ method: "GET", url: `https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v1/?key=${encodeURIComponent(key)}&steamid=${encodeURIComponent(id)}&appid=${g.appid}` }),
+            window.hub.net({ method: "GET", url: `https://api.steampowered.com/ISteamUserStats/GetSchemaForGame/v2/?key=${encodeURIComponent(key)}&appid=${g.appid}` }),
+          ]);
+          const playerStats = ((pa.data as { playerstats?: { achievements?: SteamAch[]; success?: boolean; gameName?: string } })?.playerstats);
+          if (!playerStats?.success || !Array.isArray(playerStats.achievements) || playerStats.achievements.length === 0) return;
+          const schemaAchs = ((sc.data as { game?: { availableGameStats?: { achievements?: SchemaAch[] } } })?.game?.availableGameStats?.achievements) || [];
+          const schemaByName = new Map(schemaAchs.map((s) => [s.name, s] as const));
+          const total = playerStats.achievements.length;
+          const unlocked = playerStats.achievements.filter((a) => a.achieved === 1).length;
+          const recent = playerStats.achievements
+            .filter((a) => a.achieved === 1 && a.unlocktime > 0)
+            .sort((a, b) => b.unlocktime - a.unlocktime)
+            .slice(0, 5)
+            .map((a) => {
+              const s = schemaByName.get(a.apiname);
+              return { name: a.apiname, displayName: s?.displayName || a.apiname, unlocktime: a.unlocktime, icon: s?.icon, appid: g.appid, gameName: g.name };
+            });
+          achMap.set(String(g.appid), { appid: g.appid, gameName: playerStats.gameName || g.name, unlocked, total, recent });
+        } catch { /* ignore per-app — many games have no achievements / private profile */ }
+      }));
+      setAchievements(achMap);
     } catch (e) { setSteamErr(String(e)); } finally { setRefreshing(false); }
   }
 
@@ -133,6 +166,13 @@ export function Library() {
   const totalHours = [...owned.values()].reduce((s, o) => s + (o.playtime_forever || 0), 0) / 60;
   const recentHours = [...owned.values()].reduce((s, o) => s + (o.playtime_2weeks || 0), 0) / 60;
   const playedCount = [...owned.values()].filter((o) => (o.playtime_forever || 0) > 0).length;
+  const achUnlocked = [...achievements.values()].reduce((s, a) => s + a.unlocked, 0);
+  const achTotal = [...achievements.values()].reduce((s, a) => s + a.total, 0);
+  const perfectGames = [...achievements.values()].filter((a) => a.total > 0 && a.unlocked === a.total).length;
+  const recentAch = useMemo(() => {
+    const all = [...achievements.values()].flatMap((a) => a.recent);
+    return all.sort((a, b) => b.unlocktime - a.unlocktime).slice(0, 8);
+  }, [achievements]);
 
   return (
     <div className="stage" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -177,10 +217,22 @@ export function Library() {
                   <div className="mono" style={{ fontSize: 11, color: "var(--pink)", letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>{op?.rtime_last_played ? "RECENTLY PLAYED" : "NOW IN YOUR LIBRARY"}</div>
                   <div style={{ fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 28, color: "#fff", textShadow: "0 2px 18px rgba(255,87,119,0.55)" }}>{name}</div>
                   {op && (
-                    <div style={{ fontSize: 12, color: "var(--mute)", marginTop: 6, display: "flex", gap: 14, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 12, color: "var(--mute)", marginTop: 6, display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
                       <span><b style={{ color: "#fff" }}>{fmtHours(op.playtime_forever)}</b> total</span>
                       {op.playtime_2weeks ? <span><b style={{ color: "var(--orange)" }}>{fmtHours(op.playtime_2weeks)}</b> in the last 2 weeks</span> : null}
                       {op.rtime_last_played ? <span>last played {fmtAgo(op.rtime_last_played)}</span> : null}
+                      {(() => { const a = achievements.get(hero.appid); if (!a || a.total === 0) return null;
+                        const pct = Math.round((a.unlocked / a.total) * 100);
+                        return (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            <b style={{ color: "#fbbf24" }}>{a.unlocked}/{a.total}</b> achievements
+                            <span style={{ width: 70, height: 4, background: "rgba(255,255,255,0.1)", borderRadius: 3, overflow: "hidden", display: "inline-block" }}>
+                              <span style={{ display: "block", height: "100%", width: `${pct}%`, background: "linear-gradient(90deg,#fbbf24,#f59e0b)", boxShadow: "0 0 8px #fbbf24aa" }} />
+                            </span>
+                            <span style={{ color: "#fbbf24" }}>{pct}%</span>
+                          </span>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -192,11 +244,13 @@ export function Library() {
         })()}
 
         {/* Stat strip */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 18 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 18 }}>
           <Stat label="games" value={totalGames} color="var(--pink)" />
           <Stat label="played" value={playedCount || "—"} color="#22c55e" />
           <Stat label="total hours" value={totalHours > 0 ? totalHours.toFixed(1) + "h" : "—"} color="#22d3ee" />
           <Stat label="last 2 weeks" value={recentHours > 0 ? recentHours.toFixed(1) + "h" : "—"} color="var(--orange)" />
+          <Stat label="achievements" value={achTotal > 0 ? `${achUnlocked}/${achTotal}` : "—"} color="#fbbf24" />
+          <Stat label="perfect runs" value={perfectGames > 0 ? perfectGames : "—"} color="#a78bfa" />
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12, alignItems: "center" }}>
@@ -229,6 +283,15 @@ export function Library() {
                       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, transparent 60%, rgba(0,0,0,0.65))" }} />
                       {o.pinned && <span style={{ position: "absolute", top: 6, left: 6, fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(0,0,0,0.6)", color: "var(--pink)", letterSpacing: 1, textTransform: "uppercase" }}>Pinned</span>}
                       {recent > 0 && <span style={{ position: "absolute", top: 6, right: 6, fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(34,197,94,0.85)", color: "#06120a", letterSpacing: 1, textTransform: "uppercase", fontWeight: 700 }}>{fmtHours(recent)} · 2w</span>}
+                      {(() => { const ach = achievements.get(g.appid); if (!ach || ach.total === 0) return null;
+                        const pct = Math.round((ach.unlocked / ach.total) * 100);
+                        const perfect = ach.unlocked === ach.total;
+                        return (
+                          <span title={`${ach.unlocked}/${ach.total} achievements`} style={{ position: "absolute", top: recent > 0 ? 34 : 6, right: 6, fontSize: 10, padding: "2px 6px", borderRadius: 4, background: perfect ? "rgba(168,85,247,0.85)" : "rgba(251,191,36,0.85)", color: perfect ? "#1a0a2e" : "#1a1402", letterSpacing: 0.5, textTransform: "uppercase", fontWeight: 700 }}>
+                            {perfect ? "★ 100%" : `★ ${pct}%`}
+                          </span>
+                        );
+                      })()}
                       {op && <div style={{ position: "absolute", left: 8, right: 8, bottom: 6, display: "flex", justifyContent: "space-between", fontFamily: "ui-monospace,monospace", fontSize: 10, color: "#fff", textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}>
                         <span>{fmtHours(op.playtime_forever)} total</span>
                         <span>{op.rtime_last_played ? fmtAgo(op.rtime_last_played) : "unplayed"}</span>
@@ -258,6 +321,28 @@ export function Library() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Recently unlocked achievements rail */}
+        {recentAch.length > 0 && (
+          <div style={{ marginTop: 28 }}>
+            <div className="mono glow-text" style={{ fontSize: 12, letterSpacing: 2, textTransform: "uppercase", marginBottom: 10, color: "#fbbf24", textShadow: "0 0 12px #fbbf2466" }}>★ Recently unlocked</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
+              {recentAch.map((a) => (
+                <div key={`${a.appid}-${a.name}`} className="panel" style={{ padding: 10, display: "flex", alignItems: "center", gap: 10, borderColor: "rgba(251,191,36,0.35)" }}>
+                  {a.icon ? (
+                    <img src={a.icon} alt="" style={{ width: 44, height: 44, borderRadius: 6, border: "1px solid rgba(251,191,36,0.4)", boxShadow: "0 0 10px rgba(251,191,36,0.3)" }} />
+                  ) : (
+                    <div style={{ width: 44, height: 44, borderRadius: 6, background: "linear-gradient(135deg, #fbbf24, #f59e0b)", display: "grid", placeItems: "center", color: "#1a1402", fontWeight: 800, fontSize: 20 }}>★</div>
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: "#fff", fontWeight: 600, lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.displayName}</div>
+                    <div className="mono" style={{ fontSize: 10, color: "var(--mute)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.gameName} · {fmtAgo(a.unlocktime)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

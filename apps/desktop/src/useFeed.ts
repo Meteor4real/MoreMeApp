@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { fetchFeed, localReminders, type FeedItem } from "./feeds";
 import { nt5TickerItems } from "./embedded/nt5store";
 import { brobotTickerItems } from "./embedded/brobotStore";
+import { cpFeedItems, subscribeCpEvents } from "./controlPanelFeed";
 
 const SEEN_KEY = "nchub.feed.seen.v1";
 const POLL_MS = 4 * 60 * 1000;
@@ -26,7 +27,7 @@ export function useFeed() {
     let stop = false;
 
     async function tick() {
-      const all = [...nt5TickerItems(), ...brobotTickerItems(), ...localReminders(), ...(await fetchFeed())];
+      const all = [...cpFeedItems(), ...nt5TickerItems(), ...brobotTickerItems(), ...localReminders(), ...(await fetchFeed())];
       if (stop) return;
       setItems(all);
 
@@ -48,9 +49,13 @@ export function useFeed() {
 
     tick();
     const iv = setInterval(tick, POLL_MS);
+    // Control Panel events trigger an immediate re-tick so the ticker and
+    // toast notifications surface them right away.
+    const unsubCp = subscribeCpEvents(() => { void tick(); });
     return () => {
       stop = true;
       clearInterval(iv);
+      unsubCp();
     };
   }, []);
 
