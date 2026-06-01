@@ -10,7 +10,7 @@ export type Tab = {
   pinned?: boolean;
 };
 export type Group = { id: string; name: string; color: string };
-export type Bookmark = { id: string; title: string; url: string; folder?: string; ts: number };
+export type Bookmark = { id: string; title: string; url: string; folder?: string; color?: string; order?: number; ts: number };
 export type HistoryEntry = { id: string; title: string; url: string; ts: number };
 export type Password = { id: string; host: string; username: string; ts: number };
 export type Download = { id: string; filename: string; path: string; url: string; bytes: number; state: "completed" | "interrupted" | "cancelled"; ts: number };
@@ -20,6 +20,22 @@ const GROUPS_KEY = "nchub.browser.groups.v1";
 const BOOKMARKS_KEY = "nchub.browser.bookmarks.v1";
 const HISTORY_KEY = "nchub.browser.history.v1";
 const PASSWORDS_KEY = "nchub.browser.passwords.v1"; // metadata only; secret in vault
+const ZOOM_KEY = "nchub.browser.zoom.v1";
+
+// Per-host zoom level. setZoomLevel takes Electron levels (-3..4) where 0 = 100%.
+export function getZoom(host: string): number {
+  try { const m = JSON.parse(localStorage.getItem(ZOOM_KEY) || "{}") as Record<string, number>; return m[host] ?? 0; } catch { return 0; }
+}
+export function setZoom(host: string, level: number): void {
+  try {
+    const m = JSON.parse(localStorage.getItem(ZOOM_KEY) || "{}") as Record<string, number>;
+    if (level === 0) delete m[host]; else m[host] = level;
+    localStorage.setItem(ZOOM_KEY, JSON.stringify(m));
+  } catch { /* ignore */ }
+}
+export function hostOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; }
+}
 
 export const START_URL = "about:start";
 
@@ -158,7 +174,8 @@ export function addBookmark(title: string, url: string, folder?: string): Bookma
   ensureBm();
   const existing = bmCache!.find((b) => b.url === url);
   if (existing) return existing;
-  const b: Bookmark = { id: rid(), title: title || url, url, folder, ts: Date.now() };
+  const maxOrder = bmCache!.reduce((m, b) => Math.max(m, b.order ?? 0), 0);
+  const b: Bookmark = { id: rid(), title: title || url, url, folder, order: maxOrder + 1, ts: Date.now() };
   bmCache = [b, ...bmCache!];
   safeSave(BOOKMARKS_KEY, bmCache);
   bmSubs.forEach((fn) => fn(bmCache!));
@@ -169,6 +186,24 @@ export function removeBookmark(id: string) {
   bmCache = bmCache!.filter((b) => b.id !== id);
   safeSave(BOOKMARKS_KEY, bmCache);
   bmSubs.forEach((fn) => fn(bmCache!));
+}
+export function updateBookmark(id: string, patch: Partial<Pick<Bookmark, "title" | "url" | "folder" | "color" | "order">>) {
+  ensureBm();
+  bmCache = bmCache!.map((b) => b.id === id ? { ...b, ...patch } : b);
+  safeSave(BOOKMARKS_KEY, bmCache);
+  bmSubs.forEach((fn) => fn(bmCache!));
+}
+export function reorderBookmarks(orderedIds: string[]) {
+  ensureBm();
+  const idx = new Map(orderedIds.map((id, i) => [id, i + 1] as const));
+  bmCache = bmCache!.map((b) => idx.has(b.id) ? { ...b, order: idx.get(b.id)! } : b);
+  safeSave(BOOKMARKS_KEY, bmCache);
+  bmSubs.forEach((fn) => fn(bmCache!));
+}
+export function bookmarksSorted(): Bookmark[] {
+  const all = [...ensureBm()];
+  all.sort((a, b) => (a.order ?? 9e9) - (b.order ?? 9e9) || b.ts - a.ts);
+  return all;
 }
 export function isBookmarked(url: string): boolean { return ensureBm().some((b) => b.url === url); }
 
@@ -194,6 +229,10 @@ export async function setPassword(host: string, username: string, password: stri
   arr.unshift(rec);
   safeSave(PASSWORDS_KEY, arr);
   return rec;
+}
+export function getPasswordsForHost(host: string): Password[] {
+  const h = host.toLowerCase();
+  return getPasswords().filter((p) => p.host.toLowerCase() === h || h.endsWith("." + p.host.toLowerCase()) || p.host.toLowerCase().endsWith("." + h));
 }
 export async function getPasswordSecret(id: string): Promise<string> {
   const r = await window.hub.vault.get(id);

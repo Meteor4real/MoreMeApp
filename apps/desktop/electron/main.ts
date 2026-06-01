@@ -41,6 +41,7 @@ function createWindow() {
     backgroundColor: "#0a0a0c",
     show: false,
     autoHideMenuBar: true,
+    useContentSize: true,
     title: "NetworkChuck Hub",
     webPreferences: {
       preload: path.join(dir, "preload.js"),
@@ -48,6 +49,9 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false,
       webviewTag: true, // tabbed browser uses <webview>
+      defaultFontSize: 16,
+      defaultMonospaceFontSize: 14,
+      minimumFontSize: 11,
     },
   });
 
@@ -121,6 +125,13 @@ app.on("web-contents-created", (_e, contents) => {
     delete (webPreferences as { preload?: string }).preload;
     webPreferences.nodeIntegration = false;
     webPreferences.contextIsolation = true;
+    // Match the host BrowserWindow's font defaults so embedded pages don't
+    // get Chromium's smaller-than-default fallback that made them look
+    // compressed. defaultFontSize 16 = standard browser; minimumFontSize 11
+    // keeps small text legible on dense sites without aggressive overrides.
+    (webPreferences as { defaultFontSize?: number }).defaultFontSize = 16;
+    (webPreferences as { defaultMonospaceFontSize?: number }).defaultMonospaceFontSize = 14;
+    (webPreferences as { minimumFontSize?: number }).minimumFontSize = 11;
   });
   contents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("http")) shell.openExternal(url);
