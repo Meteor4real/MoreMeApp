@@ -1,28 +1,41 @@
+import { useState } from "react";
 import { NT5Broadcast } from "../shell/NT5Broadcast";
+import { NT5Studio } from "./NT5Studio";
+import { NT5Newsroom } from "./nt5/NT5Newsroom";
 
-// Embedded NT5 / S.P.A.C.E. News — the real Next.js site, statically exported
-// and bundled into the app under public/embedded/nt5, run locally (offline) in
-// an iframe as a true carbon copy. A header bar shows the reworked NT5 mark,
-// and a broadcast bar gives every wire article a real audio (TTS) read-out
-// in the assigned anchor's voice. The in-app wire scheduler keeps the
-// bundled site supplied with fresh anchor articles (Dex's Origin Realms
-// coverage tracks the actual live mcstatus.io pulse).
+// Embedded NT5. Three native tabs:
+//   Newsroom — the live wire as a slick control surface (hero, category rails,
+//     ticker crawl, anchor roster, search/filter, native article detail with
+//     read-aloud via the bundled voice service, and a teleprompter "go live").
+//   Wire — the bundled NT5 static site in an iframe, with the broadcast bar.
+//     (Kept as a true carbon-copy view of the offline site.)
+//   Studio — the broadcast authoring tool. Composes from Pexels clips, local
+//     files, saved DigitalBlueprint scenes, and title cards onto a timeline.
+
+type Tab = "newsroom" | "wire" | "studio";
 
 export function NT5() {
+  const [tab, setTab] = useState<Tab>("newsroom");
   return (
     <div className="stage" style={{ background: "#05050d", padding: 0, display: "flex", flexDirection: "column" }}>
-      <NT5Header />
-      <NT5Broadcast />
-      <iframe
-        title="NT5 — S.P.A.C.E. News"
-        src="embedded/nt5/index.html"
-        style={{ flex: 1, width: "100%", border: "none", display: "block" }}
-      />
+      <NT5Header tab={tab} onTab={setTab} />
+      {tab === "newsroom" && <NT5Newsroom />}
+      {tab === "wire" && (
+        <>
+          <NT5Broadcast />
+          <iframe
+            title="NT5 — S.P.A.C.E. News"
+            src="embedded/nt5/index.html"
+            style={{ flex: 1, width: "100%", border: "none", display: "block" }}
+          />
+        </>
+      )}
+      {tab === "studio" && <NT5Studio />}
     </div>
   );
 }
 
-function NT5Header() {
+function NT5Header({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
   return (
     <div
       style={{
@@ -62,44 +75,31 @@ function NT5Header() {
         <circle cx="58" cy="47" r="1.6" fill="#22d3ee" />
       </svg>
       <div style={{ lineHeight: 1.15 }}>
-        <div
-          style={{
-            fontFamily: "'Orbitron','Space Grotesk',sans-serif",
-            fontWeight: 800,
-            letterSpacing: 4,
-            fontSize: 16,
-            color: "#fff",
-            textShadow: "0 0 12px rgba(217,70,239,0.45)",
-          }}
-        >
+        <div style={{ fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, letterSpacing: 4, fontSize: 16, color: "#fff", textShadow: "0 0 12px rgba(217,70,239,0.45)" }}>
           S.P.A.C.E. NEWS
         </div>
-        <div
-          style={{
-            fontFamily: "'JetBrains Mono','Chakra Petch',monospace",
-            fontSize: 10,
-            letterSpacing: 3,
-            textTransform: "uppercase",
-            color: "#22d3ee",
-            marginTop: 2,
-          }}
-        >
+        <div style={{ fontFamily: "'JetBrains Mono','Chakra Petch',monospace", fontSize: 10, letterSpacing: 3, textTransform: "uppercase", color: "#22d3ee", marginTop: 2 }}>
           NT5 · NOVA TERRIS 5 · UNIFIED WIRE · 24/7
         </div>
       </div>
       <div style={{ flex: 1 }} />
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          fontFamily: "'JetBrains Mono',monospace",
-          fontSize: 10,
-          letterSpacing: 1.5,
-          color: "#ef4444",
-          textTransform: "uppercase",
-        }}
-      >
+      <div style={{ display: "flex", gap: 6, marginRight: 10 }}>
+        {(["newsroom", "wire", "studio"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => onTab(t)}
+            className="btn"
+            style={{
+              padding: "6px 14px",
+              fontSize: 11,
+              letterSpacing: 1.5,
+              textTransform: "uppercase",
+              color: tab === t ? "#22d3ee" : "var(--mute)",
+              borderColor: tab === t ? "rgba(34,211,238,0.55)" : undefined,
+            }}>{t}</button>
+        ))}
+      </div>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, letterSpacing: 1.5, color: "#ef4444", textTransform: "uppercase" }}>
         <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", boxShadow: "0 0 10px rgba(239,68,68,0.9)", animation: "nt5pulse 2s ease-in-out infinite" }} />
         On Air
       </span>

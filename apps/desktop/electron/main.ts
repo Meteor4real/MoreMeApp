@@ -41,6 +41,7 @@ function createWindow() {
     backgroundColor: "#0a0a0c",
     show: false,
     autoHideMenuBar: true,
+    useContentSize: true,
     title: "NetworkChuck Hub",
     webPreferences: {
       preload: path.join(dir, "preload.js"),
@@ -48,6 +49,9 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false,
       webviewTag: true, // tabbed browser uses <webview>
+      defaultFontSize: 16,
+      defaultMonospaceFontSize: 14,
+      minimumFontSize: 11,
     },
   });
 
@@ -121,6 +125,13 @@ app.on("web-contents-created", (_e, contents) => {
     delete (webPreferences as { preload?: string }).preload;
     webPreferences.nodeIntegration = false;
     webPreferences.contextIsolation = true;
+    // Match the host BrowserWindow's font defaults so embedded pages don't
+    // get Chromium's smaller-than-default fallback that made them look
+    // compressed. defaultFontSize 16 = standard browser; minimumFontSize 11
+    // keeps small text legible on dense sites without aggressive overrides.
+    (webPreferences as { defaultFontSize?: number }).defaultFontSize = 16;
+    (webPreferences as { defaultMonospaceFontSize?: number }).defaultMonospaceFontSize = 14;
+    (webPreferences as { minimumFontSize?: number }).minimumFontSize = 11;
   });
   contents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("http")) shell.openExternal(url);
@@ -163,6 +174,16 @@ function isAppOrigin(u?: string): boolean {
   return u.startsWith("file://") || (!!DEV_URL && u.startsWith(DEV_URL));
 }
 
+// Crude registrable-domain (eTLD+1) for same-site comparison. Good enough for
+// the common .com/.org/.io cases and multi-label TLDs like .co.uk.
+function registrableDomain(host: string): string {
+  const parts = host.toLowerCase().split(".").filter(Boolean);
+  if (parts.length <= 2) return parts.join(".");
+  const twoLevelTld = /^(co|com|org|net|gov|edu|ac)\.[a-z]{2}$/;
+  const lastTwo = parts.slice(-2).join(".");
+  return twoLevelTld.test(lastTwo) ? parts.slice(-3).join(".") : parts.slice(-2).join(".");
+}
+
 function harden(ses: Electron.Session) {
   ses.webRequest.onBeforeRequest((details, cb) => {
     if (hostBlocked(details.url)) return cb({ cancel: true });
@@ -178,9 +199,38 @@ function harden(ses: Electron.Session) {
   });
 
   ses.webRequest.onBeforeSendHeaders((details, cb) => {
-    details.requestHeaders["DNT"] = "1";
-    details.requestHeaders["Sec-GPC"] = "1";
+    if (privacyState.dntGpc) {
+      details.requestHeaders["DNT"] = "1";
+      details.requestHeaders["Sec-GPC"] = "1";
+    } else {
+      delete details.requestHeaders["DNT"];
+      delete details.requestHeaders["Sec-GPC"];
+    }
     cb({ requestHeaders: details.requestHeaders });
+  });
+
+  // Third-party cookie blocking. When enabled, strip Set-Cookie from any
+  // response whose registrable domain differs from the document that made the
+  // request (looked up via the request's webContents top URL). Genuine 3p
+  // cookie blocking, not just the tracker-host blocklist.
+  ses.webRequest.onHeadersReceived((details, cb) => {
+    if (!privacyState.block3p) return cb({ responseHeaders: details.responseHeaders });
+    const headers = details.responseHeaders || {};
+    const cookieKey = Object.keys(headers).find((k) => k.toLowerCase() === "set-cookie");
+    if (!cookieKey) return cb({ responseHeaders: headers });
+    try {
+      const reqHost = new URL(details.url).hostname;
+      let topHost = "";
+      const wcId = (details as unknown as { webContentsId?: number }).webContentsId;
+      if (typeof wcId === "number") {
+        const wc = require("electron").webContents.fromId(wcId);
+        if (wc) { try { topHost = new URL(wc.getURL()).hostname; } catch { /* ignore */ } }
+      }
+      if (topHost && registrableDomain(reqHost) !== registrableDomain(topHost)) {
+        delete headers[cookieKey];
+      }
+    } catch { /* ignore */ }
+    cb({ responseHeaders: headers });
   });
 
   ses.setPermissionRequestHandler((_wc, perm, cb, details) => {
@@ -335,11 +385,19 @@ async function runAgentCli(
   });
 }
 
-function defaultShell(): { file: string; args: string[] } {
-  if (process.platform === "win32") {
-    return { file: "powershell.exe", args: [] };
+function defaultShell(kind?: string): { file: string; args: string[] } {
+  const win = process.platform === "win32";
+  switch (kind) {
+    case "powershell": return { file: "powershell.exe", args: [] };
+    case "pwsh": return { file: "pwsh", args: [] };
+    case "cmd": return { file: "cmd.exe", args: [] };
+    case "wsl": return { file: "wsl.exe", args: [] };
+    case "bash": return { file: win ? "bash.exe" : "/bin/bash", args: [] };
+    case "zsh": return { file: "/bin/zsh", args: [] };
+    default:
+      if (win) return { file: "powershell.exe", args: [] };
+      return { file: process.env.SHELL || "/bin/bash", args: [] };
   }
-  return { file: process.env.SHELL || "/bin/bash", args: [] };
 }
 
 function registerIpc() {
@@ -460,30 +518,31 @@ function registerIpc() {
     return { cpuPct, memPct, memFreeGb: memFree / 1024 / 1024 / 1024, diskFreeGb: diskFree / 1024 / 1024 / 1024, diskTotalGb: diskTotal / 1024 / 1024 / 1024 };
   });
 
-  // --- Media (ElevenLabs TTS + Pexels video) — uses the user's own keys.
-  //     Returns audio bytes / video metadata so the renderer can play / show.
+  // --- Media: anchor voices via the Hub voice service.
+  //     The Hub ships with its OWN voices — end users never plug in their
+  //     own ElevenLabs key. The desktop client calls a hosted proxy that
+  //     holds the key server-side; the proxy URL is configurable via env
+  //     so the owner can repoint it without shipping a new binary. If the
+  //     proxy is unreachable, the renderer falls back to Web Speech.
+  const VOICE_PROXY_BASE = process.env.NCHUB_VOICE_PROXY || "https://voice.networkchuckhub.app";
   ipcMain.handle("media:tts", async (_e, opts: { voiceId: string; text: string; model?: string }) => {
-    const cred = vaultGet("elevenlabs");
-    if (!cred.token) return { ok: false, error: "Connect ElevenLabs in the Control Panel first." };
     try {
-      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(opts.voiceId)}`, {
+      const r = await fetch(`${VOICE_PROXY_BASE}/tts`, {
         method: "POST",
-        headers: { "xi-api-key": cred.token, "Content-Type": "application/json", "Accept": "audio/mpeg" },
-        body: JSON.stringify({ text: opts.text, model_id: opts.model || "eleven_turbo_v2_5", voice_settings: { stability: 0.45, similarity_boost: 0.75 } }),
+        headers: { "Content-Type": "application/json", "Accept": "audio/mpeg" },
+        body: JSON.stringify({ voiceId: opts.voiceId, text: opts.text, model: opts.model || "eleven_turbo_v2_5" }),
       });
-      if (!r.ok) return { ok: false, error: `ElevenLabs ${r.status}: ${await r.text()}` };
+      if (!r.ok) return { ok: false, error: `Voice proxy ${r.status}` };
       const buf = Buffer.from(await r.arrayBuffer());
       return { ok: true, mime: "audio/mpeg", base64: buf.toString("base64") };
     } catch (err) { return { ok: false, error: String(err) }; }
   });
   ipcMain.handle("media:voices", async () => {
-    const cred = vaultGet("elevenlabs");
-    if (!cred.token) return { ok: false, error: "Connect ElevenLabs in the Control Panel first." };
     try {
-      const r = await fetch("https://api.elevenlabs.io/v1/voices", { headers: { "xi-api-key": cred.token } });
-      if (!r.ok) return { ok: false, error: `ElevenLabs ${r.status}` };
-      const j = await r.json() as { voices?: { voice_id: string; name: string; labels?: Record<string, string> }[] };
-      return { ok: true, voices: (j.voices || []).map((v) => ({ id: v.voice_id, name: v.name, labels: v.labels || {} })) };
+      const r = await fetch(`${VOICE_PROXY_BASE}/voices`);
+      if (!r.ok) return { ok: false, error: `Voice proxy ${r.status}` };
+      const j = await r.json() as { voices?: { id: string; name: string; labels?: Record<string, string> }[] };
+      return { ok: true, voices: (j.voices || []).map((v) => ({ id: v.id, name: v.name, labels: v.labels || {} })) };
     } catch (err) { return { ok: false, error: String(err) }; }
   });
   ipcMain.handle("media:pexelsVideo", async (_e, opts: { query: string; perPage?: number }) => {
@@ -507,7 +566,7 @@ function registerIpc() {
   // --- Terminal (PowerShell on Windows) via node-pty. Sessions are keyed by
   //     a caller-provided string ID so the renderer can run multiple shells
   //     in parallel and keep them alive across React tab switches.
-  ipcMain.handle("term:start", (e, sessionId: string, cols: number, rows: number) => {
+  ipcMain.handle("term:start", (e, sessionId: string, cols: number, rows: number, shellKind?: string) => {
     let pty: {
       spawn: (
         file: string,
@@ -527,14 +586,24 @@ function registerIpc() {
       return { ok: false, error: "pty unavailable: " + String(err) };
     }
     if (terminals.has(sessionId)) return { ok: true }; // already running
-    const { file, args } = defaultShell();
-    const proc = pty.spawn(file, args, {
-      name: "xterm-color",
-      cols: cols || 80,
-      rows: rows || 24,
-      cwd: os.homedir(),
-      env: process.env as Record<string, string>,
-    });
+    let file: string, args: string[];
+    ({ file, args } = defaultShell(shellKind));
+    let proc;
+    try {
+      proc = pty.spawn(file, args, {
+        name: "xterm-color",
+        cols: cols || 80,
+        rows: rows || 24,
+        cwd: os.homedir(),
+        env: process.env as Record<string, string>,
+      });
+    } catch (err) {
+      // Requested shell isn't installed — fall back to the platform default.
+      ({ file, args } = defaultShell());
+      try {
+        proc = pty.spawn(file, args, { name: "xterm-color", cols: cols || 80, rows: rows || 24, cwd: os.homedir(), env: process.env as Record<string, string> });
+      } catch (e2) { return { ok: false, error: "shell spawn failed: " + String(e2) }; }
+    }
     const wrapped: Pty = {
       write: (d) => proc.write(d),
       resize: (c, r) => proc.resize(c, r),
@@ -567,8 +636,8 @@ function registerIpc() {
   //     no API key. Model downloads once on first use. ---
   ipcMain.handle("llm:status", () => ({ ready: llmReady, downloading: llmDownloading, progress: llmProgress }));
   ipcMain.handle("llm:ensure", (e) => ensureLlm((p) => e.sender.send("llm:progress", p)));
-  ipcMain.handle("llm:chat", (_e, system: string, prompt: string) =>
-    llmChat(system, prompt).catch((err) => ({ ok: false, error: String(err) }))
+  ipcMain.handle("llm:chat", (_e, system: string, prompt: string, opts?: { temperature?: number; maxTokens?: number }) =>
+    llmChat(system, prompt, opts).catch((err) => ({ ok: false, error: String(err) }))
   );
 
   // --- Per-user connection vault (secure, on-device) ---
@@ -578,6 +647,113 @@ function registerIpc() {
     vaultSet(service, token, baseUrl)
   );
   ipcMain.handle("vault:delete", (_e, service: string) => vaultDelete(service));
+
+  // Dev-code unlock flags — encrypted on-device like service tokens. Codes are
+  // access flags, not secrets, but the owner asked for keychain storage.
+  ipcMain.handle("gate:get", () => {
+    try {
+      const p = path.join(app.getPath("userData"), "devcodes.json");
+      const raw = fs.readFileSync(p, "utf8");
+      const dec1 = dec(raw);
+      const arr = JSON.parse(dec1 || "[]");
+      return Array.isArray(arr) ? arr : [];
+    } catch { return []; }
+  });
+  ipcMain.handle("gate:set", (_e, codes: string[]) => {
+    try {
+      const p = path.join(app.getPath("userData"), "devcodes.json");
+      fs.writeFileSync(p, enc(JSON.stringify(Array.isArray(codes) ? codes : [])), "utf8");
+      return { ok: true };
+    } catch { return { ok: false }; }
+  });
+
+  // Privacy controls applied at the session level (renderer can't reach the
+  // session directly). Re-applied on boot and whenever the user toggles them.
+  ipcMain.handle("privacy:apply", (_e, p: { dntGpc?: boolean; block3p?: boolean }) => {
+    try { applyPrivacy(p); return { ok: true }; } catch { return { ok: false }; }
+  });
+
+  // ── Agent tools — the Group Terminal crew can call these. Real machine
+  //    access (the user asked for it explicitly); all on-device, no network
+  //    except http_get which the renderer already routes through net:request.
+  // Read a Google Doc using the SAME session the embedded Documents webview
+  // is signed into (persist:hub). Cookies travel, so private docs export
+  // works as long as the user is signed into Google in the Documents tab.
+  ipcMain.handle("docs:read", async (_e, docId: string) => {
+    try {
+      const ses = session.fromPartition("persist:hub");
+      const url = `https://docs.google.com/document/d/${docId}/export?format=txt`;
+      const r = await ses.fetch(url, { method: "GET", redirect: "follow" });
+      const text = await r.text();
+      if (!r.ok || /<html/i.test(text.slice(0, 200))) {
+        return { ok: false, error: `Doc not readable (HTTP ${r.status}). Make sure you're signed into Google in the Documents tab and you have access to this doc.` };
+      }
+      return { ok: true, text: text.slice(0, 40000) };
+    } catch (e) { return { ok: false, error: String(e) }; }
+  });
+
+  // List the user's own Google Docs via Drive's HTML index. Same partition,
+  // so it uses the signed-in session. Returns [{ id, title }, ...].
+  ipcMain.handle("docs:listMine", async () => {
+    try {
+      const ses = session.fromPartition("persist:hub");
+      // Drive's docs.google.com/document home page lists recent docs in HTML.
+      const r = await ses.fetch("https://docs.google.com/document/u/0/?usp=docs_home", { method: "GET", redirect: "follow" });
+      const html = await r.text();
+      if (!r.ok) return { ok: false, error: `HTTP ${r.status}`, docs: [] };
+      // Each entry: /document/d/<id>/edit ... aria-label or anchor text.
+      const out: { id: string; title: string }[] = [];
+      const seen = new Set<string>();
+      // Find every /document/d/<id>/edit URL, then look near it for an
+      // aria-label/title/anchor-text to use as the human title.
+      const idRe = /\/document\/d\/([a-zA-Z0-9_-]{20,})/g;
+      let mm: RegExpExecArray | null;
+      while ((mm = idRe.exec(html))) {
+        const id = mm[1];
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const win = html.slice(Math.max(0, mm.index - 400), Math.min(html.length, mm.index + 400));
+        const t = win.match(/aria-label="([^"]{2,160})"/) || win.match(/title="([^"]{2,160})"/) || win.match(/>([^<>{}\n]{3,160})</);
+        const title = (t ? t[1] : "Untitled").trim();
+        out.push({ id, title });
+        if (out.length >= 50) break;
+      }
+      return { ok: true, docs: out };
+    } catch (e) { return { ok: false, error: String(e), docs: [] }; }
+  });
+
+  ipcMain.handle("tool:exec", async (_e, command: string, cwd?: string) => {
+    return new Promise((resolve) => {
+      try {
+        const { exec } = require("node:child_process") as typeof import("node:child_process");
+        exec(command, { cwd: cwd || os.homedir(), timeout: 60000, maxBuffer: 2 * 1024 * 1024, windowsHide: true },
+          (err, stdout, stderr) => resolve({ ok: !err, code: err ? (err as { code?: number }).code ?? 1 : 0, stdout: String(stdout || "").slice(0, 12000), stderr: String(stderr || "").slice(0, 6000) }));
+      } catch (e) { resolve({ ok: false, code: 1, stdout: "", stderr: String(e) }); }
+    });
+  });
+  ipcMain.handle("tool:readFile", (_e, p: string) => {
+    try { return { ok: true, content: fs.readFileSync(p, "utf8").slice(0, 40000) }; }
+    catch (e) { return { ok: false, error: String(e) }; }
+  });
+  ipcMain.handle("tool:writeFile", (_e, p: string, content: string) => {
+    try { fs.writeFileSync(p, content, "utf8"); return { ok: true }; }
+    catch (e) { return { ok: false, error: String(e) }; }
+  });
+  ipcMain.handle("tool:listDir", (_e, p: string) => {
+    try {
+      const entries = fs.readdirSync(p || os.homedir(), { withFileTypes: true }).slice(0, 300)
+        .map((d) => ({ name: d.name, dir: d.isDirectory() }));
+      return { ok: true, entries };
+    } catch (e) { return { ok: false, error: String(e) }; }
+  });
+}
+
+// Live privacy state, consulted by the header/cookie hooks installed in
+// hardenSessions(). Defaults match the DDG-grade posture.
+const privacyState = { dntGpc: true, block3p: true };
+function applyPrivacy(p: { dntGpc?: boolean; block3p?: boolean }) {
+  if (typeof p.dntGpc === "boolean") privacyState.dntGpc = p.dntGpc;
+  if (typeof p.block3p === "boolean") privacyState.block3p = p.block3p;
 }
 
 // ---------------------------------------------------------------------------
@@ -647,7 +823,7 @@ async function ensureLlm(onProgress?: (p: number) => void): Promise<{ ok: boolea
   }
 }
 
-async function llmChat(system: string, prompt: string): Promise<{ ok: boolean; text?: string; error?: string }> {
+async function llmChat(system: string, prompt: string, opts?: { temperature?: number; maxTokens?: number }): Promise<{ ok: boolean; text?: string; error?: string }> {
   if (!llmReady) {
     const r = await ensureLlm();
     if (!r.ok) return { ok: false, error: r.error || "model not ready" };
@@ -657,7 +833,9 @@ async function llmChat(system: string, prompt: string): Promise<{ ok: boolean; t
   const context = await llamaModel.createContext();
   try {
     const session = new mod.LlamaChatSession({ contextSequence: context.getSequence(), systemPrompt: system });
-    const text = await session.prompt(prompt, { maxTokens: 700 });
+    const maxTokens = Math.max(64, Math.min(4096, opts?.maxTokens ?? 700));
+    const temperature = Math.max(0, Math.min(1.5, opts?.temperature ?? 0.7));
+    const text = await session.prompt(prompt, { maxTokens, temperature });
     return { ok: true, text };
   } finally {
     try {

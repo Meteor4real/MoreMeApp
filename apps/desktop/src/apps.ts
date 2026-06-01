@@ -48,4 +48,9 @@ export const SITE_APPS: AppEntry[] = [
     label: "SignalFinder",
     note: "Opportunity radar — not built yet",
   },
+  {
+    id: "documents",
+    label: "Documents",
+    note: "Your Google Docs, NCH-skinned",
+  },
 ];

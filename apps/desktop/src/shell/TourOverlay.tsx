@@ -35,8 +35,10 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     nav: { kind: "browser" },
-    title: "Our own search results",
-    body: "Type a query in the address bar and you land on about:search — our page, our chrome. Results come from DuckDuckGo's HTML endpoint (zero-track, no key) via the main process and render with Hub styling. You never see the engine's site.",
+    selector: '[data-tour="browser-omni"]',
+    side: "below",
+    title: "The address bar (in-tab)",
+    body: "This is the omnibar — type a URL or a search. Search lands on our own results page with Web / Images / Videos / News / Shopping tabs; you never get bounced to someone else's site. The star bookmarks the page; the icons beside it open Bookmarks, History, Downloads, Passwords and the Extensions dropdown.",
   },
   {
     nav: { kind: "browser" },
@@ -59,8 +61,10 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     nav: { kind: "control" },
-    title: "Manage — the live stat-board",
-    body: "Once a service is connected, Manage pulls real data in parallel: GitHub repo count + top 5 stars, Vercel deployments across personal + every team scope, Cloudflare zones (active/total), Tailscale device count + last-24h online, n8n workflows (active/total). Refresh-all hits every backend at once.",
+    selector: '[data-tour="cp-tabs"]',
+    side: "below",
+    title: "Connect / Manage (in-tab)",
+    body: "These two tabs are the whole Control Panel. CONNECT is the cards — plug in a token, hit Test to verify it. MANAGE is the live board: it auto-refreshes and gives you real actions — redeploy a Vercel build, purge a Cloudflare zone, restart a VPS, toggle an n8n workflow, start/stop a VM or container. Home Assistant + Portainer stream real-time; the rest poll faster while something's mid-change.",
   },
 
   // Terminal — overview + multi-shell
@@ -82,18 +86,25 @@ export const TOUR_STEPS: TourStep[] = [
     nav: { kind: "ai" },
     selector: '[data-tour="rail-ai"]',
     side: "right",
-    title: "AI Group Chat",
-    body: "Three sub-views: chat, projects, configure. House-model agents (BroBot, Voss, Zip, Dex, Lena, Orion) are silent — they only chime in when you @mention them. @Everyone routes to the outside crew (Claude, Gemini, Codex, OpenCode, Hermes) you wire via CLI.",
+    title: "Group Terminal",
+    body: "Your multi-agent room. Create saved chats and switch between them; pick which AIs are in each chat up front (editable any time) — everyone present reads the conversation and answers each other, no @mentions needed. Stop a turn mid-flight, watch the token estimate, and wire the outside crew (Claude, Gemini, Codex, OpenCode, Hermes) in Configure.",
   },
   {
     nav: { kind: "ai" },
-    title: "AI-to-AI mentions",
-    body: "After every turn we scan the agent's reply for @mentions of OTHER agents and chain another round. Capped at 3 hops so they can't talk forever. Lets the crew actually coordinate instead of just answering you in isolation.",
+    selector: '[data-tour="gt-newchat"]',
+    side: "right",
+    title: "New chat (in-tab)",
+    body: "Make as many saved chats as you want and switch between them on the left — there's no clear button. When you create one you pick which AIs are in it (editable any time). Everyone in the chat reads the conversation and answers each other; no @mentions needed.",
+  },
+  {
+    nav: { kind: "ai" },
+    title: "Tools + memory",
+    body: "The crew can call tools — run a shell command, read/write files, search the web, fetch a URL, check system stats, read your allowed Google Docs, and save notes to their own memory — and you SEE every tool call and result inline. Stop halts a turn; a token estimate runs at the bottom. Each agent has editable memory in Configure, and you can build custom agents there too.",
   },
   {
     nav: { kind: "ai" },
     title: "Projects subtab",
-    body: "Hit the projects pill at the top. + New project lets you set a title, end goal, assigned agents, task checklist, owner preferences, and an optional deadline. The crew sees that context on every turn. Kickoff has every assigned agent file an opening plan.",
+    body: "Hit the projects pill at the top. + New project sets a title, end goal, assigned agents, task checklist, preferences, deadline. 'Work session' then drives multi-round autonomous work — agents use tools to push tasks forward and auto-check them off as they finish.",
   },
 
   // Library
@@ -171,28 +182,46 @@ export const TOUR_STEPS: TourStep[] = [
     selector: '[data-tour="rail-settings"]',
     side: "right",
     title: "Settings",
-    body: "Account, theme picker (8 looks including animated vibes), house-AI brain status + redownload, background mode (Tray + run-on-startup for true 24/7), info widget toggles, NT5 broadcast voice mapping + B-roll, search engine, home page. Most of the Hub's behavior is configurable here.",
+    body: "A left-nav of sections grouped into You / Look & Feel / Apps / System / Access. Almost everything the Hub does is configurable here.",
   },
   {
     nav: { kind: "settings" },
-    title: "Themes — vibes, not just colors",
-    body: "Eight themes: Crimson, Cyber, Toxic, Royal, Midnight, Rose, Retro (CRT scanlines + VT323 display font), Futuristic (holographic shimmer + Orbitron), Prehistoric (parchment overlay + Cormorant serif), Oddball (hue-cycling glow + Comic Sans). Each one drops accent colors, a display font, and an animated body vibe layer.",
+    selector: '[data-tour="settings-sec-profile"]',
+    side: "right",
+    title: "Profile (in-tab)",
+    body: "This is YOU. Set your avatar, name, pronouns, location, timezone, birthday, a short bio, your interests and your stack. Every one of these is fed to the AIs as context — so BroBot, the NT5 wire, SignalFinder drafts and Tom all actually know who they're talking to.",
+  },
+  {
+    nav: { kind: "settings" },
+    selector: '[data-tour="settings-sec-appearance"]',
+    side: "right",
+    title: "Appearance (in-tab)",
+    body: "18 themes, each with an animated vibe (ember, neon grid, starfield, matrix rain, vaporwave, aurora, gold shimmer…). Plus font size, accent intensity, reduce-motion, compact density, and rail labels.",
+  },
+  {
+    nav: { kind: "settings" },
+    selector: '[data-tour="settings-sec-music"]',
+    side: "right",
+    title: "Music / OST (in-tab)",
+    body: "A full player — 30 procedurally-synthesized tracks across wildly different genres (lo-fi, drum & bass, trance, chiptune, funk, choral ambient, dub, western, vaporwave). Click any track, filter by genre, set the volume and your startup default. There's a mini player in the bottom ticker too.",
+  },
+  {
+    nav: { kind: "settings" },
+    selector: '[data-tour="settings-sec-dev-codes"]',
+    side: "right",
+    title: "Dev codes (in-tab)",
+    body: "Some apps are hidden by default. Enter 2089 to unlock HALOS + BroBot, or 2078 for MoreMe + DigitalBlueprint. NT5 News and SignalFinder are always visible.",
   },
   {
     nav: { kind: "browser" },
     selector: '[data-tour="floating-info"]',
     side: "left",
     title: "Floating info",
-    body: "Five card types that rotate every 11s: NT5 Breaking, Anchor-desk Filed, Origin Realms live pulse, System pulse (CPU / mem / free disk), and Crew chatter (last group-chat speaker + snippet). Right-click any card to dismiss it for the session; per-type Settings toggles.",
-  },
-  {
-    nav: { kind: "browser" },
-    title: "OST player",
-    body: "Bottom-left corner of the ticker. 18 procedural tracks — open the dropdown to pick. Distinct drum patterns (house / trip / hard / soft / tribal / off), arpeggios, and brand-color tiles. Volume slider, ‹ / ▶ / ›.",
+    body: "Toggleable cards that rotate: NT5 Breaking + Filed, Origin Realms live pulse, system pulse, a live clock (in your timezone), More Me streak, GitHub PRs, Vercel deploys, crew chatter. Right-click to dismiss; turn each on/off in Settings → On-screen info.",
   },
   {
     title: "That's the tour",
-    body: "Hit me up in the ? menu (bottom-left) for questions — I run on the same local brain. Drop feedback in Settings; Davis reads it. Have fun.",
+    body: "Open me any time from the ? button (bottom-left) and ask anything — I run on the local brain and only answer from what's actually in the Hub. Drop ideas in the Feedback tab; Davis reads them. Have fun.",
   },
 ];
 
@@ -295,7 +324,7 @@ function TourCard({
   onNext: () => void;
   onSkip: () => void;
 }) {
-  const W = 320, H = 168, M = 18;
+  const W = 400, H = 210, M = 18;
   const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
   const vh = typeof window !== "undefined" ? window.innerHeight : 800;
   let left: number; let top: number;
@@ -331,8 +360,8 @@ function TourCard({
         </span>
         <button onClick={onSkip} title="Skip" style={{ background: "none", border: "none", color: "var(--mute)", cursor: "pointer", fontSize: 14 }}>✕</button>
       </div>
-      <div style={{ fontSize: 14, color: "#fff", fontWeight: 600, marginBottom: 6 }}>{step.title}</div>
-      <div style={{ fontSize: 12, color: "#cbd5e1", lineHeight: 1.5 }}>{step.body}</div>
+      <div style={{ fontSize: 16, color: "#fff", fontWeight: 700, marginBottom: 7 }}>{step.title}</div>
+      <div style={{ fontSize: 14, color: "#d7dde6", lineHeight: 1.6 }}>{step.body}</div>
       <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
         <button className="btn" onClick={onPrev} disabled={isFirst} style={{ opacity: isFirst ? 0.4 : 1 }}>← Back</button>
         <button className="btn" onClick={onSkip}>Skip</button>

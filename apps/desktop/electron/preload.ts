@@ -27,12 +27,40 @@ const api = {
   }): Promise<{ ok: boolean; status: number; data?: unknown; error?: string }> =>
     ipcRenderer.invoke("net:request", opts),
 
+  gate: {
+    get: (): Promise<string[]> => ipcRenderer.invoke("gate:get"),
+    set: (codes: string[]): Promise<{ ok: boolean }> => ipcRenderer.invoke("gate:set", codes),
+  },
+
+  privacy: {
+    apply: (p: { dntGpc?: boolean; block3p?: boolean }): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("privacy:apply", p),
+  },
+
+  docs: {
+    read: (id: string): Promise<{ ok: boolean; text?: string; error?: string }> =>
+      ipcRenderer.invoke("docs:read", id),
+    listMine: (): Promise<{ ok: boolean; docs: { id: string; title: string }[]; error?: string }> =>
+      ipcRenderer.invoke("docs:listMine"),
+  },
+
+  tool: {
+    exec: (command: string, cwd?: string): Promise<{ ok: boolean; code: number; stdout: string; stderr: string }> =>
+      ipcRenderer.invoke("tool:exec", command, cwd),
+    readFile: (p: string): Promise<{ ok: boolean; content?: string; error?: string }> =>
+      ipcRenderer.invoke("tool:readFile", p),
+    writeFile: (p: string, content: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("tool:writeFile", p, content),
+    listDir: (p: string): Promise<{ ok: boolean; entries?: { name: string; dir: boolean }[]; error?: string }> =>
+      ipcRenderer.invoke("tool:listDir", p),
+  },
+
   llm: {
     status: (): Promise<{ ready: boolean; downloading: boolean; progress: number }> =>
       ipcRenderer.invoke("llm:status"),
     ensure: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke("llm:ensure"),
-    chat: (system: string, prompt: string): Promise<{ ok: boolean; text?: string; error?: string }> =>
-      ipcRenderer.invoke("llm:chat", system, prompt),
+    chat: (system: string, prompt: string, opts?: { temperature?: number; maxTokens?: number }): Promise<{ ok: boolean; text?: string; error?: string }> =>
+      ipcRenderer.invoke("llm:chat", system, prompt, opts),
     onProgress: (cb: (p: number) => void) => {
       const fn = (_e: unknown, p: number) => cb(p);
       ipcRenderer.on("llm:progress", fn);
@@ -100,8 +128,8 @@ const api = {
   },
 
   terminal: {
-    start: (sessionId: string, cols: number, rows: number): Promise<{ ok: boolean; error?: string }> =>
-      ipcRenderer.invoke("term:start", sessionId, cols, rows),
+    start: (sessionId: string, cols: number, rows: number, shellKind?: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("term:start", sessionId, cols, rows, shellKind),
     input: (sessionId: string, data: string) => ipcRenderer.send("term:input", sessionId, data),
     resize: (sessionId: string, cols: number, rows: number) =>
       ipcRenderer.send("term:resize", sessionId, cols, rows),

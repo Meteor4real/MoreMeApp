@@ -12,10 +12,39 @@
   const KEY = "nt5wire.articles";
   const ANCH = { voss: "Voss Calloway", zara: "Zip Kindle", dex: "Dex Morrow", lena: "Lena Faust", orin: "Orion Vale" };
 
-  // Force full-page reloads on internal link clicks so each subpage gets the
-  // correct per-depth asset paths. Without this, Next's client-side router
-  // would try to fetch ./_next/... chunks from a subpage URL and 404 the tab
-  // into a white screen.
+  // The bundle is served from a path like .../embedded/nt5/. Compute that
+  // base so absolute hrefs like "/article/foo/" can be rewritten to point
+  // INSIDE the bundle instead of the iframe document root (which 404s and
+  // produces the white-screen-on-click bug).
+  let NT5_BASE = "";
+  try {
+    const here = document.currentScript && document.currentScript.src;
+    if (here) NT5_BASE = here.replace(/nt5-shim\.js(\?.*)?$/, "");
+  } catch (e) { /* ignore */ }
+  if (!NT5_BASE) {
+    // Fallback: assume location.pathname includes ".../embedded/nt5/..."
+    const m = location.pathname.match(/^(.*?\/embedded\/nt5\/)/);
+    NT5_BASE = m ? location.origin + m[1] : location.href.replace(/[^\/]*$/, "");
+  }
+
+  function rewriteAbs(href) {
+    if (!href || typeof href !== "string") return href;
+    if (href[0] !== "/") return href;
+    if (href.startsWith("//")) return href;
+    let target = NT5_BASE + href.replace(/^\/+/, "");
+    // Next's static export emits subroutes as directories with index.html.
+    if (!/\.[a-z0-9]+($|\?|#)/i.test(target)) {
+      const qm = target.indexOf("?");
+      const hm = target.indexOf("#");
+      const cut = qm >= 0 ? qm : hm >= 0 ? hm : target.length;
+      const pathPart = target.slice(0, cut);
+      const tail = target.slice(cut);
+      if (!pathPart.endsWith("/")) target = pathPart + "/" + tail;
+    }
+    return target;
+  }
+
+  // Capture-phase click interceptor for any in-app link.
   document.addEventListener("click", function (e) {
     let el = e.target;
     while (el && el.nodeType === 1 && el.tagName !== "A") el = el.parentNode;
@@ -26,11 +55,35 @@
     if (href.startsWith("http://") || href.startsWith("https://") || href.startsWith("mailto:") || href.startsWith("#")) return;
     e.preventDefault();
     e.stopPropagation();
+    e.stopImmediatePropagation();
     try {
-      const u = new URL(href, location.href);
-      location.href = u.href;
+      if (href[0] === "/") {
+        location.href = rewriteAbs(href);
+      } else {
+        const u = new URL(href, location.href);
+        location.href = u.href;
+      }
     } catch (err) { /* fall through */ }
   }, true);
+
+  // Next's App Router uses history.pushState / replaceState for client-side
+  // navigation, which bypasses link clicks entirely. Intercepting these and
+  // forcing a real navigation is what actually kills the white-out — clicks
+  // alone weren't enough.
+  function hookHistory(name) {
+    const orig = history[name];
+    history[name] = function (state, title, url) {
+      if (url && typeof url === "string" && url[0] === "/") {
+        location.href = rewriteAbs(url);
+        return;
+      }
+      return orig.apply(this, arguments);
+    };
+  }
+  try { hookHistory("pushState"); hookHistory("replaceState"); } catch (e) { /* ignore */ }
+
+  // Block Next's prefetch fetches for absolute paths so they don't 404 noisy.
+  // (The actual page navigation goes through the hook above.)
 
   const H = (h) => new Date(Date.now() - h * 3600e3).toISOString();
   const slug = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
@@ -93,6 +146,11 @@
 
   window.fetch = function (url, opts) {
     const u = typeof url === "string" ? url : (url && url.url) || "";
+    // Swallow Next.js prefetch RSC requests for absolute paths — they have
+    // no server to answer and would 404 noisily.
+    if (u.indexOf("/_next/data") !== -1 || (typeof u === "string" && u[0] === "/" && u.indexOf("?_rsc") !== -1)) {
+      return Promise.resolve(new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
+    }
     if (u.indexOf("/api/") === -1) return realFetch(url, opts);
     const q = u.indexOf("?") !== -1 ? new URLSearchParams(u.slice(u.indexOf("?") + 1)) : new URLSearchParams();
     const all = articles();

@@ -7,30 +7,30 @@ import { TOUR_STEPS, TourOverlay } from "./TourOverlay";
 // Q&A about the app powered by the bundled local model, and a shared feedback
 // feed everyone can see.
 
-const APP_GUIDE =
-  "You are Tutorial Tom, the friendly in-app guide for NetworkChuck Hub — a dark, " +
-  "glowing-red desktop command center. Answer questions about the app concisely and " +
-  "help users find things. What the app contains: " +
-  "LEFT RAIL — Browser (the default canvas; tabs that survive restarts, address bar " +
-  "with bookmarks, extensions dropdown, more-menu for History/Downloads/Passwords/" +
-  "TabGroups; configurable search engine + home page). Control Panel (connect your " +
-  "own services: GitHub, Vercel, Supabase, Cloudflare, Tailscale, Twingate, n8n, " +
-  "YouTube, Home Assistant, Proxmox, Portainer, Pi-hole, Frigate, ZimaCube, Hermes, " +
-  "Hostinger; tokens encrypted on-device via OS keychain). Terminal (real Windows " +
-  "PowerShell via node-pty). AI Group Chat (BroBot + NT5 anchors run on the bundled " +
-  "local model and are always on call; outside crew — Claude, Gemini, Codex, " +
-  "OpenCode, Hermes — connect via their CLI tools in Configure). Library (Steam " +
-  "auto-detect + Modrinth + Blockbench). " +
-  "EMBEDDED APPS (all real, bundled offline): MoreMe (DP-mint daily checklist + " +
-  "calendar), SignalFinder (opportunity-scoring CRM), NT5 (S.P.A.C.E. News carbon " +
-  "copy with an in-app wire scheduler that posts fresh anchor articles into the " +
-  "bundled site every few minutes), HALOS (telemetry + alien codex + stocks + " +
-  "roster, Polar Cosmos Crew renamed), DigitalBlueprint (three.js editor + PBR " +
-  "materials + house-model scene generator), BroBot (the real BroBot app, " +
-  "windowed in, running on the same local brain BroBot uses in the group chat). " +
-  "Plus floating info widgets (NT5 breaking, Origin Realms server pulse), a " +
-  "bottom ticker + notifications, OST player, accounts via Supabase, and feedback " +
-  "in Tom's Feedback tab. Keep answers short and practical.";
+// Tom's complete, grounded knowledge of NetworkChuck Hub. He answers ONLY from
+// this — if something isn't covered he says he's not sure rather than guessing.
+const APP_GUIDE = [
+  "You are Tutorial Tom, the friendly in-app guide for NetworkChuck Hub (NCH) — a dark, glowing red->pink->orange Windows-first desktop command center built with Electron.",
+  "STRICT RULES: Answer ONLY from the facts below. Never invent features, keys, prices, or steps. If something isn't covered here, say plainly 'I'm not sure that's a thing in the Hub' and point them to the closest real feature. Be concise, friendly, practical. No emojis.",
+  "",
+  "LEFT RAIL (top to bottom): Browser, Control Panel, Terminal, Group Terminal, Library, then the embedded apps (NT5 News, SignalFinder always visible; HALOS + BroBot need dev code 2089; MoreMe + DigitalBlueprint need dev code 2078; Documents appears once Google Docs is connected), then your Profile avatar button and Settings at the bottom.",
+  "",
+  "BROWSER — the default canvas. Our own chrome: tabs that survive restarts, an address bar with back/forward/reload/home, a star to bookmark, and quick icons for Bookmarks, History, Downloads, Passwords, Extensions. Search routes to an in-app results page (Web / Images / Videos / News / Shopping tabs) — it does NOT just bounce you to DuckDuckGo. ~20 house extensions toggle from the puzzle icon. Search engine + home page are set in Settings -> Browser. Tracker blocking, HTTPS-upgrade, DNT/GPC and (optional) third-party-cookie blocking are on.",
+  "",
+  "CONTROL PANEL — two tabs. CONNECT: cards for your own services (GitHub, Vercel, Supabase, Cloudflare, Tailscale, Twingate, n8n, YouTube, Home Assistant, Proxmox, Portainer, Pi-hole, Frigate, ZimaCube, Hermes, Hostinger, Pexels, plus Google Docs and the Modrinth/Blockbench launchers). Each has a Test button. Tokens are encrypted on-device in the OS keychain — never bundled. MANAGE: live, auto-refreshing per-service panels with real actions (Vercel redeploy/promote/cancel, GitHub PRs + re-run Actions, Cloudflare purge cache, Tailscale device tag/delete, n8n run/toggle, Proxmox/Portainer/Hostinger power, etc.). Home Assistant + Portainer get real-time push; others hot-poll while something is changing.",
+  "",
+  "TERMINAL — real shells via node-pty. Multiple tabs, each can be PowerShell / pwsh / cmd / WSL / bash / zsh (the '+ new shell' dropdown). Split button shows two panes side by side. Copy with Ctrl/Cmd+C (when text is selected), paste with Ctrl/Cmd+V or right-click; 8000-line scrollback. A toolbar quick-launches the CLI agents (Claude/Gemini/Codex/OpenCode), saves command snippets, and an AI bar turns plain English into a command (Insert or Run), plus Explain and Fix-error buttons.",
+  "",
+  "GROUP TERMINAL — the multi-agent room. Create saved chats and switch between them (no clear button — just make a new chat). Pick which AIs are in each chat up front, editable any time from the participants bar. Everyone present reads the whole conversation and answers each other — no @mentions needed. They can call TOOLS (run a shell command, read/write files, search the web, fetch a URL, check system stats, read your allowed Google Docs, and save things to their own memory) and you SEE the tool calls + results inline. Stop halts a turn; a token estimate shows at the bottom. BroBot + the NT5 anchors (Voss, Zip, Dex, Lena, Orion) run on the bundled local model (no setup); the outside crew (Claude, Gemini, Codex, OpenCode, Hermes) connect via their CLI in Configure. You can create your own custom agents (name, role, personality, avatar, transport). Each agent has editable per-agent memory. The Projects sub-tab assigns agents a goal + task checklist + deadline and a 'Work session' button drives multi-round autonomous progress, auto-checking tasks.",
+  "",
+  "LIBRARY — auto-detects installed Steam games (custom banner/name/icon-size per game); Modrinth + Blockbench launch from the Control Panel.",
+  "",
+  "EMBEDDED APPS: NT5 News (S.P.A.C.E. News — a Newsroom with hero/rails/ticker/anchor roster + read-aloud + teleprompter; a Wire iframe; and a Studio that composes real video from Pexels clips, your DigitalBlueprint scenes, and title cards; an in-app wire posts fresh anchor articles + real-world RSS briefs). SignalFinder (opportunity-scoring networking CRM: Today / Targets / Pipeline / AI Studio / Templates / Stats / Settings). HALOS (telemetry + Andromadean alien codex + Polar Cosmos Crew renames). DigitalBlueprint (three.js editor: 15 shapes, 10 procedural textures, full PBR materials, per-object animations + click-interactions, Orbit/Freecam/Walk cameras, an AI scene generator, scenes you can save). MoreMe (mint daily checklist, XP, calendar). BroBot (the real BroBot app, windowed in, on the same local brain).",
+  "",
+  "SETTINGS — left-nav with sections: Profile (avatar, name, pronouns, location, timezone, birthday, bio, interests, stack — all fed into every AI as context), Appearance (18 animated themes, font size, accent intensity, reduce motion, compact density, rail labels), On-screen info (toggle the floating widgets + ticker + wire interval), Browser, AI Group Chat (tone/length/chain depth), House AI brain (download/temperature/max tokens/system prefix), NT5 broadcast (anchor voices), Music/OST (a full player — 30 tracks across many genres), Notifications, Privacy & security, Background mode, Dev codes (enter 2089 / 2078 to unlock gated apps), Account, Feedback feed.",
+  "",
+  "ALSO: floating info widgets (NT5 breaking, Origin Realms pulse, system pulse, clock, more), a bottom ticker + toast notifications, an OST music player (also a mini player in the ticker), accounts via Supabase, and the Documents tab (our-skinned Google Docs once connected — AIs can read your docs, and you can block any doc from them).",
+].join("\n");
 
 type FeedbackItem = { id: string; author: string; text: string; ts: number };
 const FKEY = "hub:feedback";
@@ -101,10 +101,10 @@ export function TutorialTom() {
       </button>
 
       {open && (
-        <div className="panel" style={{ position: "fixed", left: 74, bottom: 92, zIndex: 10000, width: 380, maxWidth: "85vw", height: 460, maxHeight: "75vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div className="mono" style={{ padding: "10px 12px", borderBottom: "1px solid var(--line)", fontSize: 12, letterSpacing: 1, color: "var(--mute)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span>Tutorial Tom</span>
-            <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", color: "var(--mute)", cursor: "pointer" }}>✕</button>
+        <div className="panel" style={{ position: "fixed", left: 74, bottom: 92, zIndex: 10000, width: 560, maxWidth: "92vw", height: 680, maxHeight: "84vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 12px 40px rgba(0,0,0,0.6), 0 0 30px rgba(255,51,85,0.15)" }}>
+          <div className="mono" style={{ padding: "12px 14px", borderBottom: "1px solid var(--line)", fontSize: 14, letterSpacing: 1, color: "var(--ink)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span className="glow-text" style={{ fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, letterSpacing: 2 }}>TUTORIAL TOM</span>
+            <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", color: "var(--mute)", cursor: "pointer", fontSize: 16 }}>✕</button>
           </div>
           <div style={{ display: "flex", gap: 6, padding: 8, borderBottom: "1px solid var(--line)" }}>
             {(["tour", "ask", "feedback"] as const).map((t) => (
@@ -133,9 +133,9 @@ export function TutorialTom() {
               <div ref={scroller} style={{ flex: 1, overflow: "auto", padding: 12 }}>
                 {thread.length === 0 && <div style={{ fontSize: 12, color: "var(--mute)" }}>Ask me anything about the app.</div>}
                 {thread.map((m, i) => (
-                  <div key={i} style={{ marginBottom: 8 }}>
-                    <span className="mono" style={{ fontSize: 10, color: m.who === "you" ? "var(--orange)" : "var(--pink)" }}>{m.who === "you" ? "you" : "Tom"}</span>
-                    <div style={{ fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{m.text}</div>
+                  <div key={i} style={{ marginBottom: 12 }}>
+                    <span className="mono" style={{ fontSize: 11, color: m.who === "you" ? "var(--orange)" : "var(--pink)" }}>{m.who === "you" ? "you" : "Tom"}</span>
+                    <div style={{ fontSize: 15, whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{m.text}</div>
                   </div>
                 ))}
                 {busy && <div style={{ fontSize: 12, color: "var(--mute)" }}>Tom is thinking…</div>}

@@ -40,8 +40,10 @@ export const ICON: Record<string, ReactNode> = {
   // Hub panels
   control: hubSvg(<><circle cx="12" cy="13" r="7" /><path d="M12 13 L15.5 9.5" /><path d="M5 13h1M18 13h1M12 6v1" /></>),
   terminal: hubSvg(<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 9l3 3-3 3M13 15h4" /></>),
-  // Plain speech-bubble mark — matches the rest of the rail's stroke style.
-  ai: hubSvg(<path d="M4 5h13a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7l-4 3v-3H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />),
+  // Plain speech-bubble mark — centered to match the rest of the rail.
+  // Bubble body 4-20 × 5-17, tail tucked under so the visual center sits at
+  // (12,12) like every other 24×24 icon in this set.
+  ai: hubSvg(<path d="M4 5h16a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 20 17h-7l-4 3v-3H4a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 4 5z" />),
   browser: hubSvg(<><circle cx="12" cy="12" r="8" /><path d="M4 12h16M12 4c2.5 2.5 2.5 13 0 16M12 4c-2.5 2.5-2.5 13 0 16" /></>),
   library: hubSvg(<><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M10 9l5 3-5 3z" fill="url(#nchg)" /></>),
   settings: hubSvg(<><circle cx="12" cy="12" r="3" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4" /></>),
@@ -126,6 +128,22 @@ export const ICON: Record<string, ReactNode> = {
       <rect width="24" height="24" rx="5" fill="#08070a" />
       <rect x="1.5" y="1.5" width="21" height="21" rx="4" fill="none" stroke="url(#brogold)" strokeWidth="0.9" />
       <text x="12" y="16.5" textAnchor="middle" fontFamily="'Cinzel','Cormorant Garamond',serif" fontWeight={700} fontSize="11" fill="url(#brogold)" letterSpacing="0.5">B</text>
+    </svg>
+  ),
+
+  // Documents: the Google Docs silhouette in NCH red→orange.
+  documents: (
+    <svg width={S} height={S} viewBox="0 0 48 48" className="rail-ico">
+      <defs>
+        <linearGradient id="docs-rail" x1="0" y1="0" x2="48" y2="48">
+          <stop offset="0" stopColor="#ff2d4a" /><stop offset="0.55" stopColor="#ff5577" /><stop offset="1" stopColor="#ff7a2d" />
+        </linearGradient>
+      </defs>
+      <path d="M12 3 h18 l10 10 v30 a2 2 0 0 1-2 2 H12 a2 2 0 0 1-2-2 V5 a2 2 0 0 1 2-2 z" fill="url(#docs-rail)" />
+      <path d="M30 3 l10 10 h-9 a1 1 0 0 1-1-1 z" fill="#0a0810" opacity="0.35" />
+      <g stroke="#fff" strokeWidth="2.4" strokeLinecap="round" opacity="0.92">
+        <line x1="16" y1="22" x2="34" y2="22" /><line x1="16" y1="28" x2="34" y2="28" /><line x1="16" y1="34" x2="28" y2="34" />
+      </g>
     </svg>
   ),
 

@@ -42,7 +42,10 @@ const DB_STYLE = `
 // that turns a prompt into placeable, editable objects. No mesh authoring —
 // scope is exactly "Blender minus making models yourself".
 
-type Shape = "box" | "sphere" | "cylinder" | "cone" | "torus" | "plane";
+type Shape =
+  | "box" | "sphere" | "cylinder" | "cone" | "torus" | "plane"
+  | "torusKnot" | "capsule" | "tetrahedron" | "octahedron"
+  | "dodecahedron" | "icosahedron" | "ring" | "pyramid" | "wedge";
 
 function geom(shape: Shape): THREE.BufferGeometry {
   switch (shape) {
@@ -51,6 +54,32 @@ function geom(shape: Shape): THREE.BufferGeometry {
     case "cone": return new THREE.ConeGeometry(0.6, 1.2, 48);
     case "torus": return new THREE.TorusGeometry(0.5, 0.2, 24, 64);
     case "plane": return new THREE.PlaneGeometry(1.5, 1.5);
+    case "torusKnot": return new THREE.TorusKnotGeometry(0.5, 0.16, 96, 16);
+    case "capsule": return new THREE.CapsuleGeometry(0.4, 0.9, 8, 16);
+    case "tetrahedron": return new THREE.TetrahedronGeometry(0.7);
+    case "octahedron": return new THREE.OctahedronGeometry(0.7);
+    case "dodecahedron": return new THREE.DodecahedronGeometry(0.7);
+    case "icosahedron": return new THREE.IcosahedronGeometry(0.7);
+    case "ring": return new THREE.RingGeometry(0.3, 0.7, 48);
+    case "pyramid": return new THREE.ConeGeometry(0.7, 1.1, 4);
+    case "wedge": {
+      // Right-triangular prism: a wedge / ramp.
+      const g = new THREE.BufferGeometry();
+      const v = new Float32Array([
+        -0.5,-0.5,-0.5,  0.5,-0.5,-0.5,  0.5, 0.5,-0.5,
+        -0.5,-0.5, 0.5,  0.5,-0.5, 0.5,  0.5, 0.5, 0.5,
+      ]);
+      const i = new Uint16Array([
+        0,1,2,        3,5,4,
+        0,2,5, 0,5,3,
+        1,4,5, 1,5,2,
+        0,3,4, 0,4,1,
+      ]);
+      g.setAttribute("position", new THREE.BufferAttribute(v, 3));
+      g.setIndex(new THREE.BufferAttribute(i, 1));
+      g.computeVertexNormals();
+      return g;
+    }
     default: return new THREE.BoxGeometry(1, 1, 1);
   }
 }
@@ -107,6 +136,51 @@ function makeTexture(kind: string, color = "#888888"): THREE.CanvasTexture | nul
     x.putImageData(img, 0, 0);
   } else if (kind === "dots") {
     for (let i = 16; i < 256; i += 40) for (let j = 16; j < 256; j += 40) { x.beginPath(); x.arc(i, j, 8, 0, 7); x.fill(); }
+  } else if (kind === "brick") {
+    // Offset rows of bricks with mortar gaps.
+    x.fillStyle = "rgba(0,0,0,0.45)"; x.fillRect(0, 0, 256, 256);
+    x.fillStyle = color;
+    const bw = 64, bh = 32;
+    for (let row = 0; row < 256 / bh; row++) {
+      const off = (row % 2) * (bw / 2);
+      for (let col = -1; col * bw - off < 256; col++) x.fillRect(col * bw - off + 2, row * bh + 2, bw - 4, bh - 4);
+    }
+  } else if (kind === "wood") {
+    // Sinusoidal grain along the x axis, varying intensity.
+    const img = x.getImageData(0, 0, 256, 256);
+    for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
+      const idx = (j * 256 + i) * 4;
+      const g = Math.sin(i * 0.05 + Math.sin(j * 0.04) * 1.6) * 22 + Math.sin(i * 0.3) * 6;
+      img.data[idx] = Math.max(0, Math.min(255, img.data[idx] + g));
+      img.data[idx + 1] = Math.max(0, Math.min(255, img.data[idx + 1] + g * 0.6));
+      img.data[idx + 2] = Math.max(0, Math.min(255, img.data[idx + 2] + g * 0.3));
+    }
+    x.putImageData(img, 0, 0);
+  } else if (kind === "marble") {
+    // Turbulent veins via stacked sines.
+    const img = x.getImageData(0, 0, 256, 256);
+    for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
+      const idx = (j * 256 + i) * 4;
+      const t = Math.sin((i + Math.sin(j * 0.07) * 16) * 0.07 + Math.cos(j * 0.05) * 1.2) * 0.5 + 0.5;
+      const v = Math.pow(t, 3) * 120 - 60;
+      img.data[idx] = Math.max(0, Math.min(255, img.data[idx] + v));
+      img.data[idx + 1] = Math.max(0, Math.min(255, img.data[idx + 1] + v));
+      img.data[idx + 2] = Math.max(0, Math.min(255, img.data[idx + 2] + v));
+    }
+    x.putImageData(img, 0, 0);
+  } else if (kind === "cells") {
+    // Voronoi-ish cell pattern from random seeds.
+    const seeds = Array.from({ length: 18 }, () => [Math.random() * 256, Math.random() * 256]);
+    const img = x.getImageData(0, 0, 256, 256);
+    for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
+      let m = 1e9; for (const [sx, sy] of seeds) { const d = (sx - i) * (sx - i) + (sy - j) * (sy - j); if (d < m) m = d; }
+      const v = Math.min(80, Math.sqrt(m) * 1.2 - 12);
+      const idx = (j * 256 + i) * 4;
+      img.data[idx] = Math.max(0, Math.min(255, img.data[idx] - v));
+      img.data[idx + 1] = Math.max(0, Math.min(255, img.data[idx + 1] - v));
+      img.data[idx + 2] = Math.max(0, Math.min(255, img.data[idx + 2] - v));
+    }
+    x.putImageData(img, 0, 0);
   }
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -146,16 +220,38 @@ export function DigitalBlueprint() {
   const selected = useRef<THREE.Mesh | null>(null);
   const hemi = useRef<THREE.HemisphereLight>();
   const sun = useRef<THREE.DirectionalLight>();
-  const api = useRef<{ setWalk: (b: boolean) => void; importGlb: (f: File) => void }>({
+  const api = useRef<{
+    setWalk: (b: boolean) => void;
+    importGlb: (f: File) => void;
+    mode: "orbit" | "walk" | "freecam";
+    setMode: (m: "orbit" | "walk" | "freecam") => void;
+    playStep: (dt: number, t: number) => void;
+    exportPng: () => void;
+    exportJson: () => void;
+    importJson: (text: string) => void;
+    deleteSelected?: () => void;
+    duplicateSelected?: () => void;
+    toggleHelp?: () => void;
+  }>({
     setWalk: () => {},
     importGlb: () => {},
+    mode: "orbit",
+    setMode: () => {},
+    playStep: () => {},
+    exportPng: () => {},
+    exportJson: () => {},
+    importJson: () => {},
   });
-  const [mode, setMode] = useState<"orbit" | "walk">("orbit");
+  const [mode, setMode] = useState<"orbit" | "walk" | "freecam">("orbit");
+  const [playMode, setPlayMode] = useState(false);
+  const playRef = useRef(false);
+  useEffect(() => { playRef.current = playMode; }, [playMode]);
   const [snap, setSnap] = useState<Snap | null>(null);
   const [prompt, setPrompt] = useState("a small sci-fi reactor: a glowing core sphere flanked by metal pillars");
   const [genStatus, setGenStatus] = useState<string | null>(null);
   const [atmos, setAtmos] = useState<Atmosphere>(DEFAULT_ATMOSPHERE);
   const [showAllLabels, setShowAllLabels] = useState(true);
+  const [showHelp, setShowHelp] = useState(false);
   // Re-renders the annotation overlay every animation frame so labels track
   // the camera. Cheap: we cap labels at the object count.
   const [, setTick] = useState(0);
@@ -214,6 +310,74 @@ export function DigitalBlueprint() {
         controls.enabled = true;
       }
     };
+    // Freecam: WASDQE move, mouse-drag look, no pointer-lock, no gravity. Lets
+    // you fly the camera without losing the cursor (good for screenshots and
+    // precise framing).
+    const freecamYaw = { val: 0 };
+    const freecamPitch = { val: 0 };
+    let freecamDragging = false;
+    let freecamLastX = 0, freecamLastY = 0;
+    const fcDown = (e: MouseEvent) => { if (api.current.mode !== "freecam") return; freecamDragging = true; freecamLastX = e.clientX; freecamLastY = e.clientY; };
+    const fcUp = () => { freecamDragging = false; };
+    const fcMove = (e: MouseEvent) => {
+      if (!freecamDragging || api.current.mode !== "freecam") return;
+      const dx = e.clientX - freecamLastX; const dy = e.clientY - freecamLastY;
+      freecamLastX = e.clientX; freecamLastY = e.clientY;
+      freecamYaw.val -= dx * 0.0035;
+      freecamPitch.val -= dy * 0.0035;
+      freecamPitch.val = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, freecamPitch.val));
+      const euler = new THREE.Euler(freecamPitch.val, freecamYaw.val, 0, "YXZ");
+      cam.quaternion.setFromEuler(euler);
+    };
+    rnd.domElement.addEventListener("mousedown", fcDown);
+    window.addEventListener("mouseup", fcUp);
+    window.addEventListener("mousemove", fcMove);
+    api.current.mode = "orbit";
+    api.current.setMode = (m: "orbit" | "walk" | "freecam") => {
+      api.current.mode = m;
+      if (m === "walk") { controls.enabled = false; pointer.lock(); }
+      else if (m === "orbit") { try { pointer.unlock(); } catch { /* ignore */ } controls.enabled = true; }
+      else if (m === "freecam") {
+        try { pointer.unlock(); } catch { /* ignore */ }
+        controls.enabled = false;
+        // Seed freecam yaw/pitch from current camera orientation.
+        const euler = new THREE.Euler().setFromQuaternion(cam.quaternion, "YXZ");
+        freecamYaw.val = euler.y; freecamPitch.val = euler.x;
+      }
+      setMode(m);
+    };
+    // Per-object animations driven by mesh.userData.anim in Play mode.
+    api.current.playStep = (dt: number, t: number) => {
+      if (!playRef.current) return;
+      for (const m of objects.current) {
+        const a = (m.userData.anim as { kind?: string; speed?: number; axis?: string; amp?: number; baseY?: number; basePx?: number; basePz?: number; baseScale?: number; baseColor?: string; centerX?: number; centerZ?: number; radius?: number } | undefined);
+        if (!a || !a.kind || a.kind === "none") continue;
+        const sp = a.speed ?? 1;
+        if (a.kind === "spin") {
+          const ax = a.axis || "y";
+          if (ax === "x") m.rotation.x += sp * dt;
+          else if (ax === "z") m.rotation.z += sp * dt;
+          else m.rotation.y += sp * dt;
+        } else if (a.kind === "bob") {
+          if (a.baseY == null) a.baseY = m.position.y;
+          m.position.y = a.baseY + (a.amp || 0.3) * Math.sin(t * sp * 2);
+        } else if (a.kind === "pulse") {
+          if (a.baseScale == null) a.baseScale = m.scale.x;
+          const s = (a.baseScale || 1) * (1 + (a.amp || 0.2) * Math.sin(t * sp * 2));
+          m.scale.setScalar(s);
+        } else if (a.kind === "orbitAround") {
+          if (a.basePx == null) a.basePx = m.position.x;
+          if (a.basePz == null) a.basePz = m.position.z;
+          const r = a.radius || 1.5;
+          const cx = a.centerX ?? 0; const cz = a.centerZ ?? 0;
+          m.position.x = cx + r * Math.cos(t * sp);
+          m.position.z = cz + r * Math.sin(t * sp);
+        } else if (a.kind === "colorCycle") {
+          const mat = m.material as THREE.MeshPhysicalMaterial;
+          mat.color.setHSL(((t * sp * 0.1) % 1 + 1) % 1, 0.6, 0.55);
+        }
+      }
+    };
     api.current.importGlb = (file: File) => {
       file.arrayBuffer().then((buf) => {
         new GLTFLoader().parse(buf, "", (gltf) => {
@@ -234,9 +398,56 @@ export function DigitalBlueprint() {
       const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       ray.setFromCamera(ndc, cam);
       const hit = ray.intersectObjects(objects.current, false)[0];
+      if (playRef.current && hit) {
+        // Play mode: fire the per-object interaction instead of selecting.
+        const mesh = hit.object as THREE.Mesh;
+        const inter = mesh.userData.interaction as { onClick?: string; url?: string } | undefined;
+        if (inter?.onClick) {
+          const mat = mesh.material as THREE.MeshPhysicalMaterial;
+          switch (inter.onClick) {
+            case "toggleVisible": mesh.visible = !mesh.visible; break;
+            case "swapColor": {
+              const prev = (mesh.userData.prevColor as string) || "#" + mat.color.getHexString();
+              const next = (mesh.userData.altColor as string) || "#ff5577";
+              mesh.userData.prevColor = "#" + mat.color.getHexString();
+              mesh.userData.altColor = prev;
+              mat.color.set(next);
+              break;
+            }
+            case "firePulse": {
+              const baseI = mat.emissiveIntensity;
+              mat.emissiveIntensity = Math.max(2, baseI + 2);
+              setTimeout(() => { mat.emissiveIntensity = baseI; }, 220);
+              break;
+            }
+            case "toggleAnim": {
+              const a = mesh.userData.anim as { kind?: string; paused?: boolean } | undefined;
+              if (a) a.paused = !a.paused;
+              break;
+            }
+            case "openUrl": if (inter.url) window.open(inter.url, "_blank"); break;
+          }
+          return;
+        }
+      }
       select(hit ? (hit.object as THREE.Mesh) : null);
     };
     rnd.domElement.addEventListener("click", onClick);
+
+    // Keyboard shortcuts — Delete to delete, Ctrl/Cmd+D to duplicate, F to
+    // frame the selected, Esc clears selection, ? toggles help.
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA") return;
+      if (pointer.isLocked) return;
+      if (e.key === "Delete" || e.key === "Backspace") { api.current.deleteSelected?.(); }
+      else if ((e.key === "d" || e.key === "D") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); api.current.duplicateSelected?.(); }
+      else if (e.key === "f" || e.key === "F") {
+        const m = selected.current; if (m) { const p = m.position; controls.target.set(p.x, p.y, p.z); }
+      } else if (e.key === "Escape") { select(null); }
+      else if (e.key === "?" || (e.shiftKey && e.key === "/")) { api.current.toggleHelp?.(); }
+      else if (e.key === "g" || e.key === "G") { api.current.toggleHelp?.(); }
+    };
+    window.addEventListener("keydown", onKey);
 
     const resize = () => {
       const w = el.clientWidth, h = el.clientHeight;
@@ -250,17 +461,43 @@ export function DigitalBlueprint() {
 
     let raf = 0;
     let frame = 0;
+    let elapsed = 0;
+    // Walk-mode gravity / jump.
+    let walkVy = 0;
+    const WALK_GRAVITY = -14;
+    const WALK_HEIGHT = 1.6;
     const loop = () => {
       const dt = clock.getDelta();
+      elapsed += dt;
       if (pointer.isLocked) {
-        const sp = 4 * dt;
+        const fast = keys["ShiftLeft"] || keys["ShiftRight"];
+        const sp = (fast ? 9 : 4) * dt;
         if (keys["KeyW"]) pointer.moveForward(sp);
         if (keys["KeyS"]) pointer.moveForward(-sp);
         if (keys["KeyA"]) pointer.moveRight(-sp);
         if (keys["KeyD"]) pointer.moveRight(sp);
+        // Jump + gravity. Floor is y=0; eye height at WALK_HEIGHT.
+        if (keys["Space"] && cam.position.y <= WALK_HEIGHT + 0.05) walkVy = 5.5;
+        walkVy += WALK_GRAVITY * dt;
+        cam.position.y += walkVy * dt;
+        if (cam.position.y < WALK_HEIGHT) { cam.position.y = WALK_HEIGHT; walkVy = 0; }
+      } else if (api.current.mode === "freecam") {
+        const fast = keys["ShiftLeft"] || keys["ShiftRight"];
+        const sp = (fast ? 9 : 4) * dt;
+        const fwd = new THREE.Vector3(); cam.getWorldDirection(fwd);
+        const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+        const up = new THREE.Vector3(0, 1, 0);
+        if (keys["KeyW"]) cam.position.addScaledVector(fwd, sp);
+        if (keys["KeyS"]) cam.position.addScaledVector(fwd, -sp);
+        if (keys["KeyD"]) cam.position.addScaledVector(right, sp);
+        if (keys["KeyA"]) cam.position.addScaledVector(right, -sp);
+        if (keys["KeyE"] || keys["Space"]) cam.position.addScaledVector(up, sp);
+        if (keys["KeyQ"] || keys["ControlLeft"]) cam.position.addScaledVector(up, -sp);
       } else {
         controls.update();
       }
+      // Per-object animations + interactions only while Play mode is on.
+      api.current.playStep(dt, elapsed);
       rnd.render(sc, cam);
       // Drive the annotation overlay at ~20 Hz so labels track the camera
       // without re-rendering the React tree on every frame.
@@ -270,12 +507,25 @@ export function DigitalBlueprint() {
     };
     loop();
 
+    // PNG export — grab a screenshot of the current viewport.
+    api.current.exportPng = () => {
+      rnd.render(sc, cam);
+      try {
+        const url = rnd.domElement.toDataURL("image/png");
+        const a = document.createElement("a"); a.href = url;
+        a.download = `blueprint-${Date.now()}.png`; a.click();
+      } catch { /* ignore */ }
+    };
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
       rnd.domElement.removeEventListener("click", onClick);
       window.removeEventListener("keydown", kd);
       window.removeEventListener("keyup", ku);
+      window.removeEventListener("keydown", onKey);
+      rnd.domElement.removeEventListener("mousedown", fcDown);
+      window.removeEventListener("mouseup", fcUp);
+      window.removeEventListener("mousemove", fcMove);
       controls.dispose();
       pointer.dispose();
       pmrem.dispose();
@@ -430,6 +680,58 @@ export function DigitalBlueprint() {
     saveSceneSnapshot();
   }
 
+  // Duplicate the selected mesh — copies geometry by re-issuing the addShape
+  // path with the selected snap so material + transform + annotation all carry.
+  function duplicate() {
+    const m = selected.current; if (!m) return;
+    const s = readSnap(m);
+    const dup = addShape((m.userData.shape as Shape) || "box", { ...s, px: s.px + 0.4, pz: s.pz + 0.4 });
+    select(dup);
+  }
+  function toggleVisible(m: THREE.Mesh) { m.visible = !m.visible; setSnap((p) => p ? { ...p } : p); }
+  function toggleLock(m: THREE.Mesh) { m.userData.locked = !m.userData.locked; setSnap((p) => p ? { ...p } : p); }
+
+  // Multi-scene registry. Keyed by id; persists alongside the legacy single-
+  // scene snapshot so the NT5 backdrop reader keeps working.
+  type StoredScene = { id: string; name: string; objects: Array<{ shape: Shape; snap: Snap }>; updatedAt: number };
+  function readSceneRegistry(): StoredScene[] {
+    try { const r = localStorage.getItem("nchub.digitalblueprint.scenes.v1"); if (r) return JSON.parse(r) as StoredScene[]; }
+    catch { /* ignore */ }
+    return [];
+  }
+  function writeSceneRegistry(list: StoredScene[]) {
+    try { localStorage.setItem("nchub.digitalblueprint.scenes.v1", JSON.stringify(list)); } catch { /* ignore */ }
+  }
+  function captureScene(): Array<{ shape: Shape; snap: Snap }> {
+    return objects.current.map((m) => ({ shape: (m.userData.shape as Shape) || "box", snap: readSnap(m) }));
+  }
+  function clearAll() {
+    for (const m of objects.current.slice()) { scene.current!.remove(m); m.geometry.dispose(); (m.material as THREE.Material).dispose(); }
+    objects.current = []; select(null); saveSceneSnapshot();
+  }
+  function loadCapture(items: Array<{ shape: Shape; snap: Snap }>, replace: boolean) {
+    if (replace) clearAll();
+    for (const it of items) addShape(it.shape, it.snap);
+    saveSceneSnapshot();
+  }
+  api.current.deleteSelected = () => del();
+  api.current.duplicateSelected = () => duplicate();
+  api.current.toggleHelp = () => setShowHelp((v) => !v);
+  api.current.exportJson = () => {
+    const data = { v: 1, atmos, objects: captureScene() };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `blueprint-${Date.now()}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 500);
+  };
+  api.current.importJson = (text: string) => {
+    try {
+      const data = JSON.parse(text) as { atmos?: Atmosphere; objects?: Array<{ shape: Shape; snap: Snap }> };
+      if (data.objects) loadCapture(data.objects, true);
+      if (data.atmos) setAtmos(data.atmos);
+    } catch { /* ignore */ }
+  };
+
   async function generate() {
     setGenStatus("Checking the local brain…");
     const st = await window.hub.llm.status();
@@ -442,54 +744,176 @@ export function DigitalBlueprint() {
       return;
     }
     setGenStatus("Generating…");
-    // Smaller schema = a 3B model can actually produce valid JSON. Shape +
-    // position + color is the floor; metalness / roughness / emissive are
-    // optional knobs. The inspector lets the user dial materials further.
-    const system =
-      "You compose 3D scenes by emitting a JSON array of primitives. " +
-      'Reply with ONLY a JSON array, no prose, no markdown fences. Each item: ' +
-      '{"shape":"box"|"sphere"|"cylinder"|"cone"|"torus"|"plane","pos":[x,y,z],"scale":[sx,sy,sz],"color":"#rrggbb","metal":0-1,"rough":0-1,"glow":"#rrggbb","glowI":0-3}. ' +
-      "Use 6-18 primitives. Stack them to suggest a real object. y>=0. metal+rough optional. glow optional. " +
-      "Example: [{\"shape\":\"box\",\"pos\":[0,0.5,0],\"scale\":[2,1,1],\"color\":\"#888888\",\"metal\":0.6,\"rough\":0.4}]";
+    // Three-pass strategy. Each pass tightens what the small local model has
+    // to do: pass 1 = full schema with materials, pass 2 = minimum schema
+    // (shape/pos/scale/color), pass 3 = literal "give me 8 lines like this"
+    // with a worked example. Whichever pass parses first wins.
+    // The full editor surface, surfaced to the model so it can actually USE
+    // the new shapes / textures / animations / interactions. Three passes
+    // escalate leniency for smaller local models.
+    const SHAPES = '"box"|"sphere"|"cylinder"|"cone"|"torus"|"plane"|"torusKnot"|"capsule"|"tetrahedron"|"octahedron"|"dodecahedron"|"icosahedron"|"ring"|"pyramid"|"wedge"';
+    const TEXTURES = '"none"|"checker"|"grid"|"stripes"|"noise"|"dots"|"brick"|"wood"|"marble"|"cells"';
+    const ANIMS = '{"kind":"spin"|"bob"|"pulse"|"orbitAround"|"colorCycle","speed":number,"amp":number,"axis":"x"|"y"|"z","radius":number}';
+    const INTERACTIONS = '"none"|"toggleVisible"|"swapColor"|"firePulse"|"toggleAnim"|"openUrl"';
+    const FULL_SCHEMA =
+      `{` +
+      `"shape":${SHAPES},"pos":[x,y,z],"scale":[sx,sy,sz],"rot":[xDeg,yDeg,zDeg],` +
+      `"color":"#rrggbb","metal":0-1,"rough":0-1,"glow":"#rrggbb","glowI":0-3,` +
+      `"transmission":0-1,"opacity":0-1,"clearcoat":0-1,"sheen":0-1,"wire":bool,"flat":bool,` +
+      `"texture":${TEXTURES},"textureUrl":"https://…",` +
+      `"label":"short text shown above the object","note":"longer description",` +
+      `"anim":${ANIMS},` +
+      `"interact":${INTERACTIONS},` +
+      `"interactUrl":"https://… (only when interact=openUrl)"` +
+      `}`;
+    const prompts = [
+      {
+        system:
+          "You are a 3D scene composer for an editor that supports physical materials, procedural textures, per-object animations, and click-interactions. " +
+          "Output a JSON array of primitives and NOTHING else — no prose, no markdown, no code fences. " +
+          `Every field is optional except shape + pos. Schema per item: ${FULL_SCHEMA}. ` +
+          "Use 6-18 primitives. y>=0. Stack pieces so they read as a real object. Set color/metal/rough/glow that match the material (wood=brown rough, glass=transmission high + low rough, metal=high metalness). " +
+          "When the prompt implies motion (spinning, floating, pulsing, orbiting), set the right anim. When the prompt implies interactivity (clickable, tappable, button, link), set interact. " +
+          "Pick a texture from the list when it matches (brick walls, wood planks, marble floors, cells = scales/honeycomb).",
+        user: `Build: ${prompt}\n\nRespond with the JSON array only, starting with [ and ending with ].`,
+      },
+      {
+        system: "Output ONLY a JSON array. No text. Each item is " +
+          `{"shape":${SHAPES},"pos":[x,y,z],"scale":[sx,sy,sz],"color":"#rrggbb","texture":${TEXTURES},"anim":${ANIMS}}.` +
+          " 8 to 12 items. y>=0. Pick texture + anim when they fit.",
+        user: `Build: ${prompt}\n\n[`,
+      },
+      {
+        system: "You output a JSON array. Nothing else. Copy this format EXACTLY (and pick shapes/textures/anims that match the prompt): " +
+          '[{"shape":"box","pos":[0,0.5,0],"scale":[2,1,1],"color":"#8b5a2b","texture":"wood"},{"shape":"sphere","pos":[0,2.0,0],"scale":[0.5,0.5,0.5],"color":"#ffcc88","glow":"#ffcc88","glowI":1.6,"anim":{"kind":"bob","speed":1.2,"amp":0.3}}]',
+        user: `Replace the contents with 8-12 primitives that look like: ${prompt}\nReply with the array only.`,
+      },
+    ];
 
     let raw = "";
     let parsed: unknown[] | null = null;
-    for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
-      const res = await houseChat(system, `Build: ${prompt}\n\nRespond with the JSON array only.`);
+    for (let attempt = 0; attempt < prompts.length && !parsed; attempt++) {
+      setGenStatus(attempt === 0 ? "Generating…" : `Pass ${attempt + 1}…`);
+      const res = await houseChat(prompts[attempt].system, prompts[attempt].user);
       if (!res.ok) { setGenStatus(`Local brain error: ${res.error}`); return; }
       raw = res.text || "";
       parsed = extractJsonArray(raw);
-      if (!parsed && attempt === 0) {
-        setGenStatus("First pass wasn't valid JSON. Retrying…");
-      }
     }
-    if (!parsed) {
-      setGenStatus(`Local brain produced something we couldn't parse as a scene. Raw output: ${raw.slice(0, 200)}…`);
-      return;
+    if (!parsed || parsed.length === 0) {
+      // Last-resort template match — picks a pre-built scene whose keywords
+      // overlap the prompt. Keeps the action productive instead of erroring
+      // out when the small local model can't hit valid JSON.
+      const tpl = matchTemplate(prompt);
+      if (tpl) {
+        parsed = tpl as unknown[];
+        setGenStatus(`Brain output wasn't parseable; dropped in a template scene matching "${prompt}". Edit it from the inspector.`);
+      } else {
+        setGenStatus(`Local brain produced something we couldn't parse. Try a more specific prompt (e.g. "wooden chair", "stone arch", "small house"). Last output: ${raw.slice(0, 160)}…`);
+        return;
+      }
     }
     let n = 0;
     for (const o of (parsed as Array<Record<string, unknown>>).slice(0, 24)) {
       const shape = (o.shape as Shape) || "box";
       const pos = (Array.isArray(o.pos) ? o.pos : Array.isArray(o.position) ? o.position : [0, 0.6, 0]) as number[];
       const scl = (Array.isArray(o.scale) ? o.scale : [1, 1, 1]) as number[];
-      const rot = (Array.isArray(o.rotation) ? o.rotation : [0, 0, 0]) as number[];
-      addShape(shape, {
+      const rot = (Array.isArray(o.rot) ? o.rot : Array.isArray(o.rotation) ? o.rotation : [0, 0, 0]) as number[];
+      const mesh = addShape(shape, {
         color: (o.color as string) || "#9ca3af",
         metalness: numOr(o.metal ?? o.metalness, 0.2),
         roughness: numOr(o.rough ?? o.roughness, 0.5),
         emissive: (o.glow as string) ?? (o.emissive as string) ?? "#000000",
         emissiveIntensity: numOr(o.glowI ?? o.emissiveIntensity, 0),
+        opacity: numOr(o.opacity, 1),
+        transmission: numOr(o.transmission, 0),
+        clearcoat: numOr(o.clearcoat, 0),
+        sheen: numOr(o.sheen, 0),
+        wireframe: o.wire === true || o.wireframe === true,
+        flatShading: o.flat === true || o.flatShading === true,
+        texture: (o.texture as string) || "none",
+        textureUrl: (o.textureUrl as string) || (o.texture_url as string) || "",
+        annTitle: (o.label as string) || (o.title as string) || "",
+        annBody:  (o.note  as string) || (o.body  as string) || "",
         px: numOr(pos[0], 0), py: Math.max(0, numOr(pos[1], 0.5)), pz: numOr(pos[2], 0),
         sx: numOr(scl[0], 1), sy: numOr(scl[1], 1), sz: numOr(scl[2], 1),
         rx: numOr(rot[0], 0), ry: numOr(rot[1], 0), rz: numOr(rot[2], 0),
       });
+      // Carry per-object animations and interactions through to the mesh so
+      // Play mode picks them up next frame.
+      if (mesh && o.anim && typeof o.anim === "object") (mesh.userData as Record<string, unknown>).anim = o.anim;
+      if (mesh && o.interact && typeof o.interact === "string" && o.interact !== "none") {
+        (mesh.userData as Record<string, unknown>).interaction = {
+          onClick: o.interact,
+          url: (o.interactUrl as string) || (o.url as string) || "",
+        };
+      }
       n++;
     }
+    saveSceneSnapshot();
     setGenStatus(n > 0 ? `Generated ${n} object${n === 1 ? "" : "s"}.` : "No usable primitives in the parsed JSON.");
   }
   function numOr(v: unknown, fallback: number): number {
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
+  }
+  // Template library for the AI fallback. Keyword-matched starter scenes —
+  // not "generated" content (these are hand-authored primitives), just a
+  // sane place to land when the small local model can't hit valid JSON.
+  function matchTemplate(p: string): Array<Record<string, unknown>> | null {
+    const k = p.toLowerCase();
+    if (/chair|stool|seat/.test(k)) return [
+      { shape: "box", pos: [0, 0.5, 0], scale: [1.2, 0.18, 1.2], color: "#8b5a2b", metal: 0.1, rough: 0.7 },
+      { shape: "cylinder", pos: [-0.5, 0.25, -0.5], scale: [0.12, 0.5, 0.12], color: "#6b4220", metal: 0.1, rough: 0.7 },
+      { shape: "cylinder", pos: [0.5, 0.25, -0.5], scale: [0.12, 0.5, 0.12], color: "#6b4220", metal: 0.1, rough: 0.7 },
+      { shape: "cylinder", pos: [-0.5, 0.25, 0.5], scale: [0.12, 0.5, 0.12], color: "#6b4220", metal: 0.1, rough: 0.7 },
+      { shape: "cylinder", pos: [0.5, 0.25, 0.5], scale: [0.12, 0.5, 0.12], color: "#6b4220", metal: 0.1, rough: 0.7 },
+      { shape: "box", pos: [0, 1.25, -0.55], scale: [1.2, 1.4, 0.12], color: "#8b5a2b", metal: 0.1, rough: 0.7 },
+    ];
+    if (/table|desk/.test(k)) return [
+      { shape: "box", pos: [0, 0.9, 0], scale: [2.4, 0.12, 1.2], color: "#5c3a1a", metal: 0.1, rough: 0.6 },
+      { shape: "cylinder", pos: [-1.05, 0.45, -0.5], scale: [0.12, 0.9, 0.12], color: "#3b240e", metal: 0.1, rough: 0.6 },
+      { shape: "cylinder", pos: [1.05, 0.45, -0.5], scale: [0.12, 0.9, 0.12], color: "#3b240e", metal: 0.1, rough: 0.6 },
+      { shape: "cylinder", pos: [-1.05, 0.45, 0.5], scale: [0.12, 0.9, 0.12], color: "#3b240e", metal: 0.1, rough: 0.6 },
+      { shape: "cylinder", pos: [1.05, 0.45, 0.5], scale: [0.12, 0.9, 0.12], color: "#3b240e", metal: 0.1, rough: 0.6 },
+    ];
+    if (/house|cabin|hut|cottage/.test(k)) return [
+      { shape: "box", pos: [0, 1, 0], scale: [4, 2, 3], color: "#a47148", metal: 0.05, rough: 0.85 },
+      { shape: "cone", pos: [0, 2.6, 0], scale: [2.6, 1.4, 2], color: "#7c3018", metal: 0.05, rough: 0.85 },
+      { shape: "box", pos: [0, 0.9, 1.51], scale: [0.7, 1.4, 0.05], color: "#3a2210", metal: 0.05, rough: 0.85 },
+      { shape: "box", pos: [-1.2, 1.2, 1.51], scale: [0.6, 0.6, 0.05], color: "#88c0d0", metal: 0.3, rough: 0.3, glow: "#88c0d0", glowI: 0.4 },
+      { shape: "box", pos: [1.2, 1.2, 1.51], scale: [0.6, 0.6, 0.05], color: "#88c0d0", metal: 0.3, rough: 0.3, glow: "#88c0d0", glowI: 0.4 },
+      { shape: "cylinder", pos: [1.2, 2.4, -0.6], scale: [0.25, 0.8, 0.25], color: "#4a3020", metal: 0.05, rough: 0.85 },
+    ];
+    if (/car|vehicle|truck/.test(k)) return [
+      { shape: "box", pos: [0, 0.5, 0], scale: [3.4, 0.6, 1.4], color: "#1f2937", metal: 0.8, rough: 0.25 },
+      { shape: "box", pos: [0, 1.05, 0], scale: [1.8, 0.5, 1.3], color: "#1f2937", metal: 0.8, rough: 0.25 },
+      { shape: "cylinder", pos: [-1.1, 0.3, 0.75], scale: [0.35, 0.18, 0.35], color: "#0a0a0a", metal: 0.6, rough: 0.6 },
+      { shape: "cylinder", pos: [1.1, 0.3, 0.75], scale: [0.35, 0.18, 0.35], color: "#0a0a0a", metal: 0.6, rough: 0.6 },
+      { shape: "cylinder", pos: [-1.1, 0.3, -0.75], scale: [0.35, 0.18, 0.35], color: "#0a0a0a", metal: 0.6, rough: 0.6 },
+      { shape: "cylinder", pos: [1.1, 0.3, -0.75], scale: [0.35, 0.18, 0.35], color: "#0a0a0a", metal: 0.6, rough: 0.6 },
+      { shape: "box", pos: [1.5, 0.6, 0.55], scale: [0.05, 0.18, 0.18], color: "#fff3b0", glow: "#fff3b0", glowI: 1.2 },
+      { shape: "box", pos: [1.5, 0.6, -0.55], scale: [0.05, 0.18, 0.18], color: "#fff3b0", glow: "#fff3b0", glowI: 1.2 },
+    ];
+    if (/arch|gate|portal/.test(k)) return [
+      { shape: "box", pos: [-1.2, 1.5, 0], scale: [0.4, 3, 0.4], color: "#9ca3af", metal: 0.05, rough: 0.85 },
+      { shape: "box", pos: [1.2, 1.5, 0], scale: [0.4, 3, 0.4], color: "#9ca3af", metal: 0.05, rough: 0.85 },
+      { shape: "torus", pos: [0, 3.05, 0], scale: [1.4, 1.4, 0.4], color: "#9ca3af", metal: 0.05, rough: 0.85 },
+      { shape: "box", pos: [0, 0.05, 0], scale: [3.6, 0.1, 1], color: "#71717a", metal: 0.05, rough: 0.85 },
+    ];
+    if (/tower|spire|skyscraper/.test(k)) return [
+      { shape: "box", pos: [0, 1, 0], scale: [1.4, 2, 1.4], color: "#52525b", metal: 0.4, rough: 0.6 },
+      { shape: "box", pos: [0, 2.7, 0], scale: [1.1, 1.4, 1.1], color: "#52525b", metal: 0.4, rough: 0.6 },
+      { shape: "box", pos: [0, 3.9, 0], scale: [0.8, 1, 0.8], color: "#52525b", metal: 0.4, rough: 0.6 },
+      { shape: "cone", pos: [0, 4.9, 0], scale: [0.6, 1.2, 0.6], color: "#a3a3a3", metal: 0.6, rough: 0.3 },
+      { shape: "sphere", pos: [0, 5.7, 0], scale: [0.18, 0.18, 0.18], color: "#ffd166", glow: "#ffd166", glowI: 1.6 },
+    ];
+    if (/tree|pine|oak/.test(k)) return [
+      { shape: "cylinder", pos: [0, 0.6, 0], scale: [0.2, 1.2, 0.2], color: "#5a3a1a", metal: 0, rough: 0.9 },
+      { shape: "cone", pos: [0, 1.9, 0], scale: [1, 1.6, 1], color: "#1f7a3a", metal: 0, rough: 0.85 },
+      { shape: "cone", pos: [0, 2.8, 0], scale: [0.8, 1.2, 0.8], color: "#1f7a3a", metal: 0, rough: 0.85 },
+      { shape: "cone", pos: [0, 3.5, 0], scale: [0.55, 0.9, 0.55], color: "#2a8a4a", metal: 0, rough: 0.85 },
+    ];
+    return null;
   }
   // Resilient JSON-array extractor: strips ```code fences```, finds the first
   // balanced [...] pair (so trailing text doesn't trip JSON.parse), and tries
@@ -516,7 +940,7 @@ export function DigitalBlueprint() {
     catch { return null; }
   }
 
-  const shapes: Shape[] = ["box", "sphere", "cylinder", "cone", "torus", "plane"];
+  const shapes: Shape[] = ["box", "sphere", "cylinder", "cone", "torus", "plane", "torusKnot", "capsule", "tetrahedron", "octahedron", "dodecahedron", "icosahedron", "ring", "pyramid", "wedge"];
 
   return (
     <div className="stage db-embed">
@@ -550,6 +974,23 @@ export function DigitalBlueprint() {
               showAll={showAllLabels}
             />
           </div>
+          {/* Help overlay — press ? to toggle */}
+          <button onClick={() => setShowHelp((v) => !v)} style={{ position: "absolute", right: 10, top: 10, width: 28, height: 28, borderRadius: "50%", border: `1px solid ${DB.ink}55`, background: "rgba(10,22,40,0.75)", color: DB.ink, cursor: "pointer", fontFamily: "ui-monospace,monospace", fontSize: 14 }} title="Shortcuts (?)">?</button>
+          {showHelp && (
+            <div style={{ position: "absolute", right: 10, top: 44, padding: "12px 14px", background: "rgba(10,22,40,0.96)", border: `1px solid ${DB.ink}55`, borderRadius: 6, color: DB.ink, fontFamily: "ui-monospace,monospace", fontSize: 11, lineHeight: 1.7, minWidth: 240 }}>
+              <div style={{ fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: DB.accent, marginBottom: 6 }}>Shortcuts</div>
+              <div><b>WASD</b> — move (Walk / Freecam)</div>
+              <div><b>Q / E</b> — up / down (Freecam)</div>
+              <div><b>Shift</b> — sprint</div>
+              <div><b>Space</b> — jump (Walk)</div>
+              <div><b>F</b> — frame selected</div>
+              <div><b>Esc</b> — clear selection / exit walk</div>
+              <div><b>Delete</b> — delete selected</div>
+              <div><b>Ctrl/Cmd+D</b> — duplicate</div>
+              <div><b>Click</b> in Play — fire interaction</div>
+              <div style={{ marginTop: 6, fontSize: 10, color: DB.inkSoft }}>Press <b>?</b> to close.</div>
+            </div>
+          )}
         </div>
         <div className="db-paper" style={{ width: 300, borderLeft: `1px solid ${DB.ink}`, overflow: "auto", padding: 12 }}>
           <Label>Add</Label>
@@ -565,12 +1006,22 @@ export function DigitalBlueprint() {
               className="db-btn"
               onClick={() => {
                 const next = mode !== "walk";
-                api.current.setWalk(next);
-                setMode(next ? "walk" : "orbit");
+                api.current.setMode("orbit");
               }}
-            >
-              {mode === "walk" ? "Exit walk" : "Walk mode"}
-            </button>
+            >Orbit</button>
+            <button className="db-btn" style={mode === "freecam" ? { background: DB.ink, color: DB.paper } : undefined}
+              onClick={() => api.current.setMode("freecam")}>Freecam</button>
+            <button className="db-btn" style={mode === "walk" ? { background: DB.ink, color: DB.paper } : undefined}
+              onClick={() => api.current.setMode("walk")}>Walk</button>
+            <button className="db-btn" style={playMode ? { background: DB.accent, color: DB.paper, borderColor: DB.accent } : undefined}
+              onClick={() => setPlayMode((p) => !p)}>{playMode ? "Stop play" : "Play"}</button>
+            <button className="db-btn" onClick={() => api.current.exportPng()}>PNG</button>
+            <button className="db-btn" onClick={() => api.current.exportJson()}>Export JSON</button>
+            <label className="db-btn" style={{ cursor: "pointer" }}>
+              Import JSON
+              <input type="file" accept=".json,application/json" style={{ display: "none" }}
+                onChange={(e) => { const f = e.currentTarget.files?.[0]; if (f) f.text().then((t) => api.current.importJson(t)); e.currentTarget.value = ""; }} />
+            </label>
             <label className="db-btn" style={{ cursor: "pointer" }}>
               Import GLB
               <input
@@ -588,7 +1039,17 @@ export function DigitalBlueprint() {
           </div>
           {mode === "walk" && (
             <div style={{ fontSize: 11, color: DB.inkLight, marginBottom: 10 }}>
-              WASD to move · mouse to look · Esc to exit
+              WASD move · Shift sprint · Space jump · mouse look · Esc to exit
+            </div>
+          )}
+          {mode === "freecam" && (
+            <div style={{ fontSize: 11, color: DB.inkLight, marginBottom: 10 }}>
+              WASD move · Q/E up-down · Shift sprint · mouse-drag to look
+            </div>
+          )}
+          {playMode && (
+            <div style={{ fontSize: 11, color: DB.accent, marginBottom: 10 }}>
+              Play mode ON — per-object animations are running.
             </div>
           )}
 
@@ -610,6 +1071,43 @@ export function DigitalBlueprint() {
           <Row l="show all labels">
             <input type="checkbox" checked={showAllLabels} onChange={(e) => setShowAllLabels(e.target.checked)} />
           </Row>
+
+          <div style={{ height: 1, background: DB.rule, margin: "14px 0" }} />
+
+          <Label>Outliner ({objects.current.length})</Label>
+          <div style={{ maxHeight: 180, overflowY: "auto", border: `1px solid ${DB.rule}`, borderRadius: 2, marginBottom: 8 }}>
+            {objects.current.length === 0 && <div style={{ fontSize: 11, color: DB.inkLight, padding: 8 }}>No objects yet — add a shape or use the AI generator.</div>}
+            {objects.current.map((m, i) => {
+              const isSel = selected.current === m;
+              const sh = (m.userData.shape as string) || "obj";
+              const lab = (m.userData.annotation as { title?: string } | undefined)?.title;
+              return (
+                <div key={i} onClick={() => select(m)} style={{
+                  display: "flex", alignItems: "center", gap: 4, padding: "4px 8px",
+                  fontSize: 11, fontFamily: "'Courier New',monospace", cursor: "pointer",
+                  borderBottom: `1px solid ${DB.ruleSoft}`,
+                  background: isSel ? `${DB.accent}22` : "transparent",
+                  color: m.visible === false ? DB.inkDim : DB.ink,
+                }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: isSel ? DB.accent : DB.inkSoft }} />
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {lab || sh} <span style={{ color: DB.inkDim }}>· {sh}</span>
+                  </span>
+                  {m.userData.locked && <span style={{ fontSize: 9, color: DB.accent }}>LOCK</span>}
+                  <button className="db-btn" style={{ padding: "1px 6px", fontSize: 9 }} onClick={(e) => { e.stopPropagation(); toggleVisible(m); }}>{m.visible === false ? "show" : "hide"}</button>
+                </div>
+              );
+            })}
+          </div>
+
+          <Label>Scenes</Label>
+          <ScenesPanel
+            readRegistry={readSceneRegistry as unknown as () => Array<{ id: string; name: string; objects: unknown[]; updatedAt: number }>}
+            writeRegistry={writeSceneRegistry as unknown as (l: Array<{ id: string; name: string; objects: unknown[]; updatedAt: number }>) => void}
+            captureScene={captureScene as unknown as () => Array<{ shape: string; snap: unknown }>}
+            loadCapture={loadCapture as unknown as (i: Array<{ shape: string; snap: unknown }>, r: boolean) => void}
+            clearAll={clearAll}
+          />
 
           <div style={{ height: 1, background: DB.rule, margin: "14px 0" }} />
 
@@ -643,7 +1141,7 @@ export function DigitalBlueprint() {
               <Label>Procedural texture</Label>
               <select value={snap.texture} onChange={(e) => patch({ texture: e.target.value })}
                 style={{ width: "100%", padding: "6px 8px", fontSize: 11 }}>
-                {["none", "checker", "grid", "stripes", "noise", "dots"].map((t) => <option key={t} value={t}>{t}</option>)}
+                {["none", "checker", "grid", "stripes", "noise", "dots", "brick", "wood", "marble", "cells"].map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
 
               <Label>Transform</Label>
@@ -651,7 +1149,18 @@ export function DigitalBlueprint() {
               <Vec l="scale" a={snap.sx} b={snap.sy} c={snap.sz} step={0.1} on={(x, y, z) => patch({ sx: x, sy: y, sz: z })} />
               <Vec l="rotation°" a={snap.rx} b={snap.ry} c={snap.rz} step={15} on={(x, y, z) => patch({ rx: x, ry: y, rz: z })} />
 
-              <button className="db-btn" style={{ marginTop: 12, borderColor: DB.accent2, color: DB.accent2 }} onClick={del}>Delete object</button>
+              <Label>Animation (runs in Play mode)</Label>
+              <AnimationPicker mesh={selected.current} />
+
+              <Label>Click-interaction (in Play mode)</Label>
+              <InteractionPicker mesh={selected.current} />
+
+              <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
+                <button className="db-btn" onClick={duplicate} style={{ flex: 1 }}>Duplicate</button>
+                <button className="db-btn" onClick={() => selected.current && toggleVisible(selected.current)} style={{ flex: 1 }}>{selected.current?.visible === false ? "Show" : "Hide"}</button>
+                <button className="db-btn" onClick={() => selected.current && toggleLock(selected.current)} style={{ flex: 1 }}>{selected.current?.userData.locked ? "Unlock" : "Lock"}</button>
+              </div>
+              <button className="db-btn" style={{ marginTop: 8, width: "100%", borderColor: DB.accent2, color: DB.accent2 }} onClick={del}>Delete object</button>
             </>
           )}
         </div>
@@ -692,6 +1201,130 @@ function SliderInt({ l, v, on, min = 0, max = 100 }: { l: string; v: number; on:
     <div style={{ marginBottom: 6 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: DB.inkSoft }}><span>{l}</span><span>{v}</span></div>
       <input type="range" min={min} max={max} step={1} value={v} onChange={(e) => on(Number(e.target.value))} style={{ width: "100%" }} />
+    </div>
+  );
+}
+
+// Multi-scene save panel. The registry is a list of named snapshots stored
+// at "nchub.digitalblueprint.scenes.v1". Loading replaces the live scene.
+function ScenesPanel({ readRegistry, writeRegistry, captureScene, loadCapture, clearAll }: {
+  readRegistry: () => Array<{ id: string; name: string; objects: unknown[]; updatedAt: number }>;
+  writeRegistry: (list: Array<{ id: string; name: string; objects: unknown[]; updatedAt: number }>) => void;
+  captureScene: () => Array<{ shape: string; snap: unknown }>;
+  loadCapture: (items: Array<{ shape: string; snap: unknown }>, replace: boolean) => void;
+  clearAll: () => void;
+}) {
+  const [list, setList] = useState(readRegistry);
+  const [name, setName] = useState("");
+  function save() {
+    const nm = name.trim() || `Scene ${list.length + 1}`;
+    const entry = { id: `sc-${Date.now()}`, name: nm, objects: captureScene(), updatedAt: Date.now() };
+    const next = [...list, entry]; writeRegistry(next); setList(next); setName("");
+  }
+  function load(id: string, replace: boolean) {
+    const s = readRegistry().find((x) => x.id === id);
+    if (!s) return;
+    loadCapture(s.objects as Array<{ shape: string; snap: unknown }>, replace);
+  }
+  function remove(id: string) { const next = list.filter((s) => s.id !== id); writeRegistry(next); setList(next); }
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="scene name" style={{ flex: 1, padding: "6px 8px", fontSize: 11 }} />
+        <button className="db-btn" onClick={save}>Save</button>
+        <button className="db-btn" onClick={clearAll} title="Clear the live scene">Clear</button>
+      </div>
+      <div style={{ maxHeight: 140, overflowY: "auto" }}>
+        {list.length === 0 && <div style={{ fontSize: 11, color: "#6a86aa" }}>No saved scenes.</div>}
+        {list.map((s) => (
+          <div key={s.id} style={{ display: "flex", gap: 4, alignItems: "center", padding: "3px 0", fontSize: 11, fontFamily: "'Courier New',monospace" }}>
+            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
+            <button className="db-btn" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => load(s.id, true)}>load</button>
+            <button className="db-btn" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => load(s.id, false)}>add</button>
+            <button className="db-btn" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => remove(s.id)}>✕</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Per-object animation picker. Reads / writes mesh.userData.anim directly so
+// the play-step loop in the scene effect picks the values up next frame. Local
+// state mirrors mesh.userData.anim for the controlled inputs.
+type InteractKind = "none" | "toggleVisible" | "swapColor" | "firePulse" | "toggleAnim" | "openUrl";
+type InteractData = { onClick?: InteractKind; url?: string; altColor?: string };
+function InteractionPicker({ mesh }: { mesh: { userData: Record<string, unknown> } | null }) {
+  const initial = ((mesh?.userData.interaction as InteractData) || { onClick: "none" });
+  const [kind, setKind] = useState<InteractKind>(initial.onClick || "none");
+  const [url, setUrl] = useState(initial.url || "");
+  const [altColor, setAltColor] = useState(initial.altColor || "#22d3ee");
+  useEffect(() => {
+    if (!mesh) return;
+    if (kind === "none") delete (mesh.userData as Record<string, unknown>).interaction;
+    else (mesh.userData as Record<string, unknown>).interaction = { onClick: kind, url, altColor };
+  }, [kind, url, altColor, mesh]);
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <select value={kind} onChange={(e) => setKind(e.target.value as InteractKind)} style={{ width: "100%", padding: "6px 8px", fontSize: 11 }}>
+        <option value="none">none</option>
+        <option value="toggleVisible">toggle visibility</option>
+        <option value="swapColor">swap color</option>
+        <option value="firePulse">fire emissive pulse</option>
+        <option value="toggleAnim">pause / resume animation</option>
+        <option value="openUrl">open URL in default browser</option>
+      </select>
+      {kind === "openUrl" && (
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" style={{ width: "100%", marginTop: 6, padding: "5px 8px", fontSize: 11 }} />
+      )}
+      {kind === "swapColor" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, fontSize: 11, color: "#9b8fb0" }}>
+          alternate color <input type="color" value={altColor} onChange={(e) => setAltColor(e.target.value)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+type AnimKind = "none" | "spin" | "bob" | "pulse" | "orbitAround" | "colorCycle";
+type AnimData = { kind?: AnimKind; speed?: number; amp?: number; axis?: "x" | "y" | "z"; radius?: number };
+function AnimationPicker({ mesh }: { mesh: { userData: Record<string, unknown> } | null }) {
+  const initial = ((mesh?.userData.anim as AnimData) || { kind: "none", speed: 1, amp: 0.3, axis: "y", radius: 1.5 });
+  const [kind, setKind] = useState<AnimKind>(initial.kind || "none");
+  const [speed, setSpeed] = useState(initial.speed ?? 1);
+  const [amp, setAmp] = useState(initial.amp ?? 0.3);
+  const [axis, setAxis] = useState<"x" | "y" | "z">(initial.axis || "y");
+  const [radius, setRadius] = useState(initial.radius ?? 1.5);
+  useEffect(() => {
+    if (mesh) (mesh.userData as Record<string, unknown>).anim = { kind, speed, amp, axis, radius };
+  }, [kind, speed, amp, axis, radius, mesh]);
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <select value={kind} onChange={(e) => setKind(e.target.value as AnimKind)} style={{ width: "100%", padding: "6px 8px", fontSize: 11 }}>
+        <option value="none">none</option>
+        <option value="spin">spin (axis + speed)</option>
+        <option value="bob">bob (float up/down)</option>
+        <option value="pulse">pulse (scale)</option>
+        <option value="orbitAround">orbit around origin</option>
+        <option value="colorCycle">color cycle (HSL)</option>
+      </select>
+      {kind !== "none" && (
+        <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, alignItems: "center", fontSize: 11, color: DB.inkSoft }}>
+          <span>speed</span><input type="number" step={0.1} value={speed} onChange={(e) => setSpeed(Number(e.target.value))} style={{ padding: "4px 6px", fontSize: 11 }} />
+          {(kind === "bob" || kind === "pulse") && <>
+            <span>amplitude</span><input type="number" step={0.05} value={amp} onChange={(e) => setAmp(Number(e.target.value))} style={{ padding: "4px 6px", fontSize: 11 }} />
+          </>}
+          {kind === "spin" && <>
+            <span>axis</span>
+            <select value={axis} onChange={(e) => setAxis(e.target.value as "x" | "y" | "z")} style={{ padding: "4px 6px", fontSize: 11 }}>
+              <option value="x">x</option><option value="y">y</option><option value="z">z</option>
+            </select>
+          </>}
+          {kind === "orbitAround" && <>
+            <span>radius</span><input type="number" step={0.25} value={radius} onChange={(e) => setRadius(Number(e.target.value))} style={{ padding: "4px 6px", fontSize: 11 }} />
+          </>}
+        </div>
+      )}
     </div>
   );
 }
