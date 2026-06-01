@@ -3,6 +3,7 @@ import { fetchFeed, localReminders, type FeedItem } from "./feeds";
 import { nt5TickerItems } from "./embedded/nt5store";
 import { brobotTickerItems } from "./embedded/brobotStore";
 import { cpFeedItems, subscribeCpEvents } from "./controlPanelFeed";
+import { ambientFeedItems, subscribeAmbient } from "./services/ambientNotifier";
 
 const SEEN_KEY = "nchub.feed.seen.v1";
 const POLL_MS = 4 * 60 * 1000;
@@ -27,7 +28,7 @@ export function useFeed() {
     let stop = false;
 
     async function tick() {
-      const all = [...cpFeedItems(), ...nt5TickerItems(), ...brobotTickerItems(), ...localReminders(), ...(await fetchFeed())];
+      const all = [...ambientFeedItems(), ...cpFeedItems(), ...nt5TickerItems(), ...brobotTickerItems(), ...localReminders(), ...(await fetchFeed())];
       if (stop) return;
       setItems(all);
 
@@ -52,10 +53,12 @@ export function useFeed() {
     // Control Panel events trigger an immediate re-tick so the ticker and
     // toast notifications surface them right away.
     const unsubCp = subscribeCpEvents(() => { void tick(); });
+    const unsubAmb = subscribeAmbient(() => { void tick(); });
     return () => {
       stop = true;
       clearInterval(iv);
       unsubCp();
+      unsubAmb();
     };
   }, []);
 

@@ -218,18 +218,18 @@ body.compact-density .btn { padding: 5px 10px; min-height: 28px; }
 .tabbar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px;
+  gap: 4px;
+  padding: 4px 6px;
   background: #0c0c0f;
   border-bottom: 1px solid var(--line);
 }
 .tab {
   display: flex;
   align-items: center;
-  gap: 8px;
-  max-width: 220px;
-  padding: 6px 10px;
-  border-radius: 8px 8px 0 0;
+  gap: 6px;
+  max-width: 200px;
+  padding: 4px 8px;
+  border-radius: 6px 6px 0 0;
   border: 1px solid var(--line);
   background: rgba(0, 0, 0, 0.4);
   color: var(--mute);

@@ -407,9 +407,15 @@ export function ControlPanel() {
             </div>
           )}
 
+          {/* Always-on local pulse — system, downloads, browser activity.
+              These work without ANY external service connected so the panel
+              is useful on first launch, not an empty room. */}
+          <LocalPulsePanel />
+
           {liveServices.length === 0 && (
-            <div className="panel" style={{ padding: 16, color: "var(--mute)" }}>
-              Nothing connected yet. Switch to the Connect tab and plug a service in — it surfaces here the moment it has a token.
+            <div className="panel" style={{ padding: 14, color: "var(--mute)", borderColor: "rgba(34,211,238,0.3)", background: "rgba(34,211,238,0.04)", marginBottom: 14 }}>
+              <div className="mono glow-text" style={{ fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 4, color: "#22d3ee" }}>Want more here?</div>
+              Hop to the <b style={{ color: "var(--ink)" }}>Connect</b> tab and plug in any of the services above. GitHub, Vercel, Cloudflare, Home Assistant, Steam, Hostinger, Tailscale, Proxmox, Portainer, n8n — each one lights up its own panel with live data and real action buttons here the moment its token's saved.
             </div>
           )}
 
@@ -459,6 +465,136 @@ export function ControlPanel() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// Always-on Local pulse — system stats, recent downloads, browser activity.
+// No tokens, no setup; works on first launch. This is what stops the
+// Control Panel from feeling empty until the user connects services.
+function LocalPulsePanel() {
+  const [sys, setSys] = useState<{ cpuPct: number; memPct: number; memFreeGb: number; diskFreeGb: number; diskTotalGb: number } | null>(null);
+  const [downloads, setDownloads] = useState<{ id: string; filename: string; bytes: number; state: string; ts: number }[]>([]);
+  const [historyCount, setHistoryCount] = useState(0);
+  const [bookmarkCount, setBookmarkCount] = useState(0);
+  const [tabCount, setTabCount] = useState(0);
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    let cancel = false;
+    async function pull() { try { const s = await window.hub.sys.pulse(); if (!cancel) setSys(s); } catch { /* ignore */ } }
+    void pull();
+    const t = setInterval(pull, 6000);
+    return () => { cancel = true; clearInterval(t); };
+  }, []);
+
+  useEffect(() => {
+    void window.hub.downloads.list().then(setDownloads);
+    const off = window.hub.downloads.onUpdated(setDownloads);
+    return () => { off(); };
+  }, []);
+
+  useEffect(() => {
+    function read() {
+      try { setHistoryCount((JSON.parse(localStorage.getItem("nchub.browser.history.v1") || "[]") as unknown[]).length); } catch { /* ignore */ }
+      try { setBookmarkCount((JSON.parse(localStorage.getItem("nchub.browser.bookmarks.v1") || "[]") as unknown[]).length); } catch { /* ignore */ }
+      try {
+        const t = JSON.parse(localStorage.getItem("nchub.browser.tabs.v1") || "null") as { tabs?: unknown[] } | null;
+        setTabCount(t?.tabs?.length || 0);
+      } catch { /* ignore */ }
+    }
+    read();
+    const t = setInterval(read, 10000);
+    return () => clearInterval(t);
+  }, []);
+
+  const diskUsedPct = sys ? Math.round(((sys.diskTotalGb - sys.diskFreeGb) / sys.diskTotalGb) * 100) : 0;
+  const memBar = sys ? sys.memPct : 0;
+  const cpuBar = sys ? sys.cpuPct : 0;
+  const recentDownloads = downloads.slice(0, 5);
+  function fmt(b: number) { if (!b) return "0 B"; const u = ["B", "KB", "MB", "GB"]; let i = 0, n = b; while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; } return n.toFixed(n >= 100 ? 0 : 1) + " " + u[i]; }
+
+  return (
+    <div className="cp-svc" style={{ borderColor: "rgba(34,211,238,0.35)" }}>
+      <div className="cp-svc-head" onClick={() => setCollapsed((c) => !c)}>
+        <span style={{ display: "inline-block", width: 12, color: "var(--mute)", textAlign: "center" }}>{collapsed ? "▸" : "▾"}</span>
+        <span className="cp-svc-name" style={{ color: "#22d3ee", textShadow: "0 0 8px rgba(34,211,238,0.4)" }}>Local</span>
+        <span className="mono" style={{ fontSize: 10, color: "var(--mute)", padding: "2px 7px", border: "1px solid var(--line)", borderRadius: 4 }}>always-on</span>
+        <span style={{ flex: 1 }} />
+        <span className="cp-svc-summary">
+          {sys ? `CPU ${sys.cpuPct}% · MEM ${sys.memPct}% · ${sys.diskFreeGb.toFixed(1)} GB free` : "reading sensors…"}
+        </span>
+      </div>
+      {!collapsed && (
+        <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+          {/* System */}
+          <div>
+            <div className="mono" style={{ fontSize: 10, letterSpacing: 1.5, color: "var(--mute)", textTransform: "uppercase", marginBottom: 8 }}>System</div>
+            <CpBar label="CPU" pct={cpuBar} color={cpuBar > 80 ? "#ef4444" : cpuBar > 50 ? "#f59e0b" : "#22c55e"} />
+            <CpBar label="RAM" pct={memBar} color="#22d3ee" />
+            <CpBar label="DISK" pct={diskUsedPct} color={diskUsedPct > 85 ? "#ef4444" : "#a78bfa"} />
+            {sys && (
+              <div style={{ fontSize: 10, color: "var(--mute)", marginTop: 6 }}>
+                {sys.memFreeGb.toFixed(1)} GB free RAM · {sys.diskFreeGb.toFixed(1)} / {sys.diskTotalGb.toFixed(1)} GB free disk
+              </div>
+            )}
+          </div>
+          {/* Browser */}
+          <div>
+            <div className="mono" style={{ fontSize: 10, letterSpacing: 1.5, color: "var(--mute)", textTransform: "uppercase", marginBottom: 8 }}>Browser</div>
+            <CpRow label="Open tabs" value={String(tabCount)} />
+            <CpRow label="Bookmarks" value={String(bookmarkCount)} />
+            <CpRow label="History entries" value={String(historyCount)} />
+          </div>
+          {/* Downloads */}
+          <div style={{ gridColumn: "1 / -1" }}>
+            <div className="mono" style={{ fontSize: 10, letterSpacing: 1.5, color: "var(--mute)", textTransform: "uppercase", marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
+              <span>Recent downloads</span>
+              <span style={{ color: "var(--mute)", textTransform: "none", letterSpacing: 0 }}>{downloads.length} total</span>
+            </div>
+            {recentDownloads.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--mute)" }}>None yet. Anything downloaded through the browser shows up here.</div>
+            ) : (
+              <table className="ctab">
+                <thead><tr><th>file</th><th>size</th><th>state</th><th>when</th><th /></tr></thead>
+                <tbody>
+                  {recentDownloads.map((d) => (
+                    <tr key={d.id}>
+                      <td style={{ maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.filename}</td>
+                      <td>{fmt(d.bytes)}</td>
+                      <td>{d.state}</td>
+                      <td>{new Date(d.ts).toLocaleTimeString()}</td>
+                      <td style={{ whiteSpace: "nowrap", textAlign: "right" }}>
+                        <button className="cp-action" onClick={() => void window.hub.downloads.reveal((d as unknown as { path: string }).path)}>Reveal</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CpBar({ label, pct, color }: { label: string; pct: number; color: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+      <span className="mono" style={{ fontSize: 9, color: "var(--mute)", width: 32 }}>{label}</span>
+      <div style={{ flex: 1, height: 5, background: "rgba(255,255,255,0.06)", borderRadius: 3, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${Math.max(0, Math.min(100, pct))}%`, background: `linear-gradient(90deg, ${color}, ${color}88)`, boxShadow: `0 0 6px ${color}88`, transition: "width .6s ease" }} />
+      </div>
+      <span className="mono" style={{ fontSize: 10, color, width: 32, textAlign: "right", textShadow: `0 0 6px ${color}66` }}>{pct}%</span>
+    </div>
+  );
+}
+function CpRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+      <span style={{ fontSize: 11, color: "var(--mute)" }}>{label}</span>
+      <span className="mono glow-text" style={{ fontSize: 12, color: "var(--pink)" }}>{value}</span>
     </div>
   );
 }
