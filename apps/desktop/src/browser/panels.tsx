@@ -6,7 +6,7 @@ import {
   reorderBookmarks, setPassword, getPasswordSecret, saveGroups, subscribeBookmarks,
   updateBookmark,
 } from "./store";
-import { EXTENSIONS, loadEnabled, saveEnabled } from "../extensions";
+import { EXTENSIONS, addCustomExtension, loadCustomExtensions, loadEnabled, removeCustomExtension, saveEnabled, subscribeCustomExtensions } from "../extensions";
 
 // In-browser panels rendered at about:* URLs. Same look as a native page.
 
@@ -319,16 +319,75 @@ export function GroupsPanel() {
 
 export function ExtensionsPanel() {
   const [enabled, setEnabled] = useState<Set<string>>(loadEnabled());
+  const [custom, setCustom] = useState(loadCustomExtensions);
+  const [name, setName] = useState("");
+  const [desc, setDesc] = useState("");
+  const [code, setCode] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => subscribeCustomExtensions(() => setCustom(loadCustomExtensions())), []);
+
   function toggle(id: string) {
     const next = new Set(enabled);
     next.has(id) ? next.delete(id) : next.add(id);
     setEnabled(next);
     saveEnabled(next);
   }
+  async function pickFile() {
+    const i = document.createElement("input");
+    i.type = "file"; i.accept = ".js,text/javascript";
+    i.onchange = async () => {
+      const f = i.files?.[0]; if (!f) return;
+      setCode(await f.text());
+      if (!name) setName(f.name.replace(/\.[^.]+$/, ""));
+    };
+    i.click();
+  }
+  function save() {
+    setErr(null);
+    if (!code.trim()) { setErr("Paste JavaScript or upload a .js file first."); return; }
+    if (!name.trim()) { setErr("Give your extension a name."); return; }
+    addCustomExtension(name, desc, code);
+    setName(""); setDesc(""); setCode("");
+  }
+
   return (
     <div style={wrap}>
-      <Header title="Extensions" sub="House-made only. Toggle to inject on every page load." />
+      <Header title="Extensions" sub="House-made + your own. Toggle one on and it injects into every page; toggle off and it cleanly strips itself." />
+      {/* Add your own */}
+      <div style={{ ...cardStyle, borderColor: "rgba(255,87,119,0.35)" }}>
+        <div className="mono glow-text" style={{ fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>+ Write or upload your own</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 8, marginBottom: 8 }}>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" style={inp} />
+          <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Description (optional)" style={inp} />
+        </div>
+        <textarea value={code} onChange={(e) => setCode(e.target.value)} placeholder={"// Any JS — runs on every page at dom-ready.\n// Example: document.body.style.background = 'pink';"}
+          spellCheck={false}
+          style={{ ...inp, width: "100%", minHeight: 140, fontFamily: "ui-monospace,monospace", lineHeight: 1.5, whiteSpace: "pre" }} />
+        {err && <div style={{ color: "#ef4444", fontSize: 12, marginTop: 6 }}>{err}</div>}
+        <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+          <button className="btn" onClick={save}>Add extension</button>
+          <button className="btn" onClick={() => void pickFile()}>Upload .js file</button>
+          <span style={{ flex: 1 }} />
+          <button className="btn" onClick={() => { setName(""); setDesc(""); setCode(""); setErr(null); }}>Clear</button>
+        </div>
+      </div>
+      {custom.length > 0 && (
+        <div style={cardStyle}>
+          <div className="mono" style={{ fontSize: 11, letterSpacing: 1.5, color: "var(--mute)", textTransform: "uppercase", marginBottom: 6 }}>Your extensions</div>
+          {custom.map((e) => (
+            <div key={e.id} style={rowStyle}>
+              <div style={{ flex: 1 }}>
+                <div className="mono" style={{ fontSize: 13 }}>◈ {e.name}</div>
+                <div style={{ fontSize: 11, color: "var(--mute)" }}>{e.desc}</div>
+              </div>
+              <button className="btn" onClick={() => toggle(e.id)} style={enabled.has(e.id) ? { color: "var(--pink)", borderColor: "rgba(255,87,119,0.6)" } : undefined}>{enabled.has(e.id) ? "On" : "Off"}</button>
+              <button className="btn" onClick={() => { if (confirm("Remove " + e.name + "?")) removeCustomExtension(e.id); }}>Remove</button>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={cardStyle}>
+        <div className="mono" style={{ fontSize: 11, letterSpacing: 1.5, color: "var(--mute)", textTransform: "uppercase", marginBottom: 6 }}>House extensions</div>
         {EXTENSIONS.map((e) => (
           <div key={e.id} style={rowStyle}>
             <div style={{ flex: 1 }}>

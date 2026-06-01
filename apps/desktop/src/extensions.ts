@@ -292,7 +292,9 @@ export const EXTENSIONS: Extension[] = [
 ];
 
 const LS_KEY = "nchub.extensions.enabled.v1";
+const CUSTOM_KEY = "nchub.extensions.custom.v1";
 const subs = new Set<(ids: Set<string>) => void>();
+const customSubs = new Set<() => void>();
 
 export function loadEnabled(): Set<string> {
   try {
@@ -310,4 +312,57 @@ export function saveEnabled(ids: Set<string>): void {
 export function subscribeEnabled(fn: (ids: Set<string>) => void): () => void {
   subs.add(fn);
   return () => subs.delete(fn);
+}
+
+// Custom user extensions. The user's code is wrapped exactly like the
+// built-in ones so toggling off cleanly strips it (same data-nchub-ext
+// tagging is available via window.__nchubReg_<id>). All custom extensions
+// have IDs prefixed "custom_" so we never collide with the built-in list.
+export function loadCustomExtensions(): Extension[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_KEY);
+    if (raw) return JSON.parse(raw) as Extension[];
+  } catch { /* ignore */ }
+  return [];
+}
+
+export function saveCustomExtensions(list: Extension[]): void {
+  try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(list)); } catch { /* ignore */ }
+  customSubs.forEach((fn) => fn());
+}
+
+export function subscribeCustomExtensions(fn: () => void): () => void {
+  customSubs.add(fn);
+  return () => customSubs.delete(fn);
+}
+
+export function addCustomExtension(name: string, desc: string, rawCode: string): Extension {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 32) || "ext";
+  const id = `custom_${slug}_${Math.random().toString(36).slice(2, 6)}`;
+  const ext: Extension = {
+    id,
+    name: name.trim() || "Untitled extension",
+    desc: desc.trim() || "User-added extension.",
+    // Wrap exactly like a built-in: IIFE + per-page guard + data-nchub-ext
+    // tagging helper, so the same unload path strips it.
+    code: `(function(){try{var K='__nchub_${id}';if(window[K])return;window[K]=1;` +
+          `function reg(el){try{el.setAttribute('data-nchub-ext','${id}')}catch(_){}return el;}` +
+          `window.__nchubReg_${id}=reg;` +
+          rawCode +
+          `}catch(e){console.warn('[nchub-ext ${id}]',e);}})();`,
+  };
+  const list = [...loadCustomExtensions(), ext];
+  saveCustomExtensions(list);
+  return ext;
+}
+
+export function removeCustomExtension(id: string): void {
+  saveCustomExtensions(loadCustomExtensions().filter((e) => e.id !== id));
+  const en = loadEnabled();
+  if (en.has(id)) { en.delete(id); saveEnabled(en); }
+}
+
+// The combined list — built-in + custom — used by everything that injects.
+export function allExtensions(): Extension[] {
+  return [...EXTENSIONS, ...loadCustomExtensions()];
 }

@@ -11,15 +11,15 @@ import { Ticker } from "./shell/Ticker";
 import { MusicPlayer } from "./shell/MusicPlayer";
 import { Notifications } from "./shell/Notifications";
 import { TutorialTom } from "./shell/TutorialTom";
-import { FloatingInfo } from "./shell/FloatingInfo";
 import { useFeed } from "./useFeed";
 import { SITE_APPS } from "./apps";
 import { EMBEDDED } from "./embedded";
-import { EXTENSIONS, loadEnabled, subscribeEnabled } from "./extensions";
+import { allExtensions, loadEnabled, subscribeEnabled, subscribeCustomExtensions } from "./extensions";
 import { ICON } from "./icons";
 import { applyAccent, loadAccent } from "./theme-accent";
 import { startWireScheduler } from "./services/nt5Wire";
 import { startOriginPolling } from "./services/originRealms";
+import { startAmbientNotifier } from "./services/ambientNotifier";
 import { registerNavSetter } from "./navBridge";
 import { loadPrefs, subscribePrefs, applyUiPrefs } from "./uiPrefs";
 import { appUnlocked, subscribeCodes } from "./featureGate";
@@ -39,6 +39,7 @@ export function App() {
   const [nav, setNav] = useState<Nav>({ kind: "browser" }); // Browser is the default canvas
   const [railOpen, setRailOpen] = useState(true);
   const [enabledExt, setEnabledExt] = useState<Set<string>>(() => loadEnabled());
+  const [customTick, setCustomTick] = useState(0); // recompute injectables when custom ext list mutates
   const [prefs, setPrefs] = useState(loadPrefs);
   const [, setCodeTick] = useState(0);
   useEffect(() => subscribeCodes(() => setCodeTick((n) => n + 1)), []);
@@ -57,8 +58,13 @@ export function App() {
     // Origin Realms server pulse — feeds the floating info widget and the
     // NT5 wire so Dex's coverage tracks the actual server state right now.
     startOriginPolling();
+    // System spikes, MoreMe progress, BroBot adds, GitHub PR / Vercel deploy
+    // state changes — surfaced as toast notifications + ticker, not obscuring
+    // boxes on top of the canvas.
+    startAmbientNotifier();
     const offP = subscribePrefs((p) => { setPrefs(p); applyUiPrefs(p); });
     const offE = subscribeEnabled((s) => setEnabledExt(new Set(s)));
+    const offCx = subscribeCustomExtensions(() => setCustomTick((n) => n + 1));
     // Register Hub nav with the tour bridge so Tutorial Tom can drive the
     // canvas while it's walking the user around.
     const offN = registerNavSetter((n) => setNav(n));
@@ -70,12 +76,12 @@ export function App() {
       if (p.privacyClearDownloadsOnQuit) { try { void window.hub.downloads.clear(); } catch { /* ignore */ } }
     };
     window.addEventListener("beforeunload", onQuit);
-    return () => { offP(); offE(); offN(); window.removeEventListener("beforeunload", onQuit); };
+    return () => { offP(); offE(); offCx(); offN(); window.removeEventListener("beforeunload", onQuit); };
   }, []);
 
   const injectables = useMemo(
-    () => EXTENSIONS.filter((e) => enabledExt.has(e.id)).map((e) => ({ id: e.id, code: e.code })),
-    [enabledExt]
+    () => allExtensions().filter((e) => enabledExt.has(e.id)).map((e) => ({ id: e.id, code: e.code })),
+    [enabledExt, customTick]
   );
   function logout() {
     signOut();
@@ -146,7 +152,6 @@ export function App() {
 
       {prefs.tickerEnabled && <Ticker items={items} left={<MusicPlayer />} />}
       <Notifications toasts={toasts} onDismiss={dismiss} />
-      <FloatingInfo />
       <TutorialTom />
     </div>
   );

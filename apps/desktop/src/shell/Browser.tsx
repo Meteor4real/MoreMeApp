@@ -9,7 +9,7 @@ import {
 } from "../browser/store";
 import { BookmarksPanel, DownloadsPanel, ExtensionsPanel, GroupsPanel, HistoryPanel, isPanel, PANEL_NAMES, panelBase, panelQuery, PasswordsPanel, SearchPanel } from "../browser/panels";
 import { loadPrefs, subscribePrefs } from "../uiPrefs";
-import { EXTENSIONS, UNLOAD_TPL, loadEnabled, saveEnabled, subscribeEnabled } from "../extensions";
+import { EXTENSIONS, UNLOAD_TPL, allExtensions, loadCustomExtensions, loadEnabled, saveEnabled, subscribeCustomExtensions, subscribeEnabled } from "../extensions";
 
 function normalize(input: string): string {
   const v = input.trim();
@@ -226,33 +226,49 @@ export function Browser({
             placeholder="Search the web or enter a URL"
             spellCheck={false} />
           <button className="btn" title={starred ? "Remove bookmark" : "Add bookmark"} onClick={toggleBookmark} style={starred ? { color: "var(--orange)", borderColor: "rgba(255,122,45,0.6)" } : undefined}>★</button>
-          <button className="btn" title="Bookmarks" onClick={() => newTab("about:bookmarks")}>◇</button>
-          <button className="btn" title="History" onClick={() => newTab("about:history")}>↺</button>
-          <button className="btn" title="Downloads" onClick={() => newTab("about:downloads")}>▼</button>
-          <button className="btn" title="Saved passwords for this site" onClick={() => setMenuOpen((m) => m === "pw" ? null : "pw")} style={pwForHost.length > 0 ? { color: "var(--orange)", borderColor: "rgba(255,122,45,0.5)" } : undefined}>◈</button>
-          <button className="btn" title="Extensions" onClick={() => setMenuOpen((m) => m === "ext" ? null : "ext")}>⊞</button>
-          <button className="btn" title="More" onClick={() => setMenuOpen((m) => m === "menu" ? null : "menu")}>⋮</button>
+          {pwForHost.length > 0 && (
+            <button className="btn" title="Saved passwords for this site" onClick={() => setMenuOpen((m) => m === "pw" ? null : "pw")} style={{ color: "var(--orange)", borderColor: "rgba(255,122,45,0.5)" }}>◈</button>
+          )}
+          <button className="btn" title="Menu" onClick={() => setMenuOpen((m) => m === "menu" ? null : "menu")}>⋮</button>
         </div>
 
         {menuOpen && (
-          <div ref={menuRef} style={{ position: "absolute", right: 12, top: 44, zIndex: 50, minWidth: 220, background: "#0e0e14", border: "1px solid var(--line)", borderRadius: 10, padding: 8, boxShadow: "0 12px 28px rgba(0,0,0,0.55)" }}>
+          <div ref={menuRef} style={{ position: "absolute", right: 12, top: 44, zIndex: 50, minWidth: 280, maxHeight: "78vh", overflow: "auto", background: "#0e0e14", border: "1px solid var(--line)", borderRadius: 10, padding: 8, boxShadow: "0 12px 28px rgba(0,0,0,0.55)" }}>
             {menuOpen === "menu" && (
               <>
-                <div style={{ display: "flex", gap: 6, padding: "6px 10px", borderBottom: "1px solid var(--line)" }}>
-                  <button className="btn" style={{ flex: 1 }} onClick={() => zoom(-0.5)}>−</button>
-                  <button className="btn" style={{ flex: 1 }} onClick={zoomReset}>100%</button>
-                  <button className="btn" style={{ flex: 1 }} onClick={() => zoom(0.5)}>+</button>
+                {/* Zoom */}
+                <div style={{ display: "flex", gap: 6, padding: "4px 6px 8px", borderBottom: "1px solid var(--line)", alignItems: "center" }}>
+                  <span className="mono" style={{ fontSize: 10, color: "var(--mute)", letterSpacing: 1, textTransform: "uppercase", flex: 1, paddingLeft: 4 }}>Zoom</span>
+                  <button className="btn" style={{ padding: "2px 10px", fontSize: 14 }} onClick={() => zoom(-0.5)}>−</button>
+                  <button className="btn" style={{ padding: "2px 10px", fontSize: 11 }} onClick={zoomReset}>100%</button>
+                  <button className="btn" style={{ padding: "2px 10px", fontSize: 14 }} onClick={() => zoom(0.5)}>+</button>
                 </div>
+                {/* Nav */}
+                <div className="mono" style={{ fontSize: 9, letterSpacing: 1.5, color: "var(--mute)", textTransform: "uppercase", padding: "8px 10px 4px" }}>Browse</div>
                 <MenuItem onClick={() => { newTab("about:bookmarks"); setMenuOpen(null); }}>Bookmarks</MenuItem>
                 <MenuItem onClick={() => { newTab("about:history"); setMenuOpen(null); }}>History</MenuItem>
                 <MenuItem onClick={() => { newTab("about:downloads"); setMenuOpen(null); }}>Downloads</MenuItem>
                 <MenuItem onClick={() => { newTab("about:passwords"); setMenuOpen(null); }}>Passwords</MenuItem>
                 <MenuItem onClick={() => { newTab("about:groups"); setMenuOpen(null); }}>Tab Groups</MenuItem>
-                <MenuItem onClick={() => { newTab("about:extensions"); setMenuOpen(null); }}>Manage Extensions</MenuItem>
+                {/* Saved-for-this-site passwords */}
+                {pwForHost.length > 0 && (
+                  <>
+                    <div className="mono" style={{ fontSize: 9, letterSpacing: 1.5, color: "var(--orange)", textTransform: "uppercase", padding: "8px 10px 4px" }}>Saved for {currentHost}</div>
+                    {pwForHost.slice(0, 4).map((p) => (
+                      <MenuItem key={p.id} onClick={() => { void autofillCredential(p); setMenuOpen(null); }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--orange)", display: "inline-block", marginRight: 8 }} />
+                        Autofill {p.username} <span style={{ color: "var(--mute)", marginLeft: 4, fontSize: 10 }}>›</span>
+                      </MenuItem>
+                    ))}
+                  </>
+                )}
+                {/* Extensions */}
+                <div className="mono" style={{ fontSize: 9, letterSpacing: 1.5, color: "var(--mute)", textTransform: "uppercase", padding: "8px 10px 4px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span>Extensions</span>
+                  <span style={{ color: "var(--pink)", cursor: "pointer", textTransform: "none", letterSpacing: 0 }} onClick={() => { newTab("about:extensions"); setMenuOpen(null); }}>Manage ›</span>
+                </div>
+                <ExtQuickList />
               </>
-            )}
-            {menuOpen === "ext" && (
-              <ExtQuickPanel onDone={() => setMenuOpen(null)} />
             )}
             {menuOpen === "pw" && (
               <PasswordsQuickPanel
@@ -345,12 +361,15 @@ export function Browser({
                     recordHistory(title, t.url);
                   });
                   // Apply persisted per-host zoom each time the page settles.
+                  // Always force a known-good zoom level first (the embedded
+                  // webview can inherit a sub-100% factor from the host
+                  // BrowserWindow, which made pages look compressed).
                   function applyZoom() {
                     try {
                       const current = viewRefs.current.get(t.id);
                       const url = current?.getURL?.() || t.url;
                       const lvl = getZoom(hostOf(url));
-                      if (lvl !== 0) view.setZoomLevel(lvl);
+                      view.setZoomLevel(lvl); // 0 = 100% when nothing saved
                     } catch { /* ignore */ }
                   }
                   // Inject early (DOM exists) AND after the page settles AND
@@ -569,6 +588,41 @@ function PasswordsQuickPanel({ host, items, onFill, onManage, onSaveNew }: { hos
         <button className="btn" style={{ flex: 1, fontSize: 11 }} onClick={onSaveNew}>+ Save new</button>
         <button className="btn" style={{ flex: 1, fontSize: 11 }} onClick={onManage}>Manage all</button>
       </div>
+    </div>
+  );
+}
+
+function ExtQuickList() {
+  // Inline extension toggles inside the ⋮ menu. Built-in + user-added,
+  // listed in alpha order; click to flip enabled state. The IIFE guard
+  // inside each extension keeps re-injects idempotent.
+  const [enabled, setEnabled] = useState<Set<string>>(loadEnabled);
+  const [all, setAll] = useState(EXTENSIONS);
+  useEffect(() => subscribeEnabled(setEnabled), []);
+  useEffect(() => {
+    function refresh() { setAll([...EXTENSIONS, ...loadCustomExtensions()]); }
+    refresh();
+    return subscribeCustomExtensions(refresh);
+  }, []);
+  function toggle(id: string) {
+    const next = new Set(enabled);
+    next.has(id) ? next.delete(id) : next.add(id);
+    saveEnabled(next);
+  }
+  const sorted = [...all].sort((a, b) => a.name.localeCompare(b.name));
+  return (
+    <div style={{ maxHeight: 280, overflow: "auto", padding: "0 2px" }}>
+      {sorted.map((e) => {
+        const on = enabled.has(e.id);
+        return (
+          <div key={e.id} onClick={() => toggle(e.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", cursor: "pointer", borderRadius: 4 }}
+            onMouseEnter={(ev) => (ev.currentTarget.style.background = "rgba(255,87,119,0.08)")}
+            onMouseLeave={(ev) => (ev.currentTarget.style.background = "transparent")}>
+            <span style={{ width: 9, height: 9, borderRadius: "50%", background: on ? "var(--pink)" : "rgba(255,255,255,0.1)", boxShadow: on ? "0 0 6px var(--pink)" : undefined, border: on ? undefined : "1px solid var(--line)", flex: "none" }} />
+            <span style={{ fontSize: 12, color: on ? "var(--ink)" : "var(--mute)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

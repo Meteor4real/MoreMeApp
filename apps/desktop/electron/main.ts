@@ -127,11 +127,24 @@ app.on("web-contents-created", (_e, contents) => {
     webPreferences.contextIsolation = true;
     // Match the host BrowserWindow's font defaults so embedded pages don't
     // get Chromium's smaller-than-default fallback that made them look
-    // compressed. defaultFontSize 16 = standard browser; minimumFontSize 11
+    // compressed. defaultFontSize 16 = standard browser; minimumFontSize 12
     // keeps small text legible on dense sites without aggressive overrides.
+    // zoomFactor:1.0 makes sure we don't inherit a sub-100% factor from the
+    // host BrowserWindow's session state, which is the most likely cause of
+    // pages looking shrunk even after the font defaults were set.
     (webPreferences as { defaultFontSize?: number }).defaultFontSize = 16;
     (webPreferences as { defaultMonospaceFontSize?: number }).defaultMonospaceFontSize = 14;
-    (webPreferences as { minimumFontSize?: number }).minimumFontSize = 11;
+    (webPreferences as { minimumFontSize?: number }).minimumFontSize = 12;
+    (webPreferences as { zoomFactor?: number }).zoomFactor = 1.0;
+  });
+
+  // Belt-and-suspenders: clamp every newly-attached webContents to zoomFactor 1
+  // on creation. Some Chromium internals propagate the parent BrowserWindow's
+  // zoom factor onto child webContents before the will-attach-webview prefs
+  // apply, which is what was making pages render "compressed".
+  contents.on("did-attach-webview" as never, (_e: unknown, wc: { setVisualZoomLevelLimits?: (a: number, b: number) => void; setZoomFactor?: (n: number) => void }) => {
+    try { wc.setZoomFactor?.(1.0); } catch { /* ignore */ }
+    try { wc.setVisualZoomLevelLimits?.(1, 5); } catch { /* ignore */ }
   });
   contents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("http")) shell.openExternal(url);

@@ -52,6 +52,10 @@ export function Library() {
   const [steamErr, setSteamErr] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [achievements, setAchievements] = useState<Map<string, AchSummary>>(new Map());
+  const [achProgress, setAchProgress] = useState<{ done: number; total: number } | null>(null);
+  const [pickedHero, setPickedHero] = useState<string | null>(() => {
+    try { return localStorage.getItem("nchub.library.heroAppId"); } catch { return null; }
+  });
 
   useEffect(() => {
     window.hub.steamList()
@@ -87,11 +91,15 @@ export function Library() {
       allNews.sort((a, b) => b.date - a.date);
       setNews(allNews.slice(0, 12));
 
-      // Achievements — top 10 played games. Some games have no achievements;
-      // Steam returns 403/400/empty in those cases. Swallow per-game errors.
-      const playedTop = [...list].filter((g) => (g.playtime_forever || 0) > 0).sort((a, b) => (b.playtime_forever || 0) - (a.playtime_forever || 0)).slice(0, 10);
+      // Achievements — every played game. Steam returns 403/400/empty for
+      // games without achievements; we just skip those silently. The
+      // progress counter ticks as each request resolves so the hero card
+      // shows "loading achievements (12/47)" instead of looking stuck.
+      const played = [...list].filter((g) => (g.playtime_forever || 0) > 0).sort((a, b) => (b.playtime_forever || 0) - (a.playtime_forever || 0));
+      setAchProgress({ done: 0, total: played.length });
       const achMap = new Map<string, AchSummary>();
-      await Promise.all(playedTop.map(async (g) => {
+      let done = 0;
+      await Promise.all(played.map(async (g) => {
         try {
           const [pa, sc] = await Promise.all([
             window.hub.net({ method: "GET", url: `https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v1/?key=${encodeURIComponent(key)}&steamid=${encodeURIComponent(id)}&appid=${g.appid}` }),
@@ -113,9 +121,16 @@ export function Library() {
             });
           achMap.set(String(g.appid), { appid: g.appid, gameName: playerStats.gameName || g.name, unlocked, total, recent });
         } catch { /* ignore per-app — many games have no achievements / private profile */ }
+        finally { done++; setAchProgress({ done, total: played.length }); }
       }));
       setAchievements(achMap);
+      setAchProgress(null);
     } catch (e) { setSteamErr(String(e)); } finally { setRefreshing(false); }
+  }
+
+  function chooseHero(appid: string) {
+    setPickedHero(appid);
+    try { localStorage.setItem("nchub.library.heroAppId", appid); } catch { /* ignore */ }
   }
 
   function update(appid: string, patch: Override) {
@@ -153,14 +168,21 @@ export function Library() {
     return (ovr[a.appid]?.displayName || a.name).localeCompare(ovr[b.appid]?.displayName || b.name);
   }), [filtered, ovr, owned]);
 
-  // Hero pick: the most-recently-played, falling back to most-played, then any pinned, then first game.
+  // Hero pick: user's explicit choice wins; otherwise most-recently-played,
+  // most-played, any pinned, then first game.
   const hero: Game | null = useMemo(() => {
+    if (pickedHero) {
+      const o = owned.get(pickedHero);
+      if (o) return { appid: String(o.appid), name: o.name };
+      const local = sorted.find((g) => g.appid === pickedHero);
+      if (local) return local;
+    }
     if (owned.size > 0) {
       const ord = [...owned.values()].sort((a, b) => (b.rtime_last_played || 0) - (a.rtime_last_played || 0) || (b.playtime_forever || 0) - (a.playtime_forever || 0));
       const first = ord[0]; if (first) return { appid: String(first.appid), name: first.name };
     }
     return sorted.find((g) => ovr[g.appid]?.pinned) || sorted[0] || null;
-  }, [owned, sorted, ovr]);
+  }, [pickedHero, owned, sorted, ovr]);
 
   const totalGames = merged.length;
   const totalHours = [...owned.values()].reduce((s, o) => s + (o.playtime_forever || 0), 0) / 60;
@@ -214,7 +236,11 @@ export function Library() {
               </div>
               <div style={{ position: "absolute", left: 22, right: 22, bottom: 18, display: "flex", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
                 <div style={{ flex: 1, minWidth: 220 }}>
-                  <div className="mono" style={{ fontSize: 11, color: "var(--pink)", letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>{op?.rtime_last_played ? "RECENTLY PLAYED" : "NOW IN YOUR LIBRARY"}</div>
+                  <div className="mono" style={{ fontSize: 11, color: "var(--pink)", letterSpacing: 2, textTransform: "uppercase", marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span>{pickedHero ? "FEATURED" : op?.rtime_last_played ? "RECENTLY PLAYED" : "NOW IN YOUR LIBRARY"}</span>
+                    {pickedHero && <button onClick={() => { setPickedHero(null); try { localStorage.removeItem("nchub.library.heroAppId"); } catch { /* ignore */ } }} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.25)", color: "var(--mute)", borderRadius: 4, padding: "1px 6px", fontSize: 9, letterSpacing: 1, cursor: "pointer" }}>auto-pick</button>}
+                    {achProgress && <span style={{ color: "var(--mute)", letterSpacing: 1, fontSize: 9 }}>loading achievements ({achProgress.done}/{achProgress.total})</span>}
+                  </div>
                   <div style={{ fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 28, color: "#fff", textShadow: "0 2px 18px rgba(255,87,119,0.55)" }}>{name}</div>
                   {op && (
                     <div style={{ fontSize: 12, color: "var(--mute)", marginTop: 6, display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
@@ -299,7 +325,14 @@ export function Library() {
                     </div>
                     <div className="mono" style={{ fontSize: 12, padding: "8px 10px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{displayName}</div>
                   </button>
-                  <button className="btn" style={{ position: "absolute", top: 6, right: recent > 0 ? 88 : 6, padding: "2px 8px", fontSize: 10 }} onClick={() => setEditing(editing === g.appid ? null : g.appid)}>{editing === g.appid ? "Done" : "Edit"}</button>
+                  <div style={{ position: "absolute", top: 6, right: recent > 0 ? 88 : 6, display: "flex", gap: 4 }}>
+                    <button className="btn" style={{ padding: "2px 8px", fontSize: 10, color: hero?.appid === g.appid && pickedHero ? "var(--pink)" : undefined, borderColor: hero?.appid === g.appid && pickedHero ? "rgba(255,87,119,0.6)" : undefined }}
+                      title={hero?.appid === g.appid && pickedHero ? "Currently featured at the top — click to unset" : "Feature this game at the top"}
+                      onClick={(e) => { e.stopPropagation(); if (hero?.appid === g.appid && pickedHero) { setPickedHero(null); try { localStorage.removeItem("nchub.library.heroAppId"); } catch { /* ignore */ } } else { chooseHero(g.appid); } }}>
+                      {hero?.appid === g.appid && pickedHero ? "◆ featured" : "Feature"}
+                    </button>
+                    <button className="btn" style={{ padding: "2px 8px", fontSize: 10 }} onClick={(e) => { e.stopPropagation(); setEditing(editing === g.appid ? null : g.appid); }}>{editing === g.appid ? "Done" : "Edit"}</button>
+                  </div>
                   {editing === g.appid && (
                     <div style={{ padding: 10, borderTop: "1px solid var(--line)", background: "rgba(0,0,0,0.35)" }}>
                       <Row l="name"><input style={inputStyle} value={o.displayName || ""} placeholder={g.name} onChange={(e) => update(g.appid, { displayName: e.target.value || undefined })} /></Row>
