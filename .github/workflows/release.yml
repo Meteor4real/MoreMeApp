@@ -33,7 +33,44 @@ jobs:
     # something hangs past this, we fail with logs instead of hanging silent.
     timeout-minutes: 45
     steps:
+      # Check out the exact ref we're releasing. For a published release or a
+      # pushed tag that's the tag's commit; for a manual run it's the tag
+      # input. fetch-depth:0 so the guard below can compare against main.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.event.release.tag_name || github.ref_name }}
+          fetch-depth: 0
+
+      # GUARD: never build a stale commit. The bug that shipped an old v3.0.0
+      # was a tag pointing at a commit that predated the merged work. This
+      # fails the run loudly if the commit we're about to build is not the
+      # current tip of main — re-create the tag at main's HEAD and re-run.
+      - name: Verify the release commit is main's HEAD
+        shell: bash
+        run: |
+          set -e
+          TAG="${{ github.event.inputs.tag || github.event.release.tag_name || github.ref_name }}"
+          BUILD_SHA="$(git rev-parse HEAD)"
+          git fetch --no-tags origin main
+          MAIN_SHA="$(git rev-parse FETCH_HEAD)"
+          echo "Releasing tag : $TAG"
+          echo "Build commit  : $BUILD_SHA"
+          echo "main HEAD     : $MAIN_SHA"
+          {
+            echo "### Release commit check"
+            echo ""
+            echo "- Tag: \`$TAG\`"
+            echo "- Build commit: \`$BUILD_SHA\`"
+            echo "- main HEAD: \`$MAIN_SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$BUILD_SHA" != "$MAIN_SHA" ]; then
+            echo "::error::Tag '$TAG' points at $BUILD_SHA but main is at $MAIN_SHA. This would ship a STALE build."
+            echo "::error::Delete and re-create the tag at main's current HEAD (or release from main), then re-run."
+            echo ":x: **Aborted — tag is not at main HEAD. Re-tag from main and re-run.**" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo ":white_check_mark: Tag matches main HEAD — building the real thing." >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20

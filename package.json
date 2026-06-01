@@ -1,6 +1,6 @@
 {
   "name": "networkchuck-hub",
-  "version": "0.1.0",
+  "version": "4.0.0",
   "private": true,
   "description": "NetworkChuck Hub — unified personal-ops command center. Download page (web) + desktop app.",
   "workspaces": [
