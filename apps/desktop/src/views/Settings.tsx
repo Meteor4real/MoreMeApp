@@ -205,7 +205,7 @@ function AppearanceSection({ prefs, set, accent, pickAccent }: { prefs: UiPrefs;
 // ── ON-SCREEN INFO ──────────────────────────────────────────────────────────
 function InfoSection({ prefs, set }: { prefs: UiPrefs; set: <K extends keyof UiPrefs>(k: K, v: UiPrefs[K]) => void }) {
   return (
-    <SectionShell title="On-screen info" intro="Floating info pieces that ride along on top of the canvas. Right-click any card to dismiss it until the next session.">
+    <SectionShell title="On-screen info" intro="Floating info pieces that ride along on top of the canvas. Drag any card by its header to reposition it; click the X (or right-click) to dismiss. Hidden cards stack in the tray near the bottom-right.">
       <Toggle label="NT5 breaking & filed updates" checked={prefs.infoBreaking} onChange={(v) => set("infoBreaking", v)} />
       <Toggle label="Latest stories from the anchor desk" checked={prefs.infoNextUp} onChange={(v) => set("infoNextUp", v)} />
       <Toggle label="Origin Realms server pulse" checked={prefs.infoOrigin} onChange={(v) => set("infoOrigin", v)} />
@@ -216,7 +216,10 @@ function InfoSection({ prefs, set }: { prefs: UiPrefs; set: <K extends keyof UiP
       <Toggle label="BroBot gallery recent" checked={prefs.infoBroBot} onChange={(v) => set("infoBroBot", v)} />
       <Toggle label="GitHub open PR pulse" checked={prefs.infoGithub} onChange={(v) => set("infoGithub", v)} />
       <Toggle label="Vercel latest deploy" checked={prefs.infoVercel} onChange={(v) => set("infoVercel", v)} />
-      <Toggle label="Bottom ticker" checked={prefs.tickerEnabled} onChange={(v) => set("tickerEnabled", v)} />
+      <Toggle label="Now-playing music" checked={prefs.infoMusic} onChange={(v) => set("infoMusic", v)} />
+      <Toggle label="Network status" checked={prefs.infoNetwork} onChange={(v) => set("infoNetwork", v)} />
+      <Toggle label="Hub session uptime" checked={prefs.infoUptime} onChange={(v) => set("infoUptime", v)} />
+      <Toggle label="Bottom dock (wire + system + clock)" checked={prefs.tickerEnabled} onChange={(v) => set("tickerEnabled", v)} />
       <Field label="News wire interval (min)"><input type="number" min={2} max={240} value={prefs.wireMinutes} onChange={(e) => set("wireMinutes", Math.max(2, Math.min(240, Number(e.target.value) || 20)))} style={inp} /></Field>
     </SectionShell>
   );

@@ -15,6 +15,9 @@ export type UiPrefs = {
   infoBroBot: boolean;         // BroBot gallery recent
   infoGithub: boolean;         // GitHub open PRs pulse
   infoVercel: boolean;         // Vercel latest deploy state
+  infoMusic: boolean;          // currently playing music track
+  infoNetwork: boolean;        // online/offline + connection type
+  infoUptime: boolean;         // hub session uptime
   // Ticker
   tickerEnabled: boolean;
   // Browser
@@ -99,6 +102,9 @@ export const DEFAULT_PREFS: UiPrefs = {
   infoBroBot: false,
   infoGithub: false,
   infoVercel: false,
+  infoMusic: true,
+  infoNetwork: true,
+  infoUptime: false,
   tickerEnabled: true,
   searchEngine: "duckduckgo",
   showBookmarksBar: true,

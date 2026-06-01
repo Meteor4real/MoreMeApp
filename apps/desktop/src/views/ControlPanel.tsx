@@ -54,7 +54,12 @@ type TestState = "testing" | { ok: boolean; detail: string };
 type DotToken = { __dot: string };
 
 export function ControlPanel() {
-  const [tab, setTab] = useState<"connect" | "manage">("connect");
+  // Manage IS the point of this thing — start there whenever anything's
+  // connected. First-time users land on Connect.
+  const [tab, setTab] = useState<"connect" | "manage">(() => {
+    try { return localStorage.getItem("nchub.cp.tab") as "connect" | "manage" || "manage"; } catch { return "manage"; }
+  });
+  function pickTab(t: "connect" | "manage") { setTab(t); try { localStorage.setItem("nchub.cp.tab", t); } catch { /* ignore */ } }
   const [status, setStatus] = useState<Status[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [token, setToken] = useState("");
@@ -80,6 +85,16 @@ export function ControlPanel() {
 
   async function refresh() { setStatus(await window.hub.vault.list()); }
   useEffect(() => { void refresh(); }, []);
+
+  // First-load nudge: if the saved tab was "manage" but nothing is actually
+  // connected, flip the user to Connect so the panel isn't an empty room.
+  const flippedOnceRef = useRef(false);
+  useEffect(() => {
+    if (flippedOnceRef.current || status.length === 0) return;
+    flippedOnceRef.current = true;
+    const anyConnected = SERVICES.some((s) => !s.noAuth && status.find((x) => x.service === s.id && (s.needsBaseUrl ? !!x.baseUrl : x.hasToken)));
+    if (!anyConnected && tab === "manage") pickTab("connect");
+  }, [status]);
 
   function isConnected(id: string) {
     const svc = SERVICES.find((x) => x.id === id);
@@ -236,16 +251,37 @@ export function ControlPanel() {
   const groups = Array.from(new Set(SERVICES.map((s) => s.group)));
   const liveServices = SERVICES.filter((s) => isConnected(s.id) && ADAPTERS[s.id]?.pull);
 
+  // Roll-up stats for the techy stat strip.
+  const liveCells = Object.values(live).reduce((n, r) => n + (r !== "loading" && r !== undefined && !r.error ? r.groups.reduce((m, g) => m + g.rows.length, 0) : 0), 0);
+  const errorCount = Object.values(live).filter((r) => r !== "loading" && r !== undefined && r.error).length;
+  const pushCount = Object.keys(pushHandlesRef.current).length;
+  const hotCount = Object.values(hotRowsRef.current).reduce((n, s) => n + s.size, 0);
+
   return (
     <div className="stage">
-      <div className="mono" style={{ padding: "10px 14px", borderBottom: "1px solid var(--line)", fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: "var(--mute)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-        <span>Control Panel</span>
+      <div style={{ padding: "12px 16px 10px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
+          <span className="glow-text" style={{ fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 16, letterSpacing: 3, color: "var(--pink)" }}>CONTROL PANEL</span>
+          <span className="mono" style={{ fontSize: 10, letterSpacing: 2, color: "var(--mute)", textTransform: "uppercase" }}>Run your services from here · not the dashboards</span>
+        </div>
+        <div style={{ flex: 1 }} />
         <div style={{ display: "flex", gap: 6 }} data-tour="cp-tabs">
-          {(["connect", "manage"] as const).map((t) => (
-            <button key={t} className="btn" style={{ padding: "2px 12px", color: tab === t ? "var(--pink)" : undefined, borderColor: tab === t ? "rgba(255,87,119,0.6)" : undefined }} onClick={() => setTab(t)}>{t}</button>
+          {(["manage", "connect"] as const).map((t) => (
+            <button key={t} className={"cp-pill" + (tab === t ? " active" : "")} onClick={() => pickTab(t)}>
+              <span>{t === "manage" ? "◆ Manage" : "◇ Connect"}</span>
+            </button>
           ))}
         </div>
-        <span style={{ color: "var(--pink)" }}>{connected} / {connectableCount} connected</span>
+      </div>
+
+      <div style={{ padding: "10px 16px 4px", borderBottom: "1px solid var(--line)" }}>
+        <div className="cp-grid-stats">
+          <StatTile label="Connected" value={`${connected}/${connectableCount}`} color="#ff5577" sub="services with creds" />
+          <StatTile label="Live cells" value={String(liveCells)} color="#22d3ee" sub="rows across the board" />
+          <StatTile label="Push live" value={String(pushCount)} color={pushCount ? "#22c55e" : "#666"} sub={pushCount ? "real-time channels" : "polling only"} />
+          <StatTile label="Hot rows" value={String(hotCount)} color={hotCount ? "#f59e0b" : "#666"} sub={hotCount ? "recent activity" : "all quiet"} />
+          <StatTile label="Errors" value={String(errorCount)} color={errorCount ? "#ef4444" : "#22c55e"} sub={errorCount ? "service failing" : "everything good"} />
+        </div>
       </div>
 
       {tab === "connect" ? (
@@ -264,16 +300,20 @@ export function ControlPanel() {
                 {SERVICES.filter((s) => s.group === g).map((s) => {
                   const on = isConnected(s.id);
                   const test = tests[s.id];
+                  const statusColor = s.noAuth ? "#a78bfa" : on ? "#22c55e" : "#666";
                   return (
-                    <div key={s.id} className={on && !s.noAuth ? "panel-hot panel" : "panel"} style={{ padding: 12, borderColor: on && !s.noAuth ? "rgba(255,87,119,0.4)" : undefined }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div key={s.id} className={on && !s.noAuth ? "panel-hot panel" : "panel"}
+                      style={{ padding: 12, position: "relative", borderColor: on && !s.noAuth ? "rgba(255,87,119,0.4)" : undefined, boxShadow: on && !s.noAuth ? "0 0 18px rgba(255,87,119,0.12)" : undefined, transition: "border-color .15s, box-shadow .15s" }}>
+                      <span style={{ position: "absolute", left: 0, top: 8, bottom: 8, width: 3, background: statusColor, borderRadius: "0 3px 3px 0", boxShadow: `0 0 8px ${statusColor}` }} />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingLeft: 8 }}>
                         <span className="mono" style={{ fontSize: 14 }}>{s.name}</span>
-                        <span className="mono" style={{ fontSize: 10, color: on ? "var(--pink)" : "var(--mute)" }}>
-                          {s.noAuth ? "LAUNCHER" : on ? "CONNECTED" : "OFF"}
+                        <span className="mono" style={{ fontSize: 9, color: statusColor, letterSpacing: 1.5, padding: "2px 6px", border: `1px solid ${statusColor}55`, borderRadius: 4, textShadow: `0 0 6px ${statusColor}88` }}>
+                          {s.noAuth ? "LAUNCHER" : on ? "● LIVE" : "○ OFF"}
                         </span>
                       </div>
-                      <div style={{ fontSize: 12, color: "var(--mute)", margin: "4px 0 10px" }}>{s.hint}</div>
+                      <div style={{ fontSize: 12, color: "var(--mute)", margin: "4px 0 10px", paddingLeft: 8 }}>{s.hint}</div>
 
+                      <div style={{ paddingLeft: 8 }}>
                       {s.id === "googledocs" ? (
                         <GoogleDocsConnect />
                       ) : s.launcher ? (
@@ -302,6 +342,7 @@ export function ControlPanel() {
                           )}
                         </>
                       )}
+                      </div>
                     </div>
                   );
                 })}
@@ -315,11 +356,18 @@ export function ControlPanel() {
             <p style={{ color: "var(--mute)", fontSize: 13, margin: 0, flex: 1, minWidth: 260, maxWidth: 560 }}>
               Live board across everything connected. Real actions — redeploy, promote, cancel, purge cache, toggle entities, start/stop VMs &amp; containers, restart VPS. Expand a row to drill in.
             </p>
+            <button className="btn" style={{ padding: "4px 10px", fontSize: 11 }} onClick={() => setCollapsed(new Set(liveServices.map((s) => s.id)))}>Collapse all</button>
+            <button className="btn" style={{ padding: "4px 10px", fontSize: 11 }} onClick={() => setCollapsed(new Set())}>Expand all</button>
             <label className="mono" style={{ fontSize: 11, color: "var(--mute)", display: "flex", alignItems: "center", gap: 6 }}>
               <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
-              auto-refresh {autoRefresh ? `(${countdown}s)` : "(off)"}
+              auto-refresh
             </label>
-            <button className="btn" onClick={() => void pullManage()}>Refresh all</button>
+            {autoRefresh && (
+              <div className="cp-countdown" title={`next pull in ${countdown}s`}>
+                <div className="cp-countdown-bar" style={{ width: `${Math.max(0, Math.min(100, (countdown / REFRESH_SEC) * 100))}%` }} />
+              </div>
+            )}
+            <button className="btn" onClick={() => void pullManage()} style={{ borderColor: "rgba(255,87,119,0.55)", color: "var(--pink)", boxShadow: "0 0 12px rgba(255,87,119,0.25)" }}>◆ Refresh all</button>
           </div>
 
           {actMsg && (
@@ -338,26 +386,32 @@ export function ControlPanel() {
           {liveServices.map((s) => {
             const result = live[s.id];
             const isCollapsed = collapsed.has(s.id);
+            const errored = result && result !== "loading" && !!result.error;
+            const loading = result === "loading" || result === undefined;
+            const rowCount = result && result !== "loading" && !result.error ? result.groups.reduce((n, g) => n + g.rows.length, 0) : 0;
+            const svcHot = (hotRowsRef.current[s.id]?.size || 0) > 0;
             return (
-              <div key={s.id} className="panel" style={{ padding: 0, marginBottom: 14, overflow: "hidden" }}>
+              <div key={s.id} className="cp-svc" style={errored ? { borderColor: "rgba(239,68,68,0.45)" } : svcHot ? { borderColor: "rgba(245,158,11,0.55)" } : undefined}>
                 <div
-                  onClick={() => setCollapsed((c) => { const n = new Set(c); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n; })}
-                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", cursor: "pointer", borderBottom: isCollapsed ? "none" : "1px solid var(--line)", background: "rgba(255,87,119,0.04)" }}>
-                  <span className="mono" style={{ fontSize: 13, letterSpacing: 1.5, textTransform: "uppercase", color: "var(--pink)" }}>
-                    <span style={{ display: "inline-block", width: 12, color: "var(--mute)" }}>{isCollapsed ? "▸" : "▾"}</span> {s.name}
-                  </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    {pushHandlesRef.current[s.id] && (
-                      <span className="mono" style={{ fontSize: 10, letterSpacing: 1, padding: "2px 6px", borderRadius: 4,
-                          color: pushHandlesRef.current[s.id].kind === "ws" ? "#22d3ee" : "#f59e0b",
-                          border: `1px solid ${pushHandlesRef.current[s.id].kind === "ws" ? "rgba(34,211,238,0.4)" : "rgba(245,158,11,0.4)"}` }}>
-                        {pushHandlesRef.current[s.id].labelFn()}
-                      </span>
-                    )}
-                    <span className="mono" style={{ fontSize: 12, color: "var(--mute)" }}>
-                      {result === "loading" || result === undefined ? "loading…" : result.error ? `error: ${result.error}` : result.summary}
+                  className={"cp-svc-head" + (isCollapsed ? " collapsed" : "")}
+                  onClick={() => setCollapsed((c) => { const n = new Set(c); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n; })}>
+                  <span style={{ display: "inline-block", width: 12, color: "var(--mute)", textAlign: "center" }}>{isCollapsed ? "▸" : "▾"}</span>
+                  <span className="cp-svc-name">{s.name}</span>
+                  {!loading && !errored && rowCount > 0 && (
+                    <span className="mono" style={{ fontSize: 10, color: "var(--mute)", padding: "2px 7px", border: "1px solid var(--line)", borderRadius: 4 }}>{rowCount} rows</span>
+                  )}
+                  <span style={{ flex: 1 }} />
+                  {pushHandlesRef.current[s.id] && (
+                    <span className="cp-push-badge" style={{
+                        color: pushHandlesRef.current[s.id].kind === "ws" ? "#22d3ee" : "#f59e0b",
+                        border: `1px solid ${pushHandlesRef.current[s.id].kind === "ws" ? "rgba(34,211,238,0.4)" : "rgba(245,158,11,0.4)"}` }}>
+                      {pushHandlesRef.current[s.id].labelFn()}
                     </span>
+                  )}
+                  <span className="cp-svc-summary" style={errored ? { color: "#ef4444" } : undefined}>
+                    {loading ? "loading…" : errored ? `error: ${result.error}` : result.summary}
                   </span>
+                  <button className="cp-action" onClick={(e) => { e.stopPropagation(); void pullManage(false, s.id); }} title="Re-pull just this service">↻</button>
                 </div>
                 {!isCollapsed && result && result !== "loading" && !result.error && (
                   <div style={{ padding: 14 }}>
@@ -375,6 +429,16 @@ export function ControlPanel() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function StatTile({ label, value, color, sub }: { label: string; value: string; color: string; sub?: string }) {
+  return (
+    <div className="cp-stat" style={{ "--cp-accent": color } as React.CSSProperties}>
+      <span className="cp-stat-label">{label}</span>
+      <span className="cp-stat-value">{value}</span>
+      {sub && <span className="cp-stat-sub">{sub}</span>}
     </div>
   );
 }
@@ -428,7 +492,7 @@ function GroupTable({ group, serviceId, prefix, rowExpand, onToggleRow, onAction
                     <td style={{ whiteSpace: "nowrap", textAlign: "right" }}>
                       {row.expand && <span className="mono" style={{ color: "var(--mute)", marginRight: 8 }}>{ex ? "▾" : "▸"}</span>}
                       {row.actions?.map((a, i) => (
-                        <button key={i} className="btn" style={{ padding: "2px 8px", marginLeft: 4, color: a.danger ? "var(--orange)" : undefined }}
+                        <button key={i} className={"cp-action" + (a.danger ? " danger" : "")}
                           onClick={(e) => { e.stopPropagation(); onAction(a, serviceId, key); }}>{a.label}</button>
                       ))}
                     </td>
