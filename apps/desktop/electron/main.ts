@@ -665,6 +665,52 @@ function registerIpc() {
   // ── Agent tools — the Group Terminal crew can call these. Real machine
   //    access (the user asked for it explicitly); all on-device, no network
   //    except http_get which the renderer already routes through net:request.
+  // Read a Google Doc using the SAME session the embedded Documents webview
+  // is signed into (persist:hub). Cookies travel, so private docs export
+  // works as long as the user is signed into Google in the Documents tab.
+  ipcMain.handle("docs:read", async (_e, docId: string) => {
+    try {
+      const ses = session.fromPartition("persist:hub");
+      const url = `https://docs.google.com/document/d/${docId}/export?format=txt`;
+      const r = await ses.fetch(url, { method: "GET", redirect: "follow" });
+      const text = await r.text();
+      if (!r.ok || /<html/i.test(text.slice(0, 200))) {
+        return { ok: false, error: `Doc not readable (HTTP ${r.status}). Make sure you're signed into Google in the Documents tab and you have access to this doc.` };
+      }
+      return { ok: true, text: text.slice(0, 40000) };
+    } catch (e) { return { ok: false, error: String(e) }; }
+  });
+
+  // List the user's own Google Docs via Drive's HTML index. Same partition,
+  // so it uses the signed-in session. Returns [{ id, title }, ...].
+  ipcMain.handle("docs:listMine", async () => {
+    try {
+      const ses = session.fromPartition("persist:hub");
+      // Drive's docs.google.com/document home page lists recent docs in HTML.
+      const r = await ses.fetch("https://docs.google.com/document/u/0/?usp=docs_home", { method: "GET", redirect: "follow" });
+      const html = await r.text();
+      if (!r.ok) return { ok: false, error: `HTTP ${r.status}`, docs: [] };
+      // Each entry: /document/d/<id>/edit ... aria-label or anchor text.
+      const out: { id: string; title: string }[] = [];
+      const seen = new Set<string>();
+      // Find every /document/d/<id>/edit URL, then look near it for an
+      // aria-label/title/anchor-text to use as the human title.
+      const idRe = /\/document\/d\/([a-zA-Z0-9_-]{20,})/g;
+      let mm: RegExpExecArray | null;
+      while ((mm = idRe.exec(html))) {
+        const id = mm[1];
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const win = html.slice(Math.max(0, mm.index - 400), Math.min(html.length, mm.index + 400));
+        const t = win.match(/aria-label="([^"]{2,160})"/) || win.match(/title="([^"]{2,160})"/) || win.match(/>([^<>{}\n]{3,160})</);
+        const title = (t ? t[1] : "Untitled").trim();
+        out.push({ id, title });
+        if (out.length >= 50) break;
+      }
+      return { ok: true, docs: out };
+    } catch (e) { return { ok: false, error: String(e), docs: [] }; }
+  });
+
   ipcMain.handle("tool:exec", async (_e, command: string, cwd?: string) => {
     return new Promise((resolve) => {
       try {

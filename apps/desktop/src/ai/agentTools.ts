@@ -111,10 +111,9 @@ export const TOOLS: ToolSpec[] = [
       const docs = loadDocsForAI();
       const doc = docs.find((d) => d.id.toLowerCase() === key || d.title.toLowerCase().includes(key));
       if (!doc) return { ok: false, output: "No allowed doc matches that. It may be blocked, or not added in the Documents tab." };
-      const r = await window.hub.net({ method: "GET", url: `https://docs.google.com/document/d/${doc.id}/export?format=txt`, headers: { "User-Agent": "Mozilla/5.0 NetworkChuckHub/1.0" } });
-      const body = typeof r.data === "string" ? r.data : "";
-      if (!r.ok || !body || body.includes("<html")) return { ok: false, output: "Couldn't read it (the doc must be shared 'anyone with the link' for AI export to work)." };
-      return { ok: true, output: body.slice(0, 12000) };
+      const r = await window.hub.docs.read(doc.id);
+      if (!r.ok) return { ok: false, output: r.error || "couldn't read doc" };
+      return { ok: true, output: (r.text || "").slice(0, 12000) };
     },
   },
 ];

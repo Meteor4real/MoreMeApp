@@ -4,6 +4,11 @@ import { ACCENTS, applyAccent, loadAccent } from "../theme-accent";
 import { getData, setData, whoAmI, cloudConfigured } from "../embedded/haloscloud";
 import { loadPrefs, savePrefs, SEARCH_ENGINES, subscribePrefs, applyUiPrefs, type UiPrefs } from "../uiPrefs";
 import { TRACKS, ost } from "../audio/ost";
+import {
+  loadImported, subscribeImported, importFile, removeImported, renameImported,
+  playImported, stopImported, subscribeImportedPlayer, importedIsPlaying, importedNowPlaying, setImportedVolume,
+  type ImportedTrack,
+} from "../audio/imported";
 import { KNOWN_CODES, loadCodes, tryUnlock, relock, subscribeCodes, type CodeKey } from "../featureGate";
 import logoUrl from "../assets/logo.png";
 
@@ -346,6 +351,12 @@ function MusicSection({ prefs, set }: { prefs: UiPrefs; set: <K extends keyof Ui
   const [vol, setVol] = useState(prefs.musicDefaultVolume);
   const [genre, setGenre] = useState("all");
   const cur = TRACKS[idx] || TRACKS[0];
+  const [imported, setImported] = useState<ImportedTrack[]>(loadImported);
+  const [, setImpTick] = useState(0);
+  const [importErr, setImportErr] = useState<string | null>(null);
+  const [busyImport, setBusyImport] = useState(false);
+  useEffect(() => subscribeImported(setImported), []);
+  useEffect(() => subscribeImportedPlayer(() => setImpTick((n) => n + 1)), []);
 
   // Keep the displayed track in sync with whatever the global OST is doing.
   useEffect(() => {
@@ -353,11 +364,27 @@ function MusicSection({ prefs, set }: { prefs: UiPrefs; set: <K extends keyof Ui
     return () => clearInterval(t);
   }, []);
 
-  function play(i: number) { ost.play(i); setIdx(i); setPlaying(true); }
+  // Only one source plays at a time — procedural and imported are mutually
+  // exclusive so the user never hears two tracks layered by accident.
+  function play(i: number) { stopImported(); ost.play(i); setIdx(i); setPlaying(true); }
   function toggle() { if (playing) { ost.stop(); setPlaying(false); } else { play(idx); } }
   function next() { play((idx + 1) % TRACKS.length); }
   function prev() { play((idx - 1 + TRACKS.length) % TRACKS.length); }
-  function setVolume(v: number) { setVol(v); ost.setVolume(v); }
+  function setVolume(v: number) { setVol(v); ost.setVolume(v); setImportedVolume(v); }
+  function playImportedHere(t: ImportedTrack) { ost.stop(); setPlaying(false); playImported(t, vol); }
+  async function onPick(files: FileList | null) {
+    if (!files || !files.length) return;
+    setBusyImport(true); setImportErr(null);
+    try {
+      for (const f of Array.from(files)) {
+        if (!/^audio\//.test(f.type) && !/\.(mp3|ogg|wav|m4a|flac)$/i.test(f.name)) continue;
+        if (f.size > 25 * 1024 * 1024) { setImportErr(`${f.name} skipped (>25 MB — too large to keep in browser storage).`); continue; }
+        await importFile(f);
+      }
+    } catch (e) { setImportErr(String(e)); } finally { setBusyImport(false); }
+  }
+  const impPlayingId = importedNowPlaying();
+  const impPlaying = importedIsPlaying();
 
   const genres = ["all", ...Array.from(new Set(TRACKS.map((t) => t.vibe)))];
   const shown = genre === "all" ? TRACKS : TRACKS.filter((t) => t.vibe === genre);
@@ -408,6 +435,49 @@ function MusicSection({ prefs, set }: { prefs: UiPrefs; set: <K extends keyof Ui
           );
         })}
       </div>
+
+      <Hr />
+      <div className="sec-title">Your imported tracks</div>
+      <p style={{ fontSize: 12, color: "var(--mute)", marginTop: 6, lineHeight: 1.6 }}>
+        Drop real audio files (MP3 / OGG / WAV / M4A / FLAC) here to add them
+        to your library. The procedural engine still drives the built-ins —
+        the NCH Hub Theme and the Maison theme stay exactly as they are.
+        Files live in browser storage, so keep individual tracks under ~25 MB.
+      </p>
+      <div
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => { e.preventDefault(); onPick(e.dataTransfer.files); }}
+        style={{ marginTop: 8, padding: 18, border: "1px dashed var(--line)", borderRadius: 10, background: "rgba(0,0,0,0.25)", textAlign: "center" }}
+      >
+        <div style={{ fontSize: 13, color: "var(--ink)", marginBottom: 6 }}>{busyImport ? "Importing…" : "Drop audio files here, or"}</div>
+        <label className="btn" style={{ cursor: "pointer", display: "inline-block" }}>
+          Pick files
+          <input type="file" multiple accept="audio/*,.mp3,.ogg,.wav,.m4a,.flac" style={{ display: "none" }}
+            onChange={(e) => { onPick(e.target.files); e.currentTarget.value = ""; }} />
+        </label>
+      </div>
+      {importErr && <div style={{ fontSize: 11, color: "#ef4444", marginTop: 6 }}>{importErr}</div>}
+      {imported.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 8, marginTop: 10 }}>
+          {imported.map((t) => {
+            const live = impPlayingId === t.id && impPlaying;
+            return (
+              <div key={t.id} className={live ? "panel-hot panel" : "panel"} style={{ display: "flex", alignItems: "center", gap: 10, padding: 10, borderColor: live ? `${t.color}aa` : undefined }}>
+                <span style={{ width: 32, height: 32, borderRadius: 7, flexShrink: 0, background: `linear-gradient(135deg, ${t.color}, #0a0820)`, boxShadow: `0 0 8px ${t.color}66`, display: "grid", placeItems: "center", color: "#fff", fontFamily: "ui-monospace,monospace", fontSize: 12, fontWeight: 700 }}>IMP</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <input defaultValue={t.name} onBlur={(e) => renameImported(t.id, e.target.value || t.name)}
+                    style={{ width: "100%", background: "transparent", border: "none", color: "var(--ink)", fontFamily: "ui-monospace,monospace", fontSize: 12, outline: "none", padding: 0 }} />
+                  <div style={{ fontSize: 10, color: "var(--mute)" }}>{(t.bytes / 1024 / 1024).toFixed(2)} MB</div>
+                </div>
+                {live
+                  ? <button className="btn" style={{ fontSize: 11, padding: "4px 10px", color: "var(--orange)" }} onClick={stopImported}>■</button>
+                  : <button className="btn" style={{ fontSize: 11, padding: "4px 10px", color: "var(--pink)" }} onClick={() => playImportedHere(t)}>▶</button>}
+                <button className="btn" style={{ fontSize: 10, padding: "3px 7px" }} title="remove" onClick={() => removeImported(t.id)}>✕</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <Hr />
       <div className="sec-title">Startup defaults</div>

@@ -26,6 +26,19 @@ export function Documents() {
     if (e) { setActiveId(e.id); setLink(""); setTitle(""); setAdding(false); }
   }
 
+  const [importing, setImporting] = useState(false);
+  const [importNote, setImportNote] = useState<string | null>(null);
+  async function importFromDrive() {
+    setImporting(true); setImportNote(null);
+    try {
+      const r = await window.hub.docs.listMine();
+      if (!r.ok || !r.docs.length) { setImportNote(r.error ? `Couldn't list (${r.error}).` : "No docs found — open https://docs.google.com once in the editor here so you're signed in, then try again."); return; }
+      let added = 0;
+      for (const d of r.docs) if (addDoc(d.id, d.title)) added++;
+      setImportNote(added ? `Imported ${added} docs from your Drive.` : "Everything was already in your list.");
+    } finally { setImporting(false); }
+  }
+
   if (!state.connected) {
     return (
       <div className="stage" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -52,7 +65,10 @@ export function Documents() {
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         {/* Sidebar */}
         <div style={{ width: 240, borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <button className="btn" style={{ margin: 10 }} onClick={() => setAdding((a) => !a)}>{adding ? "Cancel" : "+ Add a doc"}</button>
+          <div style={{ display: "flex", gap: 6, margin: 10 }}>
+            <button className="btn" style={{ flex: 1 }} onClick={() => setAdding((a) => !a)}>{adding ? "Cancel" : "+ Add a doc"}</button>
+            <button className="btn" disabled={importing} title="Auto-list from your Google Drive (uses the signed-in session)" onClick={() => void importFromDrive()}>{importing ? "…" : "Sync"}</button>
+          </div>
           {adding && (
             <div style={{ padding: "0 10px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
               <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="paste Google Doc link" style={inp} />
@@ -60,6 +76,7 @@ export function Documents() {
               <button className="btn" onClick={doAdd}>Add</button>
             </div>
           )}
+          {importNote && <div style={{ fontSize: 11, color: importNote.startsWith("Couldn") ? "#ef4444" : "var(--mute)", padding: "0 10px 8px" }}>{importNote}</div>}
           <div style={{ flex: 1, overflow: "auto", padding: "0 8px 8px" }}>
             {state.docs.length === 0 && <div style={{ fontSize: 11, color: "var(--mute)", padding: 8 }}>No docs yet. Paste a share link to add one.</div>}
             {state.docs.map((d) => (

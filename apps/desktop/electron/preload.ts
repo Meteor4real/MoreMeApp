@@ -37,6 +37,13 @@ const api = {
       ipcRenderer.invoke("privacy:apply", p),
   },
 
+  docs: {
+    read: (id: string): Promise<{ ok: boolean; text?: string; error?: string }> =>
+      ipcRenderer.invoke("docs:read", id),
+    listMine: (): Promise<{ ok: boolean; docs: { id: string; title: string }[]; error?: string }> =>
+      ipcRenderer.invoke("docs:listMine"),
+  },
+
   tool: {
     exec: (command: string, cwd?: string): Promise<{ ok: boolean; code: number; stdout: string; stderr: string }> =>
       ipcRenderer.invoke("tool:exec", command, cwd),
