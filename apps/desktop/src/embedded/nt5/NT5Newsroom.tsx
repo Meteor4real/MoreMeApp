@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { subscribeWire, runWireOnce, runRealWorldOnce, type WireArticle } from "../../services/nt5Wire";
+import { subscribeWire, runWireOnce, runRealWorldOnce, getWireArticles, type WireArticle } from "../../services/nt5Wire";
+import { NT5Segments, BreakingBumper } from "./NT5Segments";
 
 // NT5 Newsroom — native, glowing 24/7 control surface for the in-app wire.
 // Renders the real WireArticle store (house-model generated + real-world RSS
@@ -78,6 +79,20 @@ export function NT5Newsroom() {
 
   useEffect(() => subscribeWire(setArts), []);
 
+  // First-load seeding — the #1 cause of "NT5 won't load / is blank" was an
+  // empty wire on a fresh install (the house model hasn't downloaded yet, so
+  // nothing's been filed). Real-world RSS briefs don't need the model, so pull
+  // them immediately if the wire is empty. This guarantees content on launch.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current) return;
+    seeded.current = true;
+    if (getWireArticles().length === 0) {
+      setBusy("real");
+      void runRealWorldOnce(3).finally(() => setBusy(null));
+    }
+  }, []);
+
   const filtered = useMemo(() => {
     const text = q.trim().toLowerCase();
     const horizons: Record<TimeRange, number> = { all: 0, "24h": 86400e3, week: 7 * 86400e3, month: 30 * 86400e3 };
@@ -113,8 +128,16 @@ export function NT5Newsroom() {
     return m;
   }, [arts]);
 
+  // The freshest breaking story drives the bumper. Only fire it for items that
+  // landed since the user last looked, so it's a real alert not a loop.
+  const freshBreaking = useMemo(() => {
+    const b = arts.find((a) => a.category === "breaking" && Date.parse(a.published_at) > lastVisit);
+    return b || null;
+  }, [arts, lastVisit]);
+  const [bumperDismissed, setBumperDismissed] = useState<string | null>(null);
+
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.bg, overflow: "hidden", minHeight: 0 }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.bg, overflow: "hidden", minHeight: 0, position: "relative" }}>
       {/* control strip */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderBottom: `1px solid ${C.line}`, background: "linear-gradient(90deg, #06061a, #0a0820)" }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: C.red, fontFamily: "ui-monospace,monospace", fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>
@@ -136,9 +159,29 @@ export function NT5Newsroom() {
       <div style={{ flex: 1, overflow: "auto", padding: 18, minHeight: 0 }}>
         {teleprompter && breaking ? (
           <Teleprompter article={breaking} onExit={() => setTeleprompter(false)} />
+        ) : arts.length === 0 ? (
+          <div style={{ display: "grid", placeItems: "center", minHeight: 300, textAlign: "center" }}>
+            <div style={{ maxWidth: 460 }}>
+              <div style={{ fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 20, color: C.magenta, letterSpacing: 2, textShadow: `0 0 16px ${C.magenta}66`, marginBottom: 10 }}>
+                {busy === "real" || busy === "wire" ? "Spinning up the wire…" : "The wire is quiet"}
+              </div>
+              <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
+                {busy ? "Pulling real-world headlines and filing them in the anchors' voices. Hang tight — this takes a few seconds." : "No stories on the wire yet. Pull real headlines now, or file fresh anchor stories with the bundled model."}
+              </p>
+              {!busy && (
+                <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 14 }}>
+                  <button className="btn" onClick={() => void fireReal()} style={{ ...btnStyle(false), color: C.cyan, borderColor: `${C.cyan}66` }}>Pull real headlines</button>
+                  <button className="btn" onClick={() => void fireWire()} style={btnStyle(false)}>File anchor stories</button>
+                </div>
+              )}
+            </div>
+          </div>
         ) : (
           <>
             {breaking && <Hero article={breaking} onOpen={() => setOpen(breaking)} />}
+
+            {/* live broadcast segments — weather, markets, space, sports */}
+            <NT5Segments />
 
             {/* search + filter row */}
             <div style={{ display: "flex", gap: 8, alignItems: "center", margin: "18px 0 6px", flexWrap: "wrap" }}>
@@ -209,6 +252,16 @@ export function NT5Newsroom() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* breaking-news bumper — slides up when a fresh breaking story lands */}
+      {freshBreaking && bumperDismissed !== freshBreaking.id && !teleprompter && (
+        <BreakingBumper
+          key={freshBreaking.id}
+          title={freshBreaking.title}
+          anchor={freshBreaking.author_display}
+          onClick={() => { setOpen(freshBreaking); setBumperDismissed(freshBreaking.id); }}
+        />
       )}
 
       {open && <DetailModal article={open} onClose={() => setOpen(null)} bookmarked={bookmarks.has(open.id)} onToggleBookmark={() => toggleBookmark(open.id)} onReadingChange={(reading) => setReadingId(reading ? open.id : null)} />}
