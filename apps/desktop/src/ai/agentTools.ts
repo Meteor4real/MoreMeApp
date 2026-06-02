@@ -92,6 +92,47 @@ export const TOOLS: ToolSpec[] = [
     run: async () => { const s = await window.hub.sys.pulse(); return { ok: true, output: `CPU ${s.cpuPct}% · MEM ${s.memPct}% · ${s.memFreeGb.toFixed(1)}GB free RAM · ${s.diskFreeGb.toFixed(1)}/${s.diskTotalGb.toFixed(1)}GB free disk` }; },
   },
   {
+    name: "http_request", args: '{"method":"POST","url":"https://...","headers":{"Content-Type":"application/json"},"body":{"k":"v"}}',
+    desc: "Make a full HTTP request (any method, headers, JSON body) and read the status + response. For testing APIs and webhooks.",
+    run: async (a) => {
+      const method = (str(a.method) || "GET").toUpperCase();
+      const headers = (a.headers && typeof a.headers === "object") ? a.headers as Record<string, string> : undefined;
+      const r = await window.hub.net({ method, url: str(a.url), headers, body: a.body });
+      const body = typeof r.data === "string" ? r.data : JSON.stringify(r.data, null, 2);
+      return { ok: r.ok, output: `HTTP ${r.status}\n${(body || "").slice(0, 6000)}` };
+    },
+  },
+  {
+    name: "dns_lookup", args: '{"host":"example.com","type":"A"}',
+    desc: "Resolve a hostname via DNS-over-HTTPS (Cloudflare). type can be A, AAAA, MX, TXT, NS, CNAME.",
+    run: async (a) => {
+      const host = str(a.host).trim(); const type = (str(a.type) || "A").toUpperCase();
+      const r = await window.hub.net({ method: "GET", url: `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=${type}`, headers: { Accept: "application/dns-json" } });
+      const ans = (r.data as { Answer?: { name: string; type: number; data: string; TTL: number }[] } | null)?.Answer || [];
+      if (!ans.length) return { ok: true, output: `No ${type} records for ${host}.` };
+      return { ok: true, output: ans.map((x) => `${x.name} ${x.TTL}s ${x.data}`).join("\n") };
+    },
+  },
+  {
+    name: "whois_ip", args: '{"ip":"8.8.8.8"}',
+    desc: "Look up geolocation + network owner (ASN/org) for an IP address or domain.",
+    run: async (a) => {
+      const r = await window.hub.net({ method: "GET", url: `https://ipapi.co/${encodeURIComponent(str(a.ip).trim())}/json/` });
+      const d = r.data as Record<string, unknown> | null;
+      if (!d) return { ok: false, output: "lookup failed" };
+      return { ok: true, output: `${d.ip}\norg: ${d.org}\nASN: ${d.asn}\nloc: ${d.city}, ${d.region}, ${d.country_name}\ntimezone: ${d.timezone}` };
+    },
+  },
+  {
+    name: "list_services", args: "{}",
+    desc: "List which Control Panel services the user has connected (so you know what live infra you can query).",
+    run: async () => {
+      const list = await window.hub.vault.list();
+      const connected = list.filter((s) => s.hasToken || s.baseUrl).map((s) => s.service);
+      return { ok: true, output: connected.length ? "Connected services: " + connected.join(", ") : "No services connected yet." };
+    },
+  },
+  {
     name: "remember", args: '{"fact": "Davis prefers concise replies"}',
     desc: "Save a durable note to YOUR own memory so you recall it in future chats.",
     run: async (a, ctx) => { rememberFact(ctx.agentId, str(a.fact)); return { ok: true, output: "remembered." }; },
