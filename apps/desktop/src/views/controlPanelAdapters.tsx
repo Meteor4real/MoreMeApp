@@ -584,10 +584,127 @@ function launcher(id: string, name: string, uri: string): Adapter {
   };
 }
 
+// ── Grafana ──────────────────────────────────────────────────────────────────
+// Token = a Grafana service-account / API token; base URL = the instance.
+const grafana: Adapter = {
+  id: "grafana", hasLive: true,
+  test: async (c) => {
+    if (!c.baseUrl) return { ok: false, detail: "set base URL" };
+    const r = await net({ method: "GET", url: `${trim(c.baseUrl)}/api/health`, headers: { Authorization: `Bearer ${c.token}` } });
+    return { ok: r.ok, detail: r.ok ? "reachable" : `HTTP ${r.status}` };
+  },
+  pull: async (c) => {
+    if (!c.baseUrl) return { summary: "", groups: [], error: "set base URL" };
+    const h = { Authorization: `Bearer ${c.token}`, Accept: "application/json" };
+    const health = await net<{ database?: string; version?: string }>({ method: "GET", url: `${trim(c.baseUrl)}/api/health`, headers: h });
+    const dashR = await net<{ uid: string; title: string; folderTitle?: string; type: string; url: string }[]>({ method: "GET", url: `${trim(c.baseUrl)}/api/search?type=dash-db&limit=30`, headers: h });
+    if (!dashR.ok) return { summary: "", groups: [], error: `HTTP ${dashR.status}` };
+    const dashes = dashR.data || [];
+    const alertR = await net<{ data?: { groups?: { rules?: { name: string; state: string }[] }[] } }>({ method: "GET", url: `${trim(c.baseUrl)}/api/prometheus/grafana/api/v1/rules`, headers: h });
+    const rules = (alertR.data?.data?.groups || []).flatMap((g) => g.rules || []);
+    const firing = rules.filter((r) => r.state === "firing" || r.state === "alerting");
+    return {
+      summary: `${dashes.length} dashboards · ${firing.length ? `${firing.length} firing` : "no alerts"} · v${health.data?.version || "?"}`,
+      groups: [
+        { title: "Alert rules", columns: ["rule", "state"], note: rules.length ? undefined : "No Grafana-managed alert rules.", rows: rules.slice(0, 20).map((r, i) => ({
+          id: `rule-${i}`, cells: [r.name, dot(r.state === "firing" || r.state === "alerting" ? "red" : r.state === "pending" ? "amber" : "green") as ReactNode],
+        })) },
+        { title: "Dashboards", columns: ["dashboard", "folder", ""], rows: dashes.map((d) => ({
+          id: d.uid, cells: [d.title, d.folderTitle || "General", ""],
+          actions: [{ label: "open", run: async () => { await window.hub.launchUri(`${trim(c.baseUrl)}${d.url}`); return `opened ${d.title}`; } }],
+        })) },
+      ],
+    };
+  },
+};
+
+// ── Prometheus ───────────────────────────────────────────────────────────────
+// No token needed for most setups; base URL = the Prometheus server. Surfaces
+// target health + a few golden-signal instant queries.
+const prometheus: Adapter = {
+  id: "prometheus", hasLive: true,
+  test: async (c) => {
+    if (!c.baseUrl) return { ok: false, detail: "set base URL" };
+    const h = c.token ? { Authorization: `Bearer ${c.token}` } : undefined;
+    const r = await net({ method: "GET", url: `${trim(c.baseUrl)}/api/v1/query?query=up`, headers: h });
+    return { ok: r.ok, detail: r.ok ? "reachable" : `HTTP ${r.status}` };
+  },
+  pull: async (c) => {
+    if (!c.baseUrl) return { summary: "", groups: [], error: "set base URL" };
+    const h = c.token ? { Authorization: `Bearer ${c.token}` } : undefined;
+    const tR = await net<{ data?: { activeTargets?: { labels?: { job?: string; instance?: string }; health: string; lastError?: string }[] } }>({ method: "GET", url: `${trim(c.baseUrl)}/api/v1/targets`, headers: h });
+    if (!tR.ok) return { summary: "", groups: [], error: `HTTP ${tR.status}` };
+    const targets = tR.data?.data?.activeTargets || [];
+    const down = targets.filter((t) => t.health !== "up");
+    // A couple of instant queries for an at-a-glance board.
+    async function q(expr: string): Promise<string> {
+      const r = await net<{ data?: { result?: { value?: [number, string] }[] } }>({ method: "GET", url: `${trim(c.baseUrl)}/api/v1/query?query=${encodeURIComponent(expr)}`, headers: h });
+      const v = r.data?.data?.result?.[0]?.value?.[1];
+      return v != null ? Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—";
+    }
+    const [series, tsdb] = await Promise.all([q("count(up)"), q("prometheus_tsdb_head_series")]);
+    return {
+      summary: `${targets.length - down.length}/${targets.length} targets up${down.length ? ` · ${down.length} DOWN` : ""}`,
+      groups: [
+        { title: "Stats", columns: ["metric", "value"], rows: [
+          { id: "series", cells: ["scrape targets (up)", series] },
+          { id: "tsdb", cells: ["head series", tsdb] },
+        ] },
+        { title: "Targets", columns: ["job", "instance", "health", "last error"], rows: targets.slice(0, 30).map((t, i) => ({
+          id: `t-${i}`, cells: [t.labels?.job || "—", t.labels?.instance || "—", dot(t.health === "up" ? "green" : "red") as ReactNode, t.lastError || ""],
+        })) },
+      ],
+    };
+  },
+};
+
+// ── Uptime Kuma ──────────────────────────────────────────────────────────────
+// Uses the Prometheus /metrics endpoint Kuma exposes (token = the API
+// username's key as a Bearer, or basic-less if open). base URL = Kuma root.
+const uptimekuma: Adapter = {
+  id: "uptimekuma", hasLive: true,
+  test: async (c) => {
+    if (!c.baseUrl) return { ok: false, detail: "set base URL" };
+    const r = await net({ method: "GET", url: `${trim(c.baseUrl)}/metrics`, headers: c.token ? { Authorization: `Bearer ${c.token}` } : undefined });
+    return { ok: r.ok, detail: r.ok ? "metrics reachable" : `HTTP ${r.status} — enable /metrics + API key` };
+  },
+  pull: async (c) => {
+    if (!c.baseUrl) return { summary: "", groups: [], error: "set base URL" };
+    const r = await net<string>({ method: "GET", url: `${trim(c.baseUrl)}/metrics`, headers: c.token ? { Authorization: `Bearer ${c.token}` } : undefined });
+    if (!r.ok || typeof r.data !== "string") return { summary: "", groups: [], error: `HTTP ${r.status} — Kuma needs /metrics + an API key` };
+    // Parse monitor_status{...} 1|0 and monitor_response_time{...} lines.
+    type Mon = { name: string; up: boolean; rt?: number };
+    const mons = new Map<string, Mon>();
+    for (const line of r.data.split("\n")) {
+      const sm = /^monitor_status\{([^}]*)\}\s+([\d.]+)/.exec(line);
+      if (sm) {
+        const name = /monitor_name="([^"]*)"/.exec(sm[1])?.[1] || "monitor";
+        mons.set(name, { ...(mons.get(name) || { name, up: false }), name, up: Number(sm[2]) === 1 });
+        continue;
+      }
+      const rm = /^monitor_response_time\{([^}]*)\}\s+([\d.]+)/.exec(line);
+      if (rm) {
+        const name = /monitor_name="([^"]*)"/.exec(rm[1])?.[1] || "monitor";
+        mons.set(name, { ...(mons.get(name) || { name, up: false }), name, rt: Number(rm[2]) });
+      }
+    }
+    const list = [...mons.values()];
+    const down = list.filter((m) => !m.up);
+    return {
+      summary: list.length ? `${list.length - down.length}/${list.length} up${down.length ? ` · ${down.length} DOWN` : ""}` : "no monitors found",
+      groups: [
+        { title: "Monitors", columns: ["monitor", "status", "response"], note: list.length ? undefined : "No monitors parsed — confirm /metrics is enabled and the API key is set.", rows: list.map((m, i) => ({
+          id: `m-${i}`, cells: [m.name, dot(m.up ? "green" : "red") as ReactNode, m.rt != null ? `${Math.round(m.rt)} ms` : "—"],
+        })) },
+      ],
+    };
+  },
+};
+
 export const ADAPTERS: Record<string, Adapter> = {
   github, vercel, cloudflare, tailscale, n8n, supabase, youtube,
   homeassistant, proxmox, portainer, pihole, frigate, hermes, hostinger,
-  pexels, twingate, zimacube,
+  pexels, twingate, zimacube, grafana, prometheus, uptimekuma,
   modrinth: launcher("modrinth", "Modrinth", "https://launcher.modrinth.com/"),
   blockbench: launcher("blockbench", "Blockbench", "https://www.blockbench.net/launcher"),
 };
