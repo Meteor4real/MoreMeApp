@@ -7,6 +7,9 @@ import {
   loadWeights, saveWeights, type Weights, DEFAULT_WEIGHTS,
   loadTemplates, saveTemplates, type Template, fillTemplate, DEFAULT_TEMPLATES,
 } from "./sfExt";
+import { runDiscovery, toTarget, SOURCE_META, type Discovered, type DiscoverySource } from "./discovery";
+import { load as loadFullTargets, persist as persistFullTargets } from "./model";
+import { loadPrefs as loadOwnerPrefs } from "../../uiPrefs";
 
 // The new SignalFinder shell. Wraps the existing scoring/list view (which
 // stays untouched as SignalFinderTargets) inside a top tab bar that adds:
@@ -17,7 +20,7 @@ import {
 // All new data lives in a sidecar (sfExt.ts) keyed by target id so the
 // original component keeps working.
 
-type View = "today" | "targets" | "pipeline" | "ai" | "templates" | "stats" | "settings";
+type View = "today" | "discover" | "targets" | "pipeline" | "ai" | "templates" | "stats" | "settings";
 
 type Target = {
   id: string; name: string; type: string; niche: string; platform: string;
@@ -63,7 +66,7 @@ export function SignalFinder() {
     <div className="stage" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ display: "flex", gap: 6, alignItems: "center", padding: "8px 14px", borderBottom: "1px solid var(--line)", background: C_BAR_BG }}>
         <span style={{ fontFamily: "ui-monospace,monospace", fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "var(--mute)", marginRight: 6 }}>SignalFinder</span>
-        {(["today", "targets", "pipeline", "ai", "templates", "stats", "settings"] as const).map((v) => (
+        {(["today", "discover", "targets", "pipeline", "ai", "templates", "stats", "settings"] as const).map((v) => (
           <button key={v} onClick={() => setView(v)} className="btn" style={{
             padding: "6px 14px", fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase",
             color: view === v ? "var(--pink)" : undefined, borderColor: view === v ? "rgba(255,87,119,0.55)" : undefined,
@@ -80,12 +83,155 @@ export function SignalFinder() {
       </div>
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         {view === "today" && <TodayView onJump={(v) => setView(v)} />}
+        {view === "discover" && <DiscoverView />}
         {view === "targets" && <SignalFinderTargets />}
         {view === "pipeline" && <PipelineView />}
         {view === "ai" && <AIStudioView />}
         {view === "templates" && <TemplatesView />}
         {view === "stats" && <StatsView />}
         {view === "settings" && <SettingsView />}
+      </div>
+    </div>
+  );
+}
+
+// ── Discover — auto-pull real prospects from public sources ─────────────────
+// Commits a discovered prospect to BOTH stores: the full-target store
+// (model.ts shape, read by the Targets view) and the sidecar Ext (read by
+// Pipeline/Today). dedupeKey is tracked so re-running doesn't double-add.
+const DISCOVERED_SEEN_KEY = "nchub.signalfinder.discovered.v1";
+function loadSeen(): Set<string> {
+  try { const r = localStorage.getItem(DISCOVERED_SEEN_KEY); if (r) return new Set(JSON.parse(r) as string[]); } catch { /* ignore */ }
+  return new Set();
+}
+function saveSeen(s: Set<string>) { try { localStorage.setItem(DISCOVERED_SEEN_KEY, JSON.stringify([...s])); } catch { /* ignore */ } }
+
+function commitDiscovered(d: Discovered): string {
+  const t = toTarget(d);
+  const all = loadFullTargets();
+  persistFullTargets([t, ...all]);
+  // Mirror into the sidecar so Pipeline/Today see stage/tags/notes/channels.
+  patchExt(t.id, {
+    stage: d.stage as Stage,
+    tags: d.tags,
+    channels: d.channels as Channel[],
+    notes: [{ ts: Date.now(), text: t.notes[0]?.text || `From ${SOURCE_META[d.source].label}` }] as Note[],
+    followup: "",
+  });
+  const seen = loadSeen(); seen.add(d.dedupeKey); saveSeen(seen);
+  return t.id;
+}
+
+const ALL_SOURCES: DiscoverySource[] = ["github", "hn_hiring", "hn_forhire", "hn_show", "reddit", "devto"];
+
+function DiscoverView() {
+  const ownerStack = loadOwnerPrefs().ownerStack || loadOwnerPrefs().ownerInterests || "";
+  const [query, setQuery] = useState(ownerStack.split(",")[0]?.trim() || "homelab");
+  const [sources, setSources] = useState<Set<DiscoverySource>>(new Set(["github", "hn_show", "reddit"]));
+  const [busy, setBusy] = useState(false);
+  const [results, setResults] = useState<Discovered[]>([]);
+  const [seen, setSeen] = useState<Set<string>>(loadSeen);
+  const [added, setAdded] = useState<Set<string>>(new Set());
+  const [err, setErr] = useState<string | null>(null);
+
+  function toggleSource(s: DiscoverySource) {
+    setSources((prev) => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n; });
+  }
+
+  async function run() {
+    if (sources.size === 0) { setErr("Pick at least one source."); return; }
+    setBusy(true); setErr(null); setResults([]);
+    try {
+      const found = await runDiscovery([...sources], query.trim());
+      // Filter out ones already added in a previous run.
+      const fresh = found.filter((d) => !seen.has(d.dedupeKey));
+      setResults(fresh);
+      if (fresh.length === 0) setErr(found.length ? "All matches already in your pipeline." : "No matches — try a broader keyword or more sources.");
+    } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+  }
+
+  function add(d: Discovered) {
+    commitDiscovered(d);
+    setAdded((p) => new Set([...p, d.dedupeKey]));
+    setSeen((p) => new Set([...p, d.dedupeKey]));
+  }
+  function addAll() {
+    const seenNow = loadSeen();
+    for (const d of results) { if (!seenNow.has(d.dedupeKey)) commitDiscovered(d); }
+    setAdded(new Set(results.map((d) => d.dedupeKey)));
+    setSeen(new Set([...seen, ...results.map((d) => d.dedupeKey)]));
+  }
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", padding: 18, minHeight: 0 }}>
+      <div style={{ maxWidth: 980, margin: "0 auto" }}>
+        <div style={{ fontFamily: "ui-monospace,monospace", fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "#39d98a", marginBottom: 4 }}>◆ Auto-discovery</div>
+        <p style={{ fontSize: 13, color: "var(--mute)", lineHeight: 1.6, marginTop: 0, maxWidth: 720 }}>
+          Pull real prospects from public sources — no API keys. Tuned for IT / dev / homelab: GitHub maintainers, Hacker News hiring &amp; Show HN founders, the homelab/sysadmin/devops subreddits, and DEV.to writers. Everything you add lands in your pipeline scored and ready.
+        </p>
+
+        {/* controls */}
+        <div className="panel" style={{ padding: 14, marginBottom: 16 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="keyword — e.g. kubernetes, proxmox, self-hosted, rust"
+              onKeyDown={(e) => { if (e.key === "Enter") void run(); }}
+              style={{ flex: 1, minWidth: 240, background: "rgba(0,0,0,0.5)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink)", padding: "9px 12px", fontSize: 13, fontFamily: "ui-monospace,monospace", outline: "none" }} />
+            <button className="btn" disabled={busy} onClick={() => void run()} style={{ color: "#39d98a", borderColor: "rgba(57,217,138,0.5)", padding: "9px 18px" }}>{busy ? "scanning…" : "Scan sources"}</button>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {ALL_SOURCES.map((s) => {
+              const on = sources.has(s);
+              const m = SOURCE_META[s];
+              return (
+                <button key={s} className="btn" onClick={() => toggleSource(s)} title={m.blurb}
+                  style={{ padding: "4px 10px", fontSize: 11, color: on ? m.color : "var(--mute)", borderColor: on ? `${m.color}88` : undefined, background: on ? `${m.color}14` : undefined }}>
+                  {on ? "● " : "○ "}{m.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {err && <div style={{ fontSize: 12, color: results.length ? "var(--mute)" : "#ff7a2d", marginBottom: 12 }}>{err}</div>}
+
+        {results.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <span style={{ fontSize: 12, color: "var(--mute)" }}>{results.length} fresh prospect{results.length === 1 ? "" : "s"}</span>
+            <span style={{ flex: 1 }} />
+            <button className="btn" onClick={addAll} style={{ fontSize: 11, color: "#39d98a", borderColor: "rgba(57,217,138,0.5)" }}>Add all to pipeline</button>
+          </div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 10 }}>
+          {results.map((d) => {
+            const m = SOURCE_META[d.source];
+            const isAdded = added.has(d.dedupeKey);
+            return (
+              <div key={d.dedupeKey} className="panel" style={{ padding: 12, borderColor: `${m.color}33`, display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 9, color: m.color, letterSpacing: 1, textTransform: "uppercase", padding: "2px 6px", border: `1px solid ${m.color}55`, borderRadius: 3 }}>{m.label}</span>
+                  <span style={{ flex: 1 }} />
+                  <span style={{ fontSize: 10, color: "var(--mute)" }}>{d.platform}</span>
+                </div>
+                <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 15, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
+                <div style={{ fontSize: 11, color: "var(--mute)", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" as const, overflow: "hidden" }}>{d.goal}</div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 2 }}>
+                  {d.audience > 0 && <span style={{ fontSize: 10, color: "var(--mute)", fontFamily: "ui-monospace,monospace" }}>{d.audience.toLocaleString()} {d.source === "github" ? "★" : d.platform === "Reddit" ? "▲" : "pts"}</span>}
+                  <span style={{ flex: 1 }} />
+                  <a href={d.sourceUrl} target="_blank" rel="noreferrer" className="btn" style={{ fontSize: 10, padding: "3px 8px" }}>View</a>
+                  <button className="btn" disabled={isAdded} onClick={() => add(d)} style={{ fontSize: 10, padding: "3px 10px", color: isAdded ? "var(--mute)" : "#39d98a", borderColor: isAdded ? undefined : "rgba(57,217,138,0.5)" }}>{isAdded ? "✓ added" : "+ Add"}</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {!busy && results.length === 0 && !err && (
+          <div style={{ textAlign: "center", padding: 40, color: "var(--mute)" }}>
+            <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.4 }}>◇</div>
+            Pick your sources and a keyword, then scan. Prospects you add are scored and dropped into your pipeline automatically.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -488,6 +634,31 @@ function TargetEditor({ target, ext, onClose, onMove, onPatch }: {
   );
 }
 
+// Per-channel guidance — the same target, tuned for where you're reaching them.
+type OutreachChannel = "email" | "x" | "linkedin" | "discord" | "reddit";
+const CHANNEL_GUIDE: Record<OutreachChannel, string> = {
+  email:    "a cold EMAIL: a subject-worthy first line, 3-4 sentences, a clear ask, sign-off implied. Slightly more formal.",
+  x:        "an X/Twitter DM or reply: under 280 characters, lowercase-casual ok, one hook, no corporate tone, feels like a real person.",
+  linkedin: "a LinkedIn message: warm-professional, reference their work, one specific reason to connect, concise.",
+  discord:  "a Discord DM: very casual, friendly, short, like messaging a peer in a community. No formality.",
+  reddit:   "a Reddit DM or comment reply: helpful and community-minded first, low-key about the ask, no salesy tone (the audience hates that).",
+};
+const CHANNEL_LABEL: Record<OutreachChannel, string> = { email: "Email", x: "X / DM", linkedin: "LinkedIn", discord: "Discord", reddit: "Reddit" };
+
+// Build the "who I am" block from Settings -> Profile so drafts sound like the
+// actual operator, not a generic assistant.
+function ownerVoiceContext(): string {
+  const p = loadOwnerPrefs();
+  const bits: string[] = [];
+  if (p.ownerName) bits.push(`I am ${p.ownerName}${p.ownerPronouns ? ` (${p.ownerPronouns})` : ""}.`);
+  if (p.ownerBio) bits.push(p.ownerBio);
+  if (p.ownerStack) bits.push(`I work with: ${p.ownerStack}.`);
+  if (p.ownerInterests) bits.push(`I care about: ${p.ownerInterests}.`);
+  if (p.ownerLocation) bits.push(`Based in ${p.ownerLocation}.`);
+  if (!bits.length) return "";
+  return `\nWRITE AS ME. Background on who's sending this (use it for voice + a genuine angle, don't recite it):\n${bits.join(" ")}`;
+}
+
 // ── AI Studio ───────────────────────────────────────────────────────────────
 function AIStudioView() {
   const [targets] = useState<Target[]>(loadTargets);
@@ -495,6 +666,7 @@ function AIStudioView() {
   const [templates] = useState<Template[]>(loadTemplates);
   const [tplId, setTplId] = useState<string>(templates[0]?.id || "");
   const [tone, setTone] = useState<Template["tone"]>("casual");
+  const [channel, setChannel] = useState<OutreachChannel>("email");
   const [hook, setHook] = useState("");
   const [draft, setDraft] = useState("");
   const [variations, setVariations] = useState<string[]>([]);
@@ -511,10 +683,13 @@ function AIStudioView() {
   }
   useEffect(() => { prefill(); }, [tplId, targetId]);
 
+  const chanGuide = CHANNEL_GUIDE[channel];
+  const ownerCtx = ownerVoiceContext();
+
   async function generateDraft() {
     if (!target) return;
     setBusy("draft"); setVariations([]);
-    const sys = `You are SignalFinder's outreach assistant. Write ONE short opening message in a ${tone} tone. Two sentences max for "short", three to four for everything else. No preamble, no quotes, no signature. Reference one CONCRETE thing about the target if the hook is provided; never fabricate specifics.`;
+    const sys = `You are SignalFinder's outreach assistant. Write ONE opening message formatted as ${chanGuide} Tone: ${tone}. No preamble, no quotes, no signature. Reference one CONCRETE thing about the target if the hook is provided; never fabricate specifics.${ownerCtx}`;
     const u = `Target: ${target.name} (${target.type})${target.niche ? `, niche: ${target.niche}` : ""}${target.platform ? `, on ${target.platform}` : ""}.\nHook: ${hook || "(none provided)"}\nReply with the message text only.`;
     const r = await houseChat(sys, u);
     setDraft(r.ok ? (r.text || "").trim().replace(/^["']|["']$/g, "") : `[model error] ${r.error}`);
@@ -523,7 +698,7 @@ function AIStudioView() {
   async function generateVariations() {
     if (!target) return;
     setBusy("vary");
-    const sys = `You are SignalFinder's outreach assistant. Produce exactly 3 numbered variations of an opening message in a ${tone} tone. Each on its own paragraph, prefixed with "1.", "2.", "3.". No preamble.`;
+    const sys = `You are SignalFinder's outreach assistant. Produce exactly 3 numbered variations of an opening message formatted as ${chanGuide} Tone: ${tone}. Each on its own paragraph, prefixed with "1.", "2.", "3.". No preamble.${ownerCtx}`;
     const u = `Target: ${target.name}${target.niche ? ` (${target.niche})` : ""}${target.platform ? ` on ${target.platform}` : ""}.\nHook: ${hook || "(none)"}\nReply with the three numbered variations.`;
     const r = await houseChat(sys, u);
     const text = r.ok ? (r.text || "") : `[model error] ${r.error}`;
@@ -551,7 +726,7 @@ function AIStudioView() {
   async function generateFollowup() {
     if (!target) return;
     setBusy("follow");
-    const sys = `Write a SHORT, ${tone} follow-up message (1-2 sentences) to a prior outreach that hasn't replied. No guilt, no pressure. No preamble or quotes.`;
+    const sys = `Write a SHORT, ${tone} follow-up message (1-2 sentences) for ${CHANNEL_LABEL[channel]} to a prior outreach that hasn't replied. No guilt, no pressure. No preamble or quotes.${ownerCtx}`;
     const u = `Target: ${target.name}${target.niche ? ` (${target.niche})` : ""}.\nThe original outreach was about: ${hook || "the original topic"}.\nReply with the follow-up only.`;
     const r = await houseChat(sys, u);
     setDraft(r.ok ? (r.text || "").trim().replace(/^["']|["']$/g, "") : `[model error] ${r.error}`);
@@ -573,6 +748,17 @@ function AIStudioView() {
               <select value={targetId} onChange={(e) => setTargetId(e.target.value)} style={inp}>
                 {targets.map((t) => <option key={t.id} value={t.id}>{t.name} — {t.type}</option>)}
               </select>
+            </Section>
+            <Section title="Channel (tunes format + length)">
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                {(["email", "x", "linkedin", "discord", "reddit"] as OutreachChannel[]).map((ch) => (
+                  <button key={ch} className="btn" onClick={() => setChannel(ch)} style={{
+                    fontSize: 11, padding: "6px 10px",
+                    color: channel === ch ? "#39d98a" : undefined,
+                    borderColor: channel === ch ? "rgba(57,217,138,0.55)" : undefined,
+                  }}>{CHANNEL_LABEL[ch]}</button>
+                ))}
+              </div>
             </Section>
             <Section title="Tone">
               <div style={{ display: "flex", gap: 4 }}>
