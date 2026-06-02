@@ -156,4 +156,14 @@ export const ICON: Record<string, ReactNode> = {
     </g>,
     "#0b0710", "#ff5577"
   ),
+
+  // IT Toolbox: a wrench + bracket motif in hub colors.
+  toolbox: tile(
+    <g stroke="#22d3ee" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 9l-1.6 1.6a2.2 2.2 0 0 0 3.1 3.1l4.2 4.2" />
+      <path d="M12.5 8.5a2.6 2.6 0 0 1 3.4 3.4l-1.4-.5-1.5-1.5z" />
+      <path d="M14.5 14.5l2.5 2.5" />
+    </g>,
+    "#06121a", "#22d3ee"
+  ),
 };

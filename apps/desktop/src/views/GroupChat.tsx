@@ -36,6 +36,7 @@ export function GroupChat() {
   const [customAgents, setCustomAgents] = useState<CustomAgent[]>(loadCustomAgents);
   const [editingParticipants, setEditingParticipants] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [mode, setMode] = useState<"round" | "debate">("round");
   const stopRef = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
 
@@ -172,31 +173,94 @@ export function GroupChat() {
     }
 
     try {
-      // Round 1 — coordinator (if present) leads, then everyone responds once,
-      // each seeing the messages posted before them this turn.
-      const coordinator = present.find((a) => a.coordinator);
-      const order = coordinator ? [coordinator, ...present.filter((a) => a !== coordinator)] : present;
-      for (const a of order) {
-        if (stopRef.current) break;
-        setBusy(a.name);
-        await callAgent(a, `Meteor's message: ${task}\n\nRespond as ${a.name}.`);
-      }
-      // Cross-talk rounds — the crew reacts to each other. Each may PASS.
-      const extraRounds = Math.max(0, prefs.chatChainDepth - 1);
-      for (let r = 0; r < extraRounds && !stopRef.current; r++) {
-        let anyone = false;
-        for (const a of present) {
+      if (mode === "debate") {
+        await runDebate(present, task);
+      } else {
+        // Round 1 — coordinator (if present) leads, then everyone responds once,
+        // each seeing the messages posted before them this turn.
+        const coordinator = present.find((a) => a.coordinator);
+        const order = coordinator ? [coordinator, ...present.filter((a) => a !== coordinator)] : present;
+        for (const a of order) {
           if (stopRef.current) break;
           setBusy(a.name);
-          const reply = await callAgentMaybePass(a);
-          if (reply) anyone = true;
+          await callAgent(a, `Meteor's message: ${task}\n\nRespond as ${a.name}.`);
         }
-        if (!anyone) break; // everyone passed — conversation has settled
+        // Cross-talk rounds — the crew reacts to each other. Each may PASS.
+        const extraRounds = Math.max(0, prefs.chatChainDepth - 1);
+        for (let r = 0; r < extraRounds && !stopRef.current; r++) {
+          let anyone = false;
+          for (const a of present) {
+            if (stopRef.current) break;
+            setBusy(a.name);
+            const reply = await callAgentMaybePass(a);
+            if (reply) anyone = true;
+          }
+          if (!anyone) break; // everyone passed — conversation has settled
+        }
       }
     } finally {
       setBusy(null);
       stopRef.current = false;
     }
+  }
+
+  // ── debate mode ────────────────────────────────────────────────────────────
+  // Structured: assigned sides → opening statements → two rebuttal rounds →
+  // a neutral synthesis. The crew genuinely argues instead of agreeing.
+  async function runDebate(present: AgentDef[], topic: string) {
+    if (present.length < 2) {
+      pushMsg({ agentId: "system", name: "Group Terminal", kind: "system", content: "Debate needs at least 2 participants. Add more with the people icon." });
+      return;
+    }
+    // Split the room: alternating FOR / AGAINST. A coordinator (if present) is
+    // held back to moderate + synthesize at the end.
+    const moderator = present.find((a) => a.coordinator) || null;
+    const debaters = present.filter((a) => a !== moderator);
+    const sides = debaters.map((a, i) => ({ a, side: i % 2 === 0 ? "FOR" : "AGAINST" as "FOR" | "AGAINST" }));
+
+    pushMsg({ agentId: "system", name: "Debate", kind: "system", content: `Debate on: "${topic}"  ·  ${sides.map((s) => `${s.a.name} (${s.side})`).join(" · ")}${moderator ? `  ·  ${moderator.name} moderating` : ""}` });
+
+    async function speak(a: AgentDef, instruction: string) {
+      if (stopRef.current) return;
+      setBusy(`${a.name} · debating`);
+      const sys = a.system + "\n\nYou are in a structured DEBATE. Argue your assigned position hard but honestly — strongest reasoning, concrete examples, no strawmen. Be punchy (3-5 sentences). No name prefix.";
+      const convo = transcript();
+      const res = await runRaw(a, sys, `${convo ? `Debate so far:\n${convo}\n\n` : ""}${instruction}`);
+      const text = (res || "").trim();
+      if (text) pushMsg({ agentId: a.id, name: a.name, kind: "agent", content: text });
+    }
+
+    // Opening statements.
+    for (const { a, side } of sides) {
+      if (stopRef.current) break;
+      await speak(a, `Topic: "${topic}". Give your OPENING statement arguing ${side === "FOR" ? "in favor" : "against"}. Make your single strongest case.`);
+    }
+    // Two rebuttal rounds.
+    for (let round = 1; round <= 2 && !stopRef.current; round++) {
+      for (const { a, side } of sides) {
+        if (stopRef.current) break;
+        await speak(a, `Rebuttal round ${round}. Directly counter the strongest point the ${side === "FOR" ? "AGAINST" : "FOR"} side just made — name it and dismantle it. Then add one new argument for your ${side} position.`);
+      }
+    }
+    // Synthesis.
+    if (!stopRef.current) {
+      const judge = moderator || sides[0].a;
+      setBusy(`${judge.name} · synthesizing`);
+      const sys = judge.system + "\n\nThe debate is over. As a NEUTRAL judge, synthesize: the strongest point each side made, where they actually agree, and your honest verdict + the key tradeoff the decision really hinges on. No name prefix.";
+      const res = await runRaw(judge, sys, `Debate transcript:\n${transcript()}\n\nGive your synthesis and verdict on: "${topic}".`);
+      if (res?.trim()) pushMsg({ agentId: judge.id, name: `${judge.name} · verdict`, kind: "agent", content: res.trim() });
+    }
+  }
+
+  // Raw single-shot model call for an agent (no tool loop) — used by debate.
+  async function runRaw(a: AgentDef, system: string, userContent: string): Promise<string> {
+    const c = cfg[a.id];
+    const t = effectiveTransport(a, c);
+    let res: { ok: boolean; text?: string; error?: string };
+    if (t === "house") res = await window.hub.llm.chat(system, userContent, { temperature: prefs.llmTemperature, maxTokens: prefs.llmMaxTokens });
+    else if (t === "cli") res = await window.hub.agentRun(c?.cmd || a.defaultCmd || "", `${system}\n\n${userContent}`);
+    else res = await window.hub.aiChat({ provider: c?.provider ?? a.defaultProvider, endpoint: c?.endpoint, apiKey: c?.apiKey, model: c?.model || a.defaultModel, system, messages: [{ role: "user", content: userContent }] });
+    return res.ok ? (res.text || "") : `[model error] ${res.error}`;
   }
 
   // Cross-talk turn: the agent may decline with PASS, in which case we don't
@@ -333,15 +397,25 @@ export function GroupChat() {
               <span>{active.participantIds.length} participant{active.participantIds.length === 1 ? "" : "s"}{busy ? " · working" : ""}</span>
             </div>
 
-            <div style={{ display: "flex", gap: 8, padding: 12, borderTop: "1px solid var(--line)", flex: "none" }}>
+            <div style={{ display: "flex", gap: 8, padding: 12, borderTop: "1px solid var(--line)", flex: "none", alignItems: "center" }}>
+              <div style={{ display: "flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", flex: "none" }} title="Round-table: everyone discusses. Debate: assigned sides argue, then a verdict.">
+                {(["round", "debate"] as const).map((m) => (
+                  <button key={m} onClick={() => setMode(m)} disabled={!!busy}
+                    style={{ padding: "8px 12px", fontSize: 11, fontFamily: "ui-monospace,monospace", letterSpacing: 1, textTransform: "uppercase", border: "none", cursor: busy ? "default" : "pointer",
+                      background: mode === m ? (m === "debate" ? "rgba(168,85,247,0.18)" : "rgba(255,87,119,0.14)") : "transparent",
+                      color: mode === m ? (m === "debate" ? "#c084fc" : "var(--pink)") : "var(--mute)" }}>
+                    {m === "round" ? "◇ Round" : "⚔ Debate"}
+                  </button>
+                ))}
+              </div>
               <input style={{ flex: 1, background: "rgba(0,0,0,0.5)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink)", padding: "9px 12px", fontSize: 13, outline: "none" }}
-                placeholder="Message the crew — they all see it and talk to each other"
+                placeholder={mode === "debate" ? "Pose a question or proposition for the crew to debate…" : "Message the crew — they all see it and talk to each other"}
                 value={input} onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
                 disabled={!!busy} />
               {busy
                 ? <button className="btn" style={{ color: "#ef4444", borderColor: "rgba(239,68,68,0.5)" }} onClick={() => { stopRef.current = true; }}>■ Stop</button>
-                : <button className="btn" onClick={() => void send()}>Send</button>}
+                : <button className="btn" onClick={() => void send()}>{mode === "debate" ? "Start debate" : "Send"}</button>}
             </div>
           </div>
         )}

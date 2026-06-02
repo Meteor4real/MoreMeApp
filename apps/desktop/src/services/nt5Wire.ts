@@ -59,13 +59,37 @@ export function subscribeWire(fn: (arts: WireArticle[]) => void): () => void {
   return () => subs.delete(fn);
 }
 
+// Per-anchor voice profiles — distinct cadence, vocabulary, and angle so the
+// wire stops reading same-y. The model gets these verbatim.
+const ANCHOR_VOICES =
+  "ANCHOR VOICES (match the assigned one precisely):\n" +
+  "- voss (lead/breaking): authoritative, declarative, short punchy sentences. Opens cold, no hedging. Gravitas.\n" +
+  "- zara (culture/earth_trending): warm, wry, conversational. Pop-culture literate, a light joke or aside. Human angle first.\n" +
+  "- dex (gaming): hype, fast, insider. Knows Minecraft/Origin Realms/Hypixel meta deeply. Numbers, patch notes, drama.\n" +
+  "- lena (field/breaking): on-the-ground urgency, present tense, sensory detail. 'Here at...', what she's seeing right now.\n" +
+  "- orin (space/tech): nerdy, precise, genuinely delighted by the science. Explains the why. One concrete spec or figure.";
+
+// Rotating story FORMATS so successive batches don't share one shape. A random
+// few are sampled into each prompt.
+const STORY_FORMATS = [
+  "a hard-news lede (who/what/when, most important fact first)",
+  "an explainer angle (what it means / why it matters in one beat)",
+  "a reaction piece (how a community or market is responding)",
+  "a numbers story (lead with a striking figure or stat)",
+  "a human-interest angle (one person/creator/player at the center)",
+  "a 'what's next' forward-look (the implication or the next milestone)",
+  "a contrast/then-vs-now framing",
+  "a quick-hit brief (one tight sentence of fact + one of context)",
+];
+
 const SYSTEM =
   "You are the NT5 (Nova Terris 5) wire desk for S.P.A.C.E. News — slick, " +
   "professional sci-fi news, real (CNN in space). Write items about REAL " +
-  "current-world topics in the assigned anchor's voice. Anchors: voss " +
-  "(lead/breaking), zara (culture/earth_trending), dex (gaming — Minecraft, " +
-  "Origin Realms, Hypixel), lena (field/breaking), orin (space/tech). " +
+  "current-world topics in the assigned anchor's voice.\n" +
+  ANCHOR_VOICES + "\n" +
   "Categories: breaking, latest, earth_trending, gaming, space, tech, culture, cc_lore. " +
+  "Vary your headlines: NO two should share an opening word or sentence shape. Avoid the words " +
+  "'unveils', 'revolutionizes', 'game-changer'. Headlines are specific, not generic. " +
   "Return ONLY a JSON array, no prose: " +
   '[{"category","anchor_id","title","body"}]. Body = 2-3 tight sentences. ' +
   "Do not invent specific unverifiable breaking claims; keep it plausible.";
@@ -97,9 +121,22 @@ export async function runWireOnce(count = 3): Promise<{ ok: boolean; added: Wire
   const liveCtx = pulse
     ? `\nLIVE CONTEXT (real-time, use this in any Origin Realms item — especially Dex's): play.originrealms.com is ${pulse.online ? `online with ${pulse.players}/${pulse.max} players` : "offline"}; MOTD: "${pulse.motd}"; version: ${pulse.version}.`
     : "";
+  // Sample a few rotating formats + shuffle the topic weighting so each batch
+  // reads differently from the last. Recent headlines are passed back so the
+  // model actively avoids repeating itself.
+  const formats = [...STORY_FORMATS].sort(() => Math.random() - 0.5).slice(0, Math.min(count, 4));
+  const weighted = [...topics].sort(() => Math.random() - 0.5);
+  const recentTitles = readAll().slice(0, 12).map((a) => a.title);
+  const avoidBlock = recentTitles.length
+    ? `\nDo NOT repeat or lightly reword any of these recently-filed headlines:\n- ${recentTitles.join("\n- ")}`
+    : "";
   const res = await window.hub.llm.chat(
     SYSTEM,
-    `Topics to weight, most important first: ${topics.join(", ")}.${liveCtx}\nWrite ${count} fresh NT5 wire items now as JSON only.`
+    `Topics to weight, most important first: ${weighted.join(", ")}.${liveCtx}` +
+    `\nUse a DIFFERENT story format for each item, drawn from: ${formats.join("; ")}.` +
+    avoidBlock +
+    `\nWrite ${count} fresh NT5 wire items now as JSON only.`,
+    { temperature: 0.95 }
   );
   if (!res.ok) return { ok: false, added: [], error: res.error };
   const items = parseItems(res.text || "");
