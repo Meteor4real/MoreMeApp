@@ -36,7 +36,9 @@ type Nav =
 
 export function App() {
   const [authed, setAuthed] = useState(() => isAuthed());
-  const [nav, setNav] = useState<Nav>({ kind: "browser" }); // Browser is the default canvas
+  // Command Center is the default landing surface — NCH is an operator's
+  // cockpit, not a browser. The Browser is gated behind the operator unlock.
+  const [nav, setNav] = useState<Nav>({ kind: "control" });
   const [railOpen, setRailOpen] = useState(true);
   const [enabledExt, setEnabledExt] = useState<Set<string>>(() => loadEnabled());
   const [customTick, setCustomTick] = useState(0); // recompute injectables when custom ext list mutates
@@ -97,12 +99,15 @@ export function App() {
         {railOpen && (
           <nav className={"rail" + (prefs.showRailLabels ? " rail-wide" : "")}>
             <img className="rail-logo" src={logoUrl} alt="NetworkChuck Hub" title="NetworkChuck Hub" />
-            <RailBtn tour="rail-browser" icon={ICON.browser} label="Browser" active={nav.kind === "browser" && !nav.url} onClick={() => setNav({ kind: "browser" })} />
-            <RailBtn tour="rail-control" icon={ICON.control} label="Control Panel" active={nav.kind === "control"} onClick={() => setNav({ kind: "control" })} />
+            {/* Core surfaces — always visible. NCH's identity lives here. */}
+            <RailBtn tour="rail-control" icon={ICON.control} label="Command Center" active={nav.kind === "control"} onClick={() => setNav({ kind: "control" })} />
+            <RailBtn tour="rail-ai" icon={ICON.ai} label="AI Crew" active={nav.kind === "ai"} onClick={() => setNav({ kind: "ai" })} />
             <RailBtn tour="rail-terminal" icon={ICON.terminal} label="Terminal" active={nav.kind === "terminal"} onClick={() => setNav({ kind: "terminal" })} />
-            <RailBtn tour="rail-ai" icon={ICON.ai} label="Group Terminal" active={nav.kind === "ai"} onClick={() => setNav({ kind: "ai" })} />
-            <RailBtn tour="rail-library" icon={ICON.library} label="Library" active={nav.kind === "library"} onClick={() => setNav({ kind: "library" })} />
-            <div className="rail-sep" />
+            {/* Browser, Library, and the embedded site apps are gated under
+                the operator unlock so the default experience stays focused. */}
+            {appUnlocked("browser") && <RailBtn tour="rail-browser" icon={ICON.browser} label="Browser" active={nav.kind === "browser" && !nav.url} onClick={() => setNav({ kind: "browser" })} />}
+            {appUnlocked("library") && <RailBtn tour="rail-library" icon={ICON.library} label="Library" active={nav.kind === "library"} onClick={() => setNav({ kind: "library" })} />}
+            {visibleApps.length > 0 && <div className="rail-sep" />}
             {visibleApps.map((a) => (
               <RailBtn
                 key={a.id}
@@ -131,11 +136,11 @@ export function App() {
           </nav>
         )}
 
-        {nav.kind === "browser" && <Browser initialUrl={nav.url} injectables={injectables} />}
+        {nav.kind === "browser" && (appUnlocked("browser") ? <Browser initialUrl={nav.url} injectables={injectables} /> : <GatedPlaceholder id="Browser" />)}
         {nav.kind === "control" && <ControlPanel />}
         {nav.kind === "terminal" && <TerminalView />}
         {nav.kind === "ai" && <GroupChat />}
-        {nav.kind === "library" && <Library />}
+        {nav.kind === "library" && (appUnlocked("library") ? <Library /> : <GatedPlaceholder id="Library" />)}
         {nav.kind === "settings" && <Settings onSignOut={logout} />}
         {nav.kind === "app" && renderEmbedded(nav.id)}
       </div>

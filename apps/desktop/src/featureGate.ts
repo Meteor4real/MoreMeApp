@@ -1,25 +1,31 @@
-// Feature gating via dev codes. Some apps ship hidden by default and are
-// unlocked by typing a code in Settings → Dev codes:
+// Feature gating via dev codes. NCH's identity is "operator's cockpit + AI
+// crew" — Terminal, AI Group Chat, and Command Center are the only default
+// surfaces. Everything else ships hidden behind a code so the default
+// experience stays focused; power users (or the owner) can unlock the rest.
 //
-//   2089 → HALOS Interface + BroBot (+ BroBot in the AI Group Chat roster)
-//   2078 → MoreMe + DigitalBlueprint (under "Beta Test Software")
+//   2089 → the operator unlock: NT5, MoreMe, DigitalBlueprint, BroBot,
+//          HALOS, SignalFinder, IT Toolbox, Documents, Library, and the
+//          embedded Browser. NT5 may graduate later.
+//   2078 → kept for backwards compatibility; same effective scope as 2089.
 //
-// NT5 News + SignalFinder + the core surfaces (Browser, Control Panel,
-// Terminal, AI Group Chat, Library, Settings) are visible on default.
-// Codes persist in localStorage; unlocking is permanent until the user
-// explicitly relocks from Settings.
+// Codes persist encrypted in the OS keychain (with a localStorage mirror for
+// instant boot). Unlocking is permanent until the user explicitly relocks.
 
 const KEY = "nchub.unlockedCodes.v1";
 const subs = new Set<(codes: Set<string>) => void>();
 let cache: Set<string> | null = null;
 
+// One wide unlock covers every non-core surface. Both codes flip the same
+// scope so older installs that used 2078 keep working.
+const WIDE_UNLOCK = ["halos", "brobot", "moreme", "blueprint", "nt5", "signalfinder", "toolbox", "documents", "library", "browser"] as const;
+
 export const KNOWN_CODES = {
-  "2089": { label: "Internal access", unlocks: ["halos", "brobot"] as const, kind: "internal" as const },
-  "2078": { label: "Beta Test Software", unlocks: ["moreme", "blueprint"] as const, kind: "beta" as const },
+  "2089": { label: "Operator unlock", unlocks: WIDE_UNLOCK, kind: "internal" as const },
+  "2078": { label: "Beta Test Software", unlocks: WIDE_UNLOCK, kind: "beta" as const },
 } as const;
 
 export type CodeKey = keyof typeof KNOWN_CODES;
-export const ALL_GATED_APPS = ["halos", "brobot", "moreme", "blueprint"] as const;
+export const ALL_GATED_APPS = WIDE_UNLOCK;
 export type GatedAppId = typeof ALL_GATED_APPS[number];
 
 // Codes are stored encrypted in the OS keychain via the main process
