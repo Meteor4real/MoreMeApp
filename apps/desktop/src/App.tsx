@@ -7,6 +7,8 @@ import { TerminalView } from "./views/Terminal";
 import { GroupChat } from "./views/GroupChat";
 import { Library } from "./views/Library";
 import { Settings } from "./views/Settings";
+import { HermesSetup } from "./views/HermesSetup";
+import { ensureHermesHydrated, getHermesState, startHermesPipe, subscribeHermes, type HermesState } from "./ai/hermes";
 import { Ticker } from "./shell/Ticker";
 import { MusicPlayer } from "./shell/MusicPlayer";
 import { Notifications } from "./shell/Notifications";
@@ -32,13 +34,17 @@ type Nav =
   | { kind: "ai" }
   | { kind: "library" }
   | { kind: "settings" }
+  | { kind: "hermes" }
   | { kind: "app"; id: string };
 
 export function App() {
   const [authed, setAuthed] = useState(() => isAuthed());
   // Command Center is the default landing surface — NCH is an operator's
   // cockpit, not a browser. The Browser is gated behind the operator unlock.
-  const [nav, setNav] = useState<Nav>({ kind: "control" });
+  // First run with no Hermes URL flips to the dedicated Hermes setup instead.
+  const [hermes, setHermes] = useState<HermesState>(getHermesState);
+  const firstRunNeedsHermes = !hermes.url && !localStorage.getItem("nchub.hermes.skipFirstRun");
+  const [nav, setNav] = useState<Nav>(firstRunNeedsHermes ? { kind: "hermes" } : { kind: "control" });
   const [railOpen, setRailOpen] = useState(true);
   const [enabledExt, setEnabledExt] = useState<Set<string>>(() => loadEnabled());
   const [customTick, setCustomTick] = useState(0); // recompute injectables when custom ext list mutates
@@ -64,6 +70,11 @@ export function App() {
     // state changes — surfaced as toast notifications + ticker, not obscuring
     // boxes on top of the canvas.
     startAmbientNotifier();
+    // Hermes spine: hydrate the stored URL from the keychain, then start
+    // the memory pipe that batches and flushes the shared pool every 30s.
+    void ensureHermesHydrated();
+    startHermesPipe();
+    const offH = subscribeHermes(setHermes);
     const offP = subscribePrefs((p) => { setPrefs(p); applyUiPrefs(p); });
     const offE = subscribeEnabled((s) => setEnabledExt(new Set(s)));
     const offCx = subscribeCustomExtensions(() => setCustomTick((n) => n + 1));
@@ -78,7 +89,7 @@ export function App() {
       if (p.privacyClearDownloadsOnQuit) { try { void window.hub.downloads.clear(); } catch { /* ignore */ } }
     };
     window.addEventListener("beforeunload", onQuit);
-    return () => { offP(); offE(); offCx(); offN(); window.removeEventListener("beforeunload", onQuit); };
+    return () => { offP(); offE(); offCx(); offN(); offH(); window.removeEventListener("beforeunload", onQuit); };
   }, []);
 
   const injectables = useMemo(
@@ -103,6 +114,7 @@ export function App() {
             <RailBtn tour="rail-control" icon={ICON.control} label="Command Center" active={nav.kind === "control"} onClick={() => setNav({ kind: "control" })} />
             <RailBtn tour="rail-ai" icon={ICON.ai} label="AI Crew" active={nav.kind === "ai"} onClick={() => setNav({ kind: "ai" })} />
             <RailBtn tour="rail-terminal" icon={ICON.terminal} label="Terminal" active={nav.kind === "terminal"} onClick={() => setNav({ kind: "terminal" })} />
+            <RailBtn tour="rail-hermes" glyph={hermes.configured ? "●" : hermes.url ? "◐" : "◯"} label={hermes.configured ? "Hermes" : hermes.url ? "Hermes · check" : "Connect Hermes"} active={nav.kind === "hermes"} onClick={() => setNav({ kind: "hermes" })} />
             {/* Browser, Library, and the embedded site apps are gated under
                 the operator unlock so the default experience stays focused. */}
             {appUnlocked("browser") && <RailBtn tour="rail-browser" icon={ICON.browser} label="Browser" active={nav.kind === "browser" && !nav.url} onClick={() => setNav({ kind: "browser" })} />}
@@ -142,6 +154,7 @@ export function App() {
         {nav.kind === "ai" && <GroupChat />}
         {nav.kind === "library" && (appUnlocked("library") ? <Library /> : <GatedPlaceholder id="Library" />)}
         {nav.kind === "settings" && <Settings onSignOut={logout} />}
+        {nav.kind === "hermes" && <HermesSetup onDone={() => { try { localStorage.setItem("nchub.hermes.skipFirstRun", "1"); } catch { /* ignore */ } setNav({ kind: "control" }); }} />}
         {nav.kind === "app" && renderEmbedded(nav.id)}
       </div>
 

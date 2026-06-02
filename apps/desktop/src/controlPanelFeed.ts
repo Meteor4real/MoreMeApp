@@ -4,6 +4,7 @@
 // live state so agents can answer "what's deploying?" without scraping HTML.
 
 import type { FeedItem } from "./feeds";
+import { pushMemory } from "./ai/hermes";
 
 export type CpSeverity = "info" | "warn" | "error";
 export type CpEvent = { id: string; ts: number; service: string; text: string; severity: CpSeverity };
@@ -21,6 +22,9 @@ export function pushCpEvent(service: string, text: string, severity: CpSeverity 
   EVENTS.unshift({ id, ts: Date.now(), service, text, severity });
   if (EVENTS.length > MAX_EVENTS) EVENTS.length = MAX_EVENTS;
   subs.forEach((fn) => { try { fn(); } catch { /* ignore */ } });
+  // Pipe operational events into Hermes' shared memory pool so the crew
+  // has real infra context, not just chat history.
+  pushMemory({ agent: "control-panel", fact: `[${severity}] ${service}: ${text}`, source: severity === "error" ? "event" : "control-panel" });
 }
 
 export function cpRecentEvents(limit = 12): CpEvent[] {

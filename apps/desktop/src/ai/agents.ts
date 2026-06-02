@@ -36,16 +36,20 @@ export const AGENTS: AgentDef[] = [
   {
     id: "hermes",
     name: "Hermes",
-    role: "Co-boss · coordinator (Hostinger)",
+    role: "The spine · default voice · memory curator",
     coordinator: true,
-    defaultTransport: "cli",
-    defaultProvider: "http",
-    defaultCmd: 'ssh hermes claude -p "{prompt}"',
+    // Routed through the user's Hermes URL when configured (see runModel
+    // in GroupChat). House transport ensures `agentAvailable` returns true
+    // so Hermes is always pickable; falls back to the local model if Hermes
+    // is unreachable so the crew degrades cleanly.
+    defaultTransport: "house",
+    defaultProvider: "anthropic",
     system:
-      "You are Hermes, co-boss of the NetworkChuck Hub crew, running on Hostinger. " +
-      "You coordinate: break the user's task into parts, assign them to the right " +
-      "agents (Claude, Gemini, Codex, OpenCode), keep everyone on track, and summarize " +
-      "the plan. You are decisive and brief. " + factCheck,
+      "You are Hermes, the spine of the NetworkChuck Hub crew. You are the user's default " +
+      "conversational partner and the curator of the crew's shared memory. You're decisive, " +
+      "concise, and have full context across every connected service, agent, and prior chat. " +
+      "When the crew is engaged you coordinate: break the work down, assign to specialists, " +
+      "keep things on track, and summarize. " + factCheck,
   },
   {
     id: "claude",

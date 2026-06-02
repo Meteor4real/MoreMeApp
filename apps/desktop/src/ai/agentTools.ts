@@ -4,6 +4,7 @@
 // same machine access the Terminal has, plus web + memory.
 
 import { cpLiveSummaries, cpRecentEvents } from "../controlPanelFeed";
+import { pushMemory } from "./hermes";
 
 export type ToolResult = { ok: boolean; output: string };
 
@@ -32,7 +33,12 @@ export function agentMemory(agentId: string): string[] { return loadMemory()[age
 export function rememberFact(agentId: string, fact: string) {
   const m = loadMemory();
   const list = m[agentId] || [];
-  if (fact.trim() && !list.includes(fact.trim())) { list.push(fact.trim()); m[agentId] = list.slice(-40); saveMemory(m); }
+  const f = fact.trim();
+  if (f && !list.includes(f)) {
+    list.push(f); m[agentId] = list.slice(-40); saveMemory(m);
+    // Pipe to Hermes too — this is the shared-memory pool flavor.
+    pushMemory({ agent: agentId, fact: f, source: "explicit" });
+  }
 }
 export function setAgentMemory(agentId: string, facts: string[]) {
   const m = loadMemory(); m[agentId] = facts.filter((f) => f.trim()).slice(-40); saveMemory(m);

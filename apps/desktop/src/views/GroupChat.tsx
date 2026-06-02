@@ -9,6 +9,7 @@ import {
   type ChatSession, type ChatMsg,
 } from "../ai/chatSessions";
 import { toolsPromptBlock, parseToolCall, runTool, agentMemory, setAgentMemory } from "../ai/agentTools";
+import { pushMemory, getHermesState, hermesChat, subscribeHermes } from "../ai/hermes";
 import { ProjectsView } from "./groupchat/Projects";
 
 // The Group Terminal — the Hub's multi-agent room. Multiple saved chats you
@@ -32,6 +33,8 @@ export function GroupChat() {
   const [busy, setBusy] = useState<string | null>(null);
   const [view, setView] = useState<View>("chat");
   const [houseReady, setHouseReady] = useState(false);
+  const [hermesConfigured, setHermesConfigured] = useState(getHermesState().configured);
+  useEffect(() => subscribeHermes((s) => setHermesConfigured(s.configured)), []);
   const [prefs, setPrefs] = useState(loadPrefs);
   const [customAgents, setCustomAgents] = useState<CustomAgent[]>(loadCustomAgents);
   const [editingParticipants, setEditingParticipants] = useState(false);
@@ -79,6 +82,11 @@ export function GroupChat() {
       saveChats(next);
       return next;
     });
+    // Pipe user/agent messages into the shared memory pool. Tool calls and
+    // system messages stay local — Hermes doesn't need the noise.
+    if (m.kind === "user" || m.kind === "agent") {
+      pushMemory({ agent: m.agentId || "unknown", fact: m.content, source: "chat" });
+    }
   }
   function createChat(participantIds: string[]) {
     const c = newChat(participantIds, "Chat " + (chats.length + 1));
@@ -107,7 +115,13 @@ export function GroupChat() {
     const c = cfg[a.id];
     const t = effectiveTransport(a, c);
     let res: { ok: boolean; text?: string; error?: string };
-    if (t === "house") res = await window.hub.llm.chat(system, userContent, { temperature: prefs.llmTemperature, maxTokens: prefs.llmMaxTokens });
+    // Hermes is the spine: always route through the user's Hermes URL when
+    // configured, regardless of the agent's stored transport. Falls back to
+    // the bundled local model so the crew degrades cleanly instead of dying.
+    if (a.id === "hermes" && getHermesState().configured) {
+      res = await hermesChat(system, [{ role: "user", content: userContent }]);
+      if (!res.ok) res = await window.hub.llm.chat(system + "\n\n(Hermes was unreachable — answering from the bundled fallback.)", userContent, { temperature: prefs.llmTemperature, maxTokens: prefs.llmMaxTokens });
+    } else if (t === "house") res = await window.hub.llm.chat(system, userContent, { temperature: prefs.llmTemperature, maxTokens: prefs.llmMaxTokens });
     else if (t === "cli") res = await window.hub.agentRun(c?.cmd || a.defaultCmd || "", `${system}\n\n${userContent}`);
     else res = await window.hub.aiChat({ provider: c?.provider ?? a.defaultProvider, endpoint: c?.endpoint, apiKey: c?.apiKey, model: c?.model || a.defaultModel, system, messages: [{ role: "user", content: userContent }] });
     return res.ok ? (res.text || "(no output)") : `[${a.name} couldn't reach their tool: ${res.error}]`;
@@ -257,7 +271,10 @@ export function GroupChat() {
     const c = cfg[a.id];
     const t = effectiveTransport(a, c);
     let res: { ok: boolean; text?: string; error?: string };
-    if (t === "house") res = await window.hub.llm.chat(system, userContent, { temperature: prefs.llmTemperature, maxTokens: prefs.llmMaxTokens });
+    if (a.id === "hermes" && getHermesState().configured) {
+      res = await hermesChat(system, [{ role: "user", content: userContent }]);
+      if (!res.ok) res = await window.hub.llm.chat(system, userContent, { temperature: prefs.llmTemperature, maxTokens: prefs.llmMaxTokens });
+    } else if (t === "house") res = await window.hub.llm.chat(system, userContent, { temperature: prefs.llmTemperature, maxTokens: prefs.llmMaxTokens });
     else if (t === "cli") res = await window.hub.agentRun(c?.cmd || a.defaultCmd || "", `${system}\n\n${userContent}`);
     else res = await window.hub.aiChat({ provider: c?.provider ?? a.defaultProvider, endpoint: c?.endpoint, apiKey: c?.apiKey, model: c?.model || a.defaultModel, system, messages: [{ role: "user", content: userContent }] });
     return res.ok ? (res.text || "") : `[model error] ${res.error}`;
@@ -276,7 +293,10 @@ export function GroupChat() {
     const t = effectiveTransport(a, c);
     let res: { ok: boolean; text?: string; error?: string };
     const userContent = `Conversation so far:\n${convo}\n\nYour move, ${a.name} (or PASS):`;
-    if (t === "house") res = await window.hub.llm.chat(system, userContent, { temperature: prefs.llmTemperature, maxTokens: prefs.llmMaxTokens });
+    if (a.id === "hermes" && getHermesState().configured) {
+      res = await hermesChat(system, [{ role: "user", content: userContent }]);
+      if (!res.ok) res = await window.hub.llm.chat(system, userContent, { temperature: prefs.llmTemperature, maxTokens: prefs.llmMaxTokens });
+    } else if (t === "house") res = await window.hub.llm.chat(system, userContent, { temperature: prefs.llmTemperature, maxTokens: prefs.llmMaxTokens });
     else if (t === "cli") res = await window.hub.agentRun(c?.cmd || a.defaultCmd || "", `${system}\n\n${userContent}`);
     else res = await window.hub.aiChat({ provider: c?.provider ?? a.defaultProvider, endpoint: c?.endpoint, apiKey: c?.apiKey, model: c?.model || a.defaultModel, system, messages: [{ role: "user", content: userContent }] });
     const text = (res.ok ? (res.text || "") : "").trim();
@@ -340,7 +360,9 @@ export function GroupChat() {
           <ProjectsView availableIds={gated.map((a) => a.id)} onBackToChat={() => setView("chat")} />
         ) : creating ? (
           <ParticipantPicker gated={gated} cfg={cfg} houseReady={houseReady} title="Who's in this chat?"
-            initial={gated.filter((a) => !a.silent && agentAvailable(a, cfg[a.id], houseReady)).map((a) => a.id)}
+            initial={hermesConfigured
+              ? ["hermes"]
+              : gated.filter((a) => !a.silent && agentAvailable(a, cfg[a.id], houseReady)).map((a) => a.id)}
             onCancel={() => setCreating(false)} onConfirm={createChat} confirmLabel="Create chat" />
         ) : !active ? (
           <div style={{ flex: 1, display: "grid", placeItems: "center", color: "var(--mute)", textAlign: "center", padding: 40 }}>

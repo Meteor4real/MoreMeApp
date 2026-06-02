@@ -8,6 +8,7 @@
 // Notifications → enabled.
 
 import type { FeedItem } from "../feeds";
+import { pushMemory } from "../ai/hermes";
 
 type AmbientEvent = {
   id: string;
@@ -26,6 +27,8 @@ function push(source: string, text: string, kind: FeedItem["kind"] = "ticker"): 
   EVENTS.unshift({ id, source, text, ts: Date.now(), kind });
   if (EVENTS.length > MAX) EVENTS.length = MAX;
   subs.forEach((fn) => { try { fn(); } catch { /* ignore */ } });
+  // Operational ambient events (CPU spikes, deploys, etc.) also go to Hermes.
+  pushMemory({ agent: "ambient", fact: `[${source}] ${text}`, source: "event" });
 }
 
 export function subscribeAmbient(fn: () => void): () => void { subs.add(fn); return () => subs.delete(fn); }
