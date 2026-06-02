@@ -6,6 +6,7 @@ import { HALOS } from "./HALOS";
 import { DigitalBlueprint } from "./DigitalBlueprint";
 import { BroBot } from "./BroBot";
 import { Documents } from "./Documents";
+import { Toolbox } from "./Toolbox";
 
 // Sidebar apps that have a purpose-built in-app version (vs. loading the live
 // site in a browser tab). Keyed by the SITE_APPS id.
@@ -17,4 +18,5 @@ export const EMBEDDED: Record<string, ComponentType> = {
   blueprint: DigitalBlueprint,
   brobot: BroBot,
   documents: Documents,
+  toolbox: Toolbox,
 };

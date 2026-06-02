@@ -53,4 +53,9 @@ export const SITE_APPS: AppEntry[] = [
     label: "Documents",
     note: "Your Google Docs, NCH-skinned",
   },
+  {
+    id: "toolbox",
+    label: "IT Toolbox",
+    note: "Network + dev utilities, all native",
+  },
 ];
