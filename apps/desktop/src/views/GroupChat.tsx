@@ -10,6 +10,7 @@ import {
 } from "../ai/chatSessions";
 import { toolsPromptBlock, parseToolCall, runTool, agentMemory, setAgentMemory } from "../ai/agentTools";
 import { pushMemory, getHermesState, hermesChat, subscribeHermes } from "../ai/hermes";
+import { goto as navTo } from "../navBridge";
 import { ProjectsView } from "./groupchat/Projects";
 
 // The Group Terminal — the Hub's multi-agent room. Multiple saved chats you
@@ -34,7 +35,10 @@ export function GroupChat() {
   const [view, setView] = useState<View>("chat");
   const [houseReady, setHouseReady] = useState(false);
   const [hermesConfigured, setHermesConfigured] = useState(getHermesState().configured);
-  useEffect(() => subscribeHermes((s) => setHermesConfigured(s.configured)), []);
+  const [, setHermesTick] = useState(0); // re-render when Hermes state changes
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => subscribeHermes((s) => { setHermesConfigured(s.configured); setHermesTick((n) => n + 1); }), []);
   const [prefs, setPrefs] = useState(loadPrefs);
   const [customAgents, setCustomAgents] = useState<CustomAgent[]>(loadCustomAgents);
   const [editingParticipants, setEditingParticipants] = useState(false);
@@ -319,128 +323,252 @@ export function GroupChat() {
   }
 
   // ── render ────────────────────────────────────────────────────────────────
+  // Claude.ai-style layout: collapsible sidebar (recent chats) + a centered
+  // conversation column. Same shape for Hermes-solo and crew chats — when
+  // there's more than one agent we just expand the header strip.
+  const hermesState = getHermesState();
+  const hermesUnhealthy = !!hermesState.url && (!hermesState.configured || !!hermesState.lastError);
+  const soloHermes = !!active && active.participantIds.length === 1 && active.participantIds[0] === "hermes";
+
   return (
-    <div className="stage" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <div className="mono" style={{ padding: "10px 14px", borderBottom: "1px solid var(--line)", fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: "var(--mute)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flex: "none" }}>
-        <span className="glow-text">Group Terminal</span>
-        <div style={{ display: "flex", gap: 6 }}>
-          {(["chat", "projects"] as const).map((v) => (
-            <button key={v} className="btn" style={{ padding: "2px 12px", color: view === v ? "var(--pink)" : undefined, borderColor: view === v ? "rgba(255,87,119,0.6)" : undefined }} onClick={() => setView(v)}>{v}</button>
-          ))}
-          <button className="btn" onClick={() => setView(view === "config" ? "chat" : "config")}>{view === "config" ? "Done" : "Configure"}</button>
+    <div className="stage" style={{ display: "flex", flexDirection: "column", minHeight: 0, background: "#0a0a0c" }}>
+      {/* Loud Hermes failure indicator — shown on top of everything when the
+          URL is set but the last call failed. Click jumps to setup. */}
+      {hermesUnhealthy && (
+        <div onClick={() => navTo({ kind: "hermes" })}
+          style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "linear-gradient(90deg, rgba(239,68,68,0.18), rgba(239,68,68,0.05))", borderBottom: "1px solid rgba(239,68,68,0.4)", cursor: "pointer", flex: "none" }}>
+          <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#ef4444", boxShadow: "0 0 8px #ef4444", animation: "nch-eq 1.2s ease-in-out infinite alternate" }} />
+          <span className="mono" style={{ fontSize: 11, letterSpacing: 1.5, color: "#fecaca", textTransform: "uppercase" }}>Hermes unreachable</span>
+          <span style={{ fontSize: 12, color: "#fecaca", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            Crew is on the bundled fallback brain. {hermesState.lastError || "Last call failed."}
+          </span>
+          <span style={{ fontSize: 11, color: "#fecaca", letterSpacing: 1, textTransform: "uppercase" }}>open setup ›</span>
         </div>
-      </div>
+      )}
 
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-        {/* Chats sidebar */}
-        <div style={{ width: 210, borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <button className="btn" data-tour="gt-newchat" style={{ margin: 10 }} onClick={() => setCreating(true)}>+ New chat</button>
-          <div style={{ flex: 1, overflow: "auto", padding: "0 8px 8px" }}>
-            {chats.length === 0 && <div style={{ fontSize: 11, color: "var(--mute)", padding: 8 }}>No chats yet. Create one and pick who's in it.</div>}
-            {chats.map((c) => (
-              <div key={c.id} onClick={() => { setActiveId(c.id); setView("chat"); }}
-                className={c.id === activeId ? "panel-hot panel" : "panel"}
-                style={{ padding: "8px 10px", marginBottom: 6, cursor: "pointer", borderColor: c.id === activeId ? "rgba(255,87,119,0.5)" : undefined, background: c.id === activeId ? "rgba(255,87,119,0.06)" : undefined }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
-                  <input value={c.title} onClick={(e) => e.stopPropagation()} onChange={(e) => persist(chats.map((x) => x.id === c.id ? { ...x, title: e.target.value } : x))}
-                    style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", color: "var(--ink)", fontFamily: "ui-monospace,monospace", fontSize: 12, outline: "none" }} />
-                  <span onClick={(e) => { e.stopPropagation(); deleteChat(c.id); }} style={{ color: "var(--mute)", fontSize: 11, cursor: "pointer" }}>✕</span>
-                </div>
-                <div style={{ fontSize: 9, color: "var(--mute)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {c.participantIds.map((id) => ROSTER.find((a) => a.id === id)?.name).filter(Boolean).join(", ") || "no agents"} · {c.msgs.length} msgs
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {view === "config" ? (
-          <ConfigPanel cfg={cfg} houseReady={houseReady} roster={ROSTER} customAgents={customAgents} onChange={(next) => { setCfg(next); saveConfig(next); }} />
-        ) : view === "projects" ? (
-          <ProjectsView availableIds={gated.map((a) => a.id)} onBackToChat={() => setView("chat")} />
-        ) : creating ? (
-          <ParticipantPicker gated={gated} cfg={cfg} houseReady={houseReady} title="Who's in this chat?"
-            initial={hermesConfigured
-              ? ["hermes"]
-              : gated.filter((a) => !a.silent && agentAvailable(a, cfg[a.id], houseReady)).map((a) => a.id)}
-            onCancel={() => setCreating(false)} onConfirm={createChat} confirmLabel="Create chat" />
-        ) : !active ? (
-          <div style={{ flex: 1, display: "grid", placeItems: "center", color: "var(--mute)", textAlign: "center", padding: 40 }}>
-            <div>
-              <div className="glow-text mono" style={{ fontSize: 13, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>No chat open</div>
-              <button className="btn" onClick={() => setCreating(true)}>+ New chat</button>
+        {/* Recent-chats sidebar (collapsible, Claude.ai style) */}
+        {sidebarOpen && (
+          <div style={{ width: 260, borderRight: "1px solid var(--line)", display: "flex", flexDirection: "column", minHeight: 0, background: "#0d0d11" }}>
+            <div style={{ display: "flex", alignItems: "center", padding: 12, gap: 6 }}>
+              <button data-tour="gt-newchat" onClick={() => setCreating(true)}
+                style={{ flex: 1, padding: "9px 12px", background: "rgba(255,87,119,0.08)", border: "1px solid rgba(255,87,119,0.4)", borderRadius: 8, color: "var(--pink)", cursor: "pointer", fontFamily: "ui-monospace,monospace", fontSize: 12, letterSpacing: 1, textTransform: "uppercase", textAlign: "left" }}>
+                <span style={{ marginRight: 6 }}>＋</span> New chat
+              </button>
+              <button onClick={() => setSidebarOpen(false)} title="Hide sidebar"
+                style={{ width: 32, height: 32, background: "transparent", border: "1px solid var(--line)", borderRadius: 8, color: "var(--mute)", cursor: "pointer", fontSize: 14 }}>‹</button>
             </div>
-          </div>
-        ) : editingParticipants ? (
-          <ParticipantPicker gated={gated} cfg={cfg} houseReady={houseReady} title="Edit participants"
-            initial={active.participantIds}
-            onCancel={() => setEditingParticipants(false)}
-            onConfirm={(ids) => { patchActive({ participantIds: ids }); setEditingParticipants(false); }} confirmLabel="Save" />
-        ) : (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
-            {/* Participants bar */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--line)", flexWrap: "wrap", flex: "none" }}>
-              {active.participantIds.length === 0 && <span style={{ fontSize: 12, color: "var(--mute)" }}>No agents in this chat.</span>}
-              {active.participantIds.map((id) => {
-                const a = ROSTER.find((x) => x.id === id); if (!a) return null;
-                const ready = agentAvailable(a, cfg[a.id], houseReady);
+            <div style={{ flex: 1, overflowY: "auto", padding: "0 8px 8px" }}>
+              {chats.length === 0 && (
+                <div style={{ fontSize: 12, color: "var(--mute)", padding: "10px 8px", lineHeight: 1.5 }}>No chats yet. Start one — Hermes is the default voice.</div>
+              )}
+              {chats.map((c) => {
+                const sub = c.participantIds.length === 1 && c.participantIds[0] === "hermes"
+                  ? "Hermes"
+                  : c.participantIds.map((id) => ROSTER.find((a) => a.id === id)?.name).filter(Boolean).join(", ") || "no agents";
                 return (
-                  <span key={id} title={ready ? "ready" : "not connected / model loading"} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 8px 3px 4px", borderRadius: 20, background: "rgba(255,255,255,0.04)", border: "1px solid var(--line)" }}>
-                    <Avatar agentId={a.id} name={a.name} roster={ROSTER} small />
-                    <span style={{ fontSize: 11, color: "var(--ink)" }}>{a.name}</span>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: ready ? "#22c55e" : "#f59e0b" }} />
-                  </span>
+                  <div key={c.id} onClick={() => { setActiveId(c.id); setView("chat"); }}
+                    style={{ padding: "8px 10px", marginBottom: 2, cursor: "pointer", borderRadius: 8,
+                      background: c.id === activeId ? "rgba(255,87,119,0.12)" : "transparent",
+                      borderLeft: c.id === activeId ? "2px solid var(--pink)" : "2px solid transparent" }}
+                    onMouseEnter={(e) => { if (c.id !== activeId) e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
+                    onMouseLeave={(e) => { if (c.id !== activeId) e.currentTarget.style.background = "transparent"; }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <input value={c.title} onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => persist(chats.map((x) => x.id === c.id ? { ...x, title: e.target.value } : x))}
+                        style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", color: c.id === activeId ? "var(--ink)" : "var(--mute)", fontFamily: "'Space Grotesk',sans-serif", fontSize: 13, outline: "none", padding: 0 }} />
+                      <span onClick={(e) => { e.stopPropagation(); deleteChat(c.id); }} title="delete"
+                        style={{ width: 18, height: 18, display: "grid", placeItems: "center", color: "var(--mute)", cursor: "pointer", opacity: c.id === activeId ? 0.6 : 0, borderRadius: 4, fontSize: 12 }}>✕</span>
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--mute)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub} · {c.msgs.length}</div>
+                  </div>
                 );
               })}
-              <button className="btn" style={{ fontSize: 11, padding: "3px 10px" }} onClick={() => setEditingParticipants(true)}>Edit participants</button>
             </div>
-
-            <div ref={scroller} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16 }}>
-              {active.msgs.length === 0 && (
-                <div style={{ color: "var(--mute)", fontSize: 13, lineHeight: 1.6, maxWidth: 520 }}>
-                  Give the crew a task. Everyone in this chat reads the whole conversation and answers each other — no @mentions needed. Use the Stop button to halt a turn; create a new chat any time from the left.
-                </div>
-              )}
-              {active.msgs.map((m) => <Bubble key={m.id} m={m} roster={ROSTER} />)}
-              {busy && (
-                <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
-                  <Avatar agentId={busy} name={busy} roster={ROSTER} />
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "rgba(255,87,119,0.06)", border: "1px solid var(--line)", borderRadius: 10 }}>
-                    <span className="mono" style={{ fontSize: 12, color: "var(--mute)" }}>{busy} is typing</span>
-                    <TypingDots />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* token meter */}
-            <div className="mono" style={{ display: "flex", justifyContent: "space-between", padding: "4px 14px", fontSize: 10, color: "var(--mute)", borderTop: "1px solid var(--line)", flex: "none" }}>
-              <span>~{totalTokens.toLocaleString()} tokens in this chat</span>
-              <span>{active.participantIds.length} participant{active.participantIds.length === 1 ? "" : "s"}{busy ? " · working" : ""}</span>
-            </div>
-
-            <div style={{ display: "flex", gap: 8, padding: 12, borderTop: "1px solid var(--line)", flex: "none", alignItems: "center" }}>
-              <div style={{ display: "flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", flex: "none" }} title="Round-table: everyone discusses. Debate: assigned sides argue, then a verdict.">
-                {(["round", "debate"] as const).map((m) => (
-                  <button key={m} onClick={() => setMode(m)} disabled={!!busy}
-                    style={{ padding: "8px 12px", fontSize: 11, fontFamily: "ui-monospace,monospace", letterSpacing: 1, textTransform: "uppercase", border: "none", cursor: busy ? "default" : "pointer",
-                      background: mode === m ? (m === "debate" ? "rgba(168,85,247,0.18)" : "rgba(255,87,119,0.14)") : "transparent",
-                      color: mode === m ? (m === "debate" ? "#c084fc" : "var(--pink)") : "var(--mute)" }}>
-                    {m === "round" ? "◇ Round" : "⚔ Debate"}
-                  </button>
-                ))}
-              </div>
-              <input style={{ flex: 1, background: "rgba(0,0,0,0.5)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink)", padding: "9px 12px", fontSize: 13, outline: "none" }}
-                placeholder={mode === "debate" ? "Pose a question or proposition for the crew to debate…" : "Message the crew — they all see it and talk to each other"}
-                value={input} onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
-                disabled={!!busy} />
-              {busy
-                ? <button className="btn" style={{ color: "#ef4444", borderColor: "rgba(239,68,68,0.5)" }} onClick={() => { stopRef.current = true; }}>■ Stop</button>
-                : <button className="btn" onClick={() => void send()}>{mode === "debate" ? "Start debate" : "Send"}</button>}
+            <div style={{ borderTop: "1px solid var(--line)", padding: 8, display: "flex", gap: 4 }}>
+              <button className="btn" style={{ flex: 1, fontSize: 11, padding: "6px 10px" }} onClick={() => setView("projects")}>Projects</button>
+              <button className="btn" style={{ flex: 1, fontSize: 11, padding: "6px 10px", color: view === "config" ? "var(--pink)" : undefined, borderColor: view === "config" ? "rgba(255,87,119,0.5)" : undefined }} onClick={() => setView(view === "config" ? "chat" : "config")}>{view === "config" ? "Close" : "Crew"}</button>
             </div>
           </div>
         )}
+
+        {/* Main column */}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+          {view === "config" ? (
+            <ConfigPanel cfg={cfg} houseReady={houseReady} roster={ROSTER} customAgents={customAgents} onChange={(next) => { setCfg(next); saveConfig(next); }} />
+          ) : view === "projects" ? (
+            <ProjectsView availableIds={gated.map((a) => a.id)} onBackToChat={() => setView("chat")} />
+          ) : creating ? (
+            <ParticipantPicker gated={gated} cfg={cfg} houseReady={houseReady} title="Who's in this chat?"
+              initial={hermesConfigured ? ["hermes"] : gated.filter((a) => !a.silent && agentAvailable(a, cfg[a.id], houseReady)).map((a) => a.id)}
+              onCancel={() => setCreating(false)} onConfirm={createChat} confirmLabel="Create chat" />
+          ) : editingParticipants && active ? (
+            <ParticipantPicker gated={gated} cfg={cfg} houseReady={houseReady} title="Edit participants"
+              initial={active.participantIds}
+              onCancel={() => setEditingParticipants(false)}
+              onConfirm={(ids) => { patchActive({ participantIds: ids }); setEditingParticipants(false); }} confirmLabel="Save" />
+          ) : !active ? (
+            <HomeScreen sidebarOpen={sidebarOpen} onOpenSidebar={() => setSidebarOpen(true)} onNewChat={() => setCreating(true)} hermesConfigured={hermesConfigured} onConnectHermes={() => navTo({ kind: "hermes" })} />
+          ) : (
+            <>
+              {/* Slim chat header */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 18px", borderBottom: "1px solid var(--line)", flex: "none", background: "#0a0a0c" }}>
+                {!sidebarOpen && (
+                  <button onClick={() => setSidebarOpen(true)} title="Show recent chats"
+                    style={{ width: 32, height: 32, background: "transparent", border: "1px solid var(--line)", borderRadius: 8, color: "var(--mute)", cursor: "pointer", fontSize: 14 }}>›</button>
+                )}
+                {soloHermes ? (
+                  <>
+                    <Avatar agentId="hermes" name="Hermes" roster={ROSTER} small />
+                    <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 600, fontSize: 15, color: "var(--ink)" }}>Hermes</span>
+                    <span className="mono" style={{ fontSize: 10, color: hermesConfigured ? "#22c55e" : "var(--mute)", letterSpacing: 1.5, textTransform: "uppercase" }}>{hermesConfigured ? "● live" : "○ fallback"}</span>
+                    <span style={{ flex: 1 }} />
+                    <button className="btn" style={{ fontSize: 11, padding: "5px 12px" }} onClick={() => setEditingParticipants(true)}>+ Add agent</button>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 600, fontSize: 14, color: "var(--ink)" }}>{active.title || "Chat"}</span>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: 1 }}>
+                      {active.participantIds.map((id) => {
+                        const a = ROSTER.find((x) => x.id === id); if (!a) return null;
+                        const ready = agentAvailable(a, cfg[a.id], houseReady);
+                        return (
+                          <span key={id} title={ready ? "ready" : "not connected / model loading"} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 8px 2px 3px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid var(--line)" }}>
+                            <Avatar agentId={a.id} name={a.name} roster={ROSTER} small />
+                            <span style={{ fontSize: 11, color: "var(--ink)" }}>{a.name}</span>
+                            <span style={{ width: 5, height: 5, borderRadius: "50%", background: ready ? "#22c55e" : "#f59e0b" }} />
+                          </span>
+                        );
+                      })}
+                    </div>
+                    <button className="btn" style={{ fontSize: 11, padding: "5px 12px" }} onClick={() => setEditingParticipants(true)}>Edit</button>
+                  </>
+                )}
+              </div>
+
+              {/* Centered conversation column */}
+              <div ref={scroller} style={{ flex: 1, minHeight: 0, overflowY: "auto", background: "#0a0a0c" }}>
+                <div style={{ maxWidth: 760, margin: "0 auto", padding: "32px 24px 80px" }}>
+                  {active.msgs.length === 0 && (
+                    <EmptyConversation soloHermes={soloHermes} ownerName={prefs.ownerName} onPrompt={(p) => { setInput(p); }} />
+                  )}
+                  {active.msgs.map((m) => <Bubble key={m.id} m={m} roster={ROSTER} />)}
+                  {busy && (
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
+                      <Avatar agentId={busy} name={busy} roster={ROSTER} />
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "rgba(255,87,119,0.06)", border: "1px solid var(--line)", borderRadius: 10 }}>
+                        <span className="mono" style={{ fontSize: 12, color: "var(--mute)" }}>{busy} is thinking</span>
+                        <TypingDots />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Composer (centered, Claude.ai-style pill) */}
+              <div style={{ padding: "12px 24px 18px", borderTop: "1px solid var(--line)", background: "#0a0a0c", flex: "none" }}>
+                <div style={{ maxWidth: 760, margin: "0 auto" }}>
+                  <div style={{ display: "flex", alignItems: "flex-end", gap: 10, padding: "10px 12px", background: "#13131a", border: "1px solid var(--line)", borderRadius: 18, boxShadow: "0 0 24px rgba(255,87,119,0.08)" }}>
+                    {!soloHermes && (
+                      <div style={{ display: "flex", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", flex: "none", alignSelf: "stretch" }} title="Round-table: everyone discusses. Debate: assigned sides argue, then a verdict.">
+                        {(["round", "debate"] as const).map((m) => (
+                          <button key={m} onClick={() => setMode(m)} disabled={!!busy}
+                            style={{ padding: "0 12px", fontSize: 10, fontFamily: "ui-monospace,monospace", letterSpacing: 1, textTransform: "uppercase", border: "none", cursor: busy ? "default" : "pointer",
+                              background: mode === m ? (m === "debate" ? "rgba(168,85,247,0.18)" : "rgba(255,87,119,0.14)") : "transparent",
+                              color: mode === m ? (m === "debate" ? "#c084fc" : "var(--pink)") : "var(--mute)" }}>
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <textarea ref={composerRef} rows={1}
+                      style={{ flex: 1, background: "transparent", border: "none", color: "var(--ink)", padding: "8px 4px", fontSize: 14, outline: "none", resize: "none", fontFamily: "'Space Grotesk', system-ui, sans-serif", lineHeight: 1.5, maxHeight: 220 }}
+                      placeholder={soloHermes ? `Ask Hermes anything…${hermesConfigured ? "" : " (fallback brain until you connect Hermes)"}` : mode === "debate" ? "Pose a question or proposition for the crew to debate…" : "Message the crew — they all see it and answer each other"}
+                      value={input}
+                      onChange={(e) => { setInput(e.target.value); const ta = e.currentTarget; ta.style.height = "auto"; ta.style.height = Math.min(220, ta.scrollHeight) + "px"; }}
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
+                      disabled={!!busy} />
+                    {busy
+                      ? <button onClick={() => { stopRef.current = true; }} title="Stop"
+                          style={{ width: 36, height: 36, borderRadius: 12, border: "none", background: "rgba(239,68,68,0.18)", color: "#ef4444", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>■</button>
+                      : <button onClick={() => void send()} disabled={!input.trim()} title="Send"
+                          style={{ width: 36, height: 36, borderRadius: 12, border: "none", background: input.trim() ? "linear-gradient(135deg, var(--red), var(--orange))" : "rgba(255,255,255,0.06)", color: "#fff", cursor: input.trim() ? "pointer" : "default", fontSize: 16, opacity: input.trim() ? 1 : 0.4 }}>↑</button>}
+                  </div>
+                  <div className="mono" style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 9, color: "var(--mute)", letterSpacing: 1 }}>
+                    <span>Enter to send · Shift+Enter for newline</span>
+                    <span>~{totalTokens.toLocaleString()} tokens · {active.participantIds.length} participant{active.participantIds.length === 1 ? "" : "s"}{busy ? " · working" : ""}</span>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// A landing screen when no chat is active — Claude.ai-style centered hero.
+function HomeScreen({ sidebarOpen, onOpenSidebar, onNewChat, hermesConfigured, onConnectHermes }: { sidebarOpen: boolean; onOpenSidebar: () => void; onNewChat: () => void; hermesConfigured: boolean; onConnectHermes: () => void }) {
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, background: "#0a0a0c" }}>
+      {!sidebarOpen && (
+        <div style={{ padding: 10, flex: "none" }}>
+          <button onClick={onOpenSidebar} style={{ width: 32, height: 32, background: "transparent", border: "1px solid var(--line)", borderRadius: 8, color: "var(--mute)", cursor: "pointer", fontSize: 14 }}>›</button>
+        </div>
+      )}
+      <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 40 }}>
+        <div style={{ textAlign: "center", maxWidth: 520 }}>
+          <div className="glow-text" style={{ fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 28, letterSpacing: 2, marginBottom: 8 }}>AI Crew</div>
+          <p style={{ fontSize: 14, color: "var(--mute)", lineHeight: 1.6, margin: "0 0 24px" }}>
+            {hermesConfigured
+              ? "Hermes is on call. Start a chat and talk to him directly, or add specialists when you need backup."
+              : "Connect Hermes to make him the default voice and curate the crew's shared memory. The bundled fallback brain will fill in until you do."}
+          </p>
+          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+            <button onClick={onNewChat} style={{ padding: "10px 22px", background: "linear-gradient(135deg, var(--red), var(--orange))", border: "none", borderRadius: 10, color: "#fff", fontWeight: 600, fontSize: 14, cursor: "pointer", boxShadow: "0 0 18px rgba(255,87,119,0.35)" }}>＋ New chat</button>
+            {!hermesConfigured && (
+              <button onClick={onConnectHermes} className="btn" style={{ padding: "10px 18px", fontSize: 13 }}>Connect Hermes</button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Empty conversation — quick suggested prompts, like Claude.ai's launch state.
+function EmptyConversation({ soloHermes, ownerName, onPrompt }: { soloHermes: boolean; ownerName: string; onPrompt: (p: string) => void }) {
+  const prompts = soloHermes
+    ? [
+        "Audit my Command Center — anything firing or unhealthy?",
+        "Summarize what I've been working on this week from memory.",
+        "Draft a quick runbook for the alert that fired last.",
+        "What service should I connect next to get more out of NCH?",
+      ]
+    : [
+        "Plan the next release of NCH end-to-end and split the work.",
+        "Debate: should we self-host or pay for the managed version?",
+        "Walk me through the failing deploy on Vercel and propose a fix.",
+        "Review the last patch — call out anything risky.",
+      ];
+  return (
+    <div style={{ textAlign: "center", padding: "20px 0 40px" }}>
+      <div className="glow-text" style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 600, fontSize: 22, color: "var(--ink)", marginBottom: 6 }}>
+        {soloHermes ? `Good to see you${ownerName ? `, ${ownerName.split(/\s+/)[0]}` : ""}.` : "What's the crew working on?"}
+      </div>
+      <div style={{ fontSize: 13, color: "var(--mute)", marginBottom: 22 }}>
+        {soloHermes ? "Hermes has your context, your memory, and your services." : "Everyone in this chat reads the whole conversation."}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, maxWidth: 620, margin: "0 auto" }}>
+        {prompts.map((p) => (
+          <button key={p} onClick={() => onPrompt(p)}
+            style={{ textAlign: "left", padding: "12px 14px", background: "rgba(255,255,255,0.03)", border: "1px solid var(--line)", borderRadius: 12, color: "var(--ink)", fontSize: 12.5, lineHeight: 1.45, cursor: "pointer", fontFamily: "'Space Grotesk',sans-serif" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,87,119,0.06)"; e.currentTarget.style.borderColor = "rgba(255,87,119,0.4)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; e.currentTarget.style.borderColor = "var(--line)"; }}>
+            {p}
+          </button>
+        ))}
       </div>
     </div>
   );

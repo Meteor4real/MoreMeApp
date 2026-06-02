@@ -9,6 +9,7 @@ export type NavRequest =
   | { kind: "ai" }
   | { kind: "library" }
   | { kind: "settings" }
+  | { kind: "hermes" }
   | { kind: "app"; id: string };
 
 let setter: ((n: NavRequest) => void) | null = null;
