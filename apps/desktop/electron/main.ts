@@ -45,7 +45,7 @@ function createWindow() {
     show: false,
     autoHideMenuBar: true,
     useContentSize: true,
-    title: "NetworkChuck Hub",
+    title: "MoreMe",
     webPreferences: {
       preload: path.join(dir, "preload.js"),
       contextIsolation: true,
@@ -95,7 +95,7 @@ function ensureTray() {
   let img = nativeImage.createFromPath(iconPath);
   if (img.isEmpty()) img = nativeImage.createEmpty();
   tray = new Tray(img);
-  tray.setToolTip("NetworkChuck Hub — running in the background");
+  tray.setToolTip("MoreMe — running in the background");
   refreshTrayMenu();
   tray.on("click", () => { if (win) { win.show(); win.focus(); } else createWindow(); });
   return tray;
@@ -104,7 +104,7 @@ function refreshTrayMenu() {
   if (!tray) return;
   const p = readBgPrefs();
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "Show NetworkChuck Hub", click: () => { if (win) { win.show(); win.focus(); } else createWindow(); } },
+    { label: "Show MoreMe", click: () => { if (win) { win.show(); win.focus(); } else createWindow(); } },
     { type: "separator" },
     { label: "Run on system startup", type: "checkbox", checked: p.runOnStartup, click: (m) => { const next = { ...p, runOnStartup: !!m.checked }; writeBgPrefs(next); applyBgPrefs(next); refreshTrayMenu(); } },
     { label: "Close button hides to tray (keeps MoreMe sync + wire running)", type: "checkbox", checked: p.minimizeToTray, click: (m) => { const next = { ...p, minimizeToTray: !!m.checked }; writeBgPrefs(next); refreshTrayMenu(); } },
@@ -264,10 +264,15 @@ function harden(ses: Electron.Session) {
     return false;
   });
 
+  // Strip Electron's auto-injected " Electron/x.y.z" + product token from the
+  // User-Agent so embedded sites can't fingerprint us as an Electron app.
+  // app.getName() is driven by electron-builder's productName at runtime so
+  // this stays correct if the product is ever renamed again.
+  const productToken = new RegExp(` ${app.getName().replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\/[\\d.]+`, "i");
   const ua = ses
     .getUserAgent()
     .replace(/ Electron\/[\d.]+/i, "")
-    .replace(/ NetworkChuck Hub\/[\d.]+/i, "");
+    .replace(productToken, "");
   ses.setUserAgent(ua);
 }
 

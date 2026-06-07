@@ -247,7 +247,7 @@ function parseRss(xml: string): RealHit[] {
 }
 
 async function fetchFeed(url: string): Promise<RealHit[]> {
-  const r = await window.hub.net({ method: "GET", url, headers: { "User-Agent": "Mozilla/5.0 NetworkChuckHub" } });
+  const r = await window.hub.net({ method: "GET", url, headers: { "User-Agent": "Mozilla/5.0 MoreMe" } });
   if (!r.ok || typeof r.data !== "string") return [];
   return parseRss(r.data);
 }

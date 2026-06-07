@@ -13,15 +13,15 @@ type OS = "win" | "mac-arm64" | "mac-x64" | "linux" | null;
 // Artifact names must match apps/desktop/electron-builder.yml.
 const primary = {
   os: "Windows 10/11 · x64",
-  file: "NetworkChuckHub-Setup.exe",
+  file: "MoreMe-Setup.exe",
   key: "win" as const,
 };
 
 const others: { os: string; file: string; key: Exclude<OS, null> }[] = [
-  { os: "macOS · Apple Silicon", file: "NetworkChuckHub-mac-arm64.dmg", key: "mac-arm64" },
-  { os: "macOS · Intel", file: "NetworkChuckHub-mac-x64.dmg", key: "mac-x64" },
-  { os: "Linux · AppImage", file: "NetworkChuckHub-linux.AppImage", key: "linux" },
-  { os: "Windows · portable .zip", file: "NetworkChuckHub-win-x64.zip", key: "win" },
+  { os: "macOS · Apple Silicon", file: "MoreMe-mac-arm64.dmg", key: "mac-arm64" },
+  { os: "macOS · Intel", file: "MoreMe-mac-x64.dmg", key: "mac-x64" },
+  { os: "Linux · AppImage", file: "MoreMe-linux.AppImage", key: "linux" },
+  { os: "Windows · portable .zip", file: "MoreMe-win-x64.zip", key: "win" },
 ];
 
 function detectOS(): OS {
@@ -39,24 +39,34 @@ type Release = { tag_name: string; html_url: string; published_at: string; asset
 
 const rooms: { tag: string; title: string; body: string }[] = [
   {
-    tag: "Control Panel",
-    title: "Run the stack",
-    body: "GitHub, Vercel, Cloudflare, Tailscale, n8n, Home Assistant, Twingate, Hostinger — read and manage them all from one glowing console. Not a viewer; a controller.",
+    tag: "Calendar",
+    title: "An event model that actually holds your life",
+    body: "Month, week, and day timelines. Categories for class, iProject, business, ARG, meeting, travel, announcement. Recurrence, sub-task checklists, priority, time-conflict flags, and hidden 'unannounced' plans you reveal when you're ready.",
   },
   {
-    tag: "The Terminal",
-    title: "Real PowerShell",
-    body: "A live shell wired to Windows PowerShell, and the home of the AI group chat where Claude, Gemini, Codex, Hermes, and the bots split tasks and fact-check each other before you ever see a result.",
+    tag: "Get Ahead",
+    title: "Finish next week before next week starts",
+    body: "For every class, a % pre-done bar over the next 7, 14, or 30 days, plus an empire-wide hero. Crush the upcoming weeks early — the bar fills as you do — until walking into school is the last step, not the first.",
   },
   {
-    tag: "The Browser",
-    title: "Tabs, sandboxed",
-    body: "Visit any site in hardened tabs, plus embedded in-app versions of your own sites — so they can do things a normal tab never could. About 20 dumb/funny house extensions ship by default.",
+    tag: "The Empire",
+    title: "Your businesses, your number",
+    body: "Track every venture you run — status, monthly revenue, next action. MoreMe derives current MRR, lifetime, and a 6-month mini chart per venture. First Dollar, Five Figures, Empire — they're achievements you actually earn.",
   },
   {
-    tag: "Your Apps",
-    title: "All of it, docked",
-    body: "NT5 News, BroBot, DigitalBlueprint, MoreMe, the HALOS Interface, SignalFinder — every project lives in the left rail. Steam, Modrinth, and Blockbench launch from here too.",
+    tag: "GTD, the loop",
+    title: "Capture · Plan · Schedule · Review",
+    body: "A capture bar over every tab dumps anything into your inbox. Plans is the reference bucket for ideas and drafts. Today triages the inbox. Weekly Review walks you through last week's loose ends and locks the goals for the next one.",
+  },
+  {
+    tag: "Synced + quiet",
+    title: "Levels you earn, reminders that fire",
+    body: "20 levels on a steep curve — heavy XP each, no busywork. Earnable achievements. Reminders fire as OS notifications. State syncs to your account so the app follows you across devices, runs from the tray, and stays alive when the window's closed.",
+  },
+  {
+    tag: "NT5 News",
+    title: "A second tab, on the house",
+    body: "An on-device wire generates fresh anchor articles while the app is open, with a broadcast bar and a teleprompter Studio. It's a self-contained bonus surface — not required, not in your way, just there when you want it.",
   },
 ];
 
@@ -148,17 +158,17 @@ export default function Page() {
           <Logo size={104} />
         </div>
 
-        <div className="mt-6 chuck-chip-live">◆ Personal-Ops Command Center</div>
+        <div className="mt-6 chuck-chip-live">◇ Calendar-first life OS</div>
 
         <h1 className="mt-5 font-mono text-4xl font-black uppercase tracking-[0.18em] text-chuck-ink sm:text-5xl">
-          NetworkChuck <span className="chuck-glow-text">Hub</span>
+          More<span className="chuck-glow-text">Me</span>
         </h1>
 
         <p className="mt-5 max-w-2xl text-base leading-relaxed text-chuck-mute">
-          One dark, glowing-red desktop app that fuses your homelab, devops, AI
-          tooling, networking, and all your sites into a single command center.
-          A browser, a real terminal, an AI group chat, and every project you
-          run — docked in one place.
+          A real calendar, a Get-Ahead view that finishes school early, an
+          Empire dashboard for the businesses you run, GTD capture, and 20
+          levels you actually earn. Synced across devices. Always running.
+          Quiet by default.
         </p>
 
         <div className="mt-8 h-[2px] w-full max-w-sm chuck-strip" />
@@ -226,9 +236,8 @@ export default function Page() {
         </div>
 
         <p className="mt-6 max-w-md text-xs leading-relaxed text-chuck-mute">
-          NetworkChuck Hub is built for Windows — the macOS and Linux builds run
-          the dashboard but skip Windows-only features (Steam launch, PowerShell
-          terminal).
+          MoreMe is built for Windows first. The macOS and Linux builds run
+          the app, but background-on-startup behavior is best on Windows.
         </p>
         <p className="mt-2 text-xs text-chuck-mute">
           No download yet?{" "}
@@ -246,7 +255,7 @@ export default function Page() {
       {/* What's inside */}
       <section className="mt-16">
         <div className="mb-6 flex items-center gap-3">
-          <span className="chuck-title text-sm">What's inside</span>
+          <span className="chuck-title text-sm">What&apos;s inside</span>
           <div className="h-px flex-1 chuck-strip-thin" />
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -261,7 +270,7 @@ export default function Page() {
       </section>
 
       <footer className="mt-16 flex items-center justify-center gap-3 font-mono text-[11px] uppercase tracking-widest text-chuck-mute">
-        <span>NetworkChuck Hub{release ? ` · ${release.tag_name}` : ""}</span>
+        <span>MoreMe{release ? ` · ${release.tag_name}` : ""}</span>
         <span className="text-chuck-line">·</span>
         <a
           href="https://github.com/meteor4real/networkchuckhub"

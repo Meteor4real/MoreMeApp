@@ -1,22 +1,24 @@
 import type { Config } from "tailwindcss";
 
-// Master NetworkChuck Hub theme tokens — kept identical to the Control Panel
-// (apps/control-panel/tailwind.config.ts) so the whole product looks like one app.
+// MoreMe download-page theme tokens. Mint-on-dark to match the desktop app
+// (apps/desktop/src/moreme/styles.ts). The class names stay `chuck-*` for
+// historical reasons — they're just CSS aliases now; only the *values* are
+// MoreMe.
 const config: Config = {
   content: ["./app/**/*.{ts,tsx,js,jsx,mdx}"],
   theme: {
     extend: {
       colors: {
         chuck: {
-          bg: "#0a0a0c",
-          panel: "#111114",
-          line: "#1c1c22",
-          ink: "#e8e8ee",
-          mute: "#7a7a85",
-          red: "#ff2d4a",
-          pink: "#ff5577",
-          orange: "#ff7a2d",
-          glow: "#ff3355",
+          bg: "#0F1318",
+          panel: "#1A2028",
+          line: "#2A3038",
+          ink: "#FFFFFF",
+          mute: "#A8B3C0",
+          red: "#3EDBB5",        // primary accent (mint)
+          pink: "#7FEBD0",        // soft accent
+          orange: "#FFD23E",      // attention / "Hidden"
+          glow: "#3EDBB5",
         },
       },
       fontFamily: {
@@ -24,8 +26,8 @@ const config: Config = {
         display: ["Inter", "system-ui", "sans-serif"],
       },
       boxShadow: {
-        glow: "0 0 24px 0 rgba(255, 51, 85, 0.55), 0 0 4px 0 rgba(255, 122, 45, 0.5)",
-        glowSoft: "0 0 18px 0 rgba(255, 51, 85, 0.35)",
+        glow: "0 0 24px 0 rgba(62, 219, 181, 0.45), 0 0 4px 0 rgba(127, 235, 208, 0.4)",
+        glowSoft: "0 0 18px 0 rgba(62, 219, 181, 0.30)",
       },
       animation: {
         pulseGlow: "pulseGlow 2.6s ease-in-out infinite",
@@ -34,8 +36,8 @@ const config: Config = {
       },
       keyframes: {
         pulseGlow: {
-          "0%, 100%": { opacity: "1", filter: "drop-shadow(0 0 6px #ff3355)" },
-          "50%": { opacity: "0.6", filter: "drop-shadow(0 0 14px #ff7a2d)" },
+          "0%, 100%": { opacity: "1", filter: "drop-shadow(0 0 6px #3EDBB5)" },
+          "50%": { opacity: "0.6", filter: "drop-shadow(0 0 14px #7FEBD0)" },
         },
         scan: {
           "0%": { transform: "translateY(-100%)" },

@@ -1,5 +1,5 @@
-appId: com.networkchuck.hub
-productName: NetworkChuck Hub
+appId: com.meteor4real.moreme
+productName: MoreMe
 directories:
   output: release
   buildResources: build
@@ -18,26 +18,26 @@ win:
     - nsis
     - zip
   icon: build/icon.ico
-  artifactName: "NetworkChuckHub-win-${arch}.${ext}"
+  artifactName: "MoreMe-win-${arch}.${ext}"
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
-  artifactName: "NetworkChuckHub-Setup.${ext}"
+  artifactName: "MoreMe-Setup.${ext}"
 mac:
   target:
     - target: dmg
       arch: [arm64, x64]
     - target: zip
       arch: [arm64, x64]
-  category: public.app-category.developer-tools
+  category: public.app-category.productivity
   icon: build/icon.icns
-  artifactName: "NetworkChuckHub-mac-${arch}.${ext}"
+  artifactName: "MoreMe-mac-${arch}.${ext}"
 linux:
   target:
     - AppImage
     - deb
-  category: Utility
+  category: Office
   icon: build/icon.png
-  maintainer: "NetworkChuck Hub <hub@example.com>"
-  artifactName: "NetworkChuckHub-linux.${ext}"
+  maintainer: "MoreMe <hub@example.com>"
+  artifactName: "MoreMe-linux.${ext}"
 publish: null

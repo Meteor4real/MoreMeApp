@@ -37,7 +37,7 @@ export function Login({ onDone }: { onDone: () => void }) {
     <div style={{ height: "100vh", display: "grid", placeItems: "center", background: "radial-gradient(circle at 50% 30%, rgba(255,45,74,0.08), transparent 60%)" }}>
       <div className="panel" style={{ width: 380, maxWidth: "90vw", padding: 26 }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-          <img src={logoUrl} width={84} height={84} alt="NetworkChuck Hub" style={{ borderRadius: 16, filter: "drop-shadow(0 0 16px rgba(255,51,85,0.45))" }} />
+          <img src={logoUrl} width={84} height={84} alt="MoreMe" style={{ borderRadius: 16, filter: "drop-shadow(0 0 16px rgba(62,219,181,0.45))" }} />
           <div className="strip" style={{ width: 220 }} />
         </div>
 
