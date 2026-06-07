@@ -320,6 +320,53 @@ body.compact-density .btn { padding: 5px 10px; min-height: 28px; }
   flex-direction: column;
   height: 100vh;
 }
+.hub-topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 46px;
+  padding: 0 16px;
+  background: linear-gradient(90deg, #0c0c10, #121216);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.hub-brand {
+  font-weight: 800;
+  letter-spacing: 3px;
+  font-size: 14px;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, var(--red), var(--orange));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 18px var(--glow);
+}
+.hub-tabs {
+  display: flex;
+  gap: 6px;
+  margin-left: 10px;
+}
+.hub-tab {
+  padding: 6px 16px;
+  font-size: 12px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mute);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.hub-tab:hover {
+  color: var(--ink);
+}
+.hub-tab.active {
+  color: #fff;
+  border-color: rgba(255, 87, 119, 0.55);
+  background: rgba(255, 45, 74, 0.12);
+  box-shadow: 0 0 14px var(--glow);
+}
 .ticker-bar {
   display: flex;
   align-items: center;
