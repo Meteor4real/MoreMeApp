@@ -3,12 +3,12 @@
 // economy, conflict detection, and rule-based (earnable) achievements.
 
 import type {
-  CalEvent, Category, DistractionLog, Goal, Goals, LevelReward, Person, Project,
+  CalEvent, Category, Class, DistractionLog, Goal, Goals, LevelReward, Person, Project,
   ProjectKind, State,
 } from "./types";
 import { MAX_LEVEL, cumulativeXp } from "./types";
 
-const KEY = "nchub.moreme.v5";
+const KEY = "nchub.moreme.v6";
 
 // ── id + date helpers ─────────────────────────────────────────────────────
 export const uid = () => Math.random().toString(36).slice(2, 10);
@@ -40,6 +40,19 @@ function seedPeople(): Person[] {
     { id: "p-lily", name: "Lily", role: "Friend" },
     { id: "p-bridget", name: "Mrs. Bridget", role: "Teacher" },
     { id: "p-harrison", name: "Principal Harrison", role: "Principal" },
+  ];
+}
+
+function seedClasses(): Class[] {
+  // Placeholder courseload — rename / replace these once your real schedule
+  // is locked in. The point is to give the Get Ahead view something to chew
+  // on; assignments link to a class so the % pre-done bar is meaningful.
+  return [
+    { id: "c-history", name: "World History",   teacher: "p-bridget" },
+    { id: "c-math",    name: "Algebra II" },
+    { id: "c-english", name: "English" },
+    { id: "c-science", name: "Biology" },
+    { id: "c-iD",      name: "Innovation Diploma" },
   ];
 }
 
@@ -83,7 +96,7 @@ function seedGoals(): Goals {
 function seedState(): State {
   const start = today();
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     events: seedRoutines(start),
     completions: {},
     projects: [
@@ -98,6 +111,7 @@ function seedState(): State {
       },
     ],
     people: seedPeople(),
+    classes: seedClasses(),
     goals: seedGoals(),
     distractions: [],
     rewards: Array.from({ length: MAX_LEVEL }, (_, i) => ({ level: i + 1, reward: "" })),
@@ -118,11 +132,12 @@ export function loadState(): State {
       const p = JSON.parse(raw) as Partial<State>;
       const d = seedState();
       cache = {
-        schemaVersion: 5,
+        schemaVersion: 6,
         events: p.events ?? d.events,
         completions: p.completions ?? {},
         projects: p.projects ?? d.projects,
         people: p.people ?? d.people,
+        classes: p.classes ?? d.classes,
         goals: { ...d.goals, ...(p.goals ?? {}) },
         distractions: p.distractions ?? [],
         rewards: p.rewards && p.rewards.length === MAX_LEVEL ? p.rewards : d.rewards,
@@ -312,6 +327,99 @@ export function upsertProject(p: Project) {
 }
 export function removeProject(id: string) {
   updateState((s) => ({ ...s, projects: s.projects.filter((p) => p.id !== id) }));
+}
+
+// ── classes ────────────────────────────────────────────────────────────
+export const blankClass = (): Class => ({ id: uid(), name: "" });
+export function upsertClass(c: Class) {
+  updateState((s) => ({
+    ...s,
+    classes: s.classes.some((x) => x.id === c.id)
+      ? s.classes.map((x) => (x.id === c.id ? c : x))
+      : [...s.classes, c],
+  }));
+}
+export function removeClass(id: string) {
+  updateState((s) => ({
+    ...s,
+    classes: s.classes.filter((c) => c.id !== id),
+    // clear the link on any events that referenced it, rather than orphaning
+    events: s.events.map((e) => (e.linkedClassId === id ? { ...e, linkedClassId: undefined } : e)),
+  }));
+}
+
+// "Get Ahead" rollup — for each class, how much of the upcoming `days` window
+// of school work is already done. This powers the story's superpower: see at
+// a glance what % of next week / month is pre-emptively crushed.
+export type AheadRow = {
+  classId: string | null;             // null = "Unfiled school work"
+  className: string;
+  total: number;
+  done: number;
+  pct: number;
+  upcoming: { e: CalEvent; on: string; done: boolean }[];
+};
+
+export function aheadByClass(daysAhead: number, s: State = loadState()): AheadRow[] {
+  const start = today();
+  const end = addDays(start, daysAhead);
+  const groups = new Map<string | null, AheadRow>();
+
+  function row(id: string | null, name: string): AheadRow {
+    let r = groups.get(id);
+    if (!r) { r = { classId: id, className: name, total: 0, done: 0, pct: 0, upcoming: [] }; groups.set(id, r); }
+    return r;
+  }
+  // Seed every known class so empty ones still appear (so you can target them).
+  for (const c of s.classes) row(c.id, c.name);
+
+  for (const e of s.events) {
+    if (e.category !== "school") continue;
+    // walk every occurrence in window
+    let d = start > e.date ? start : e.date;
+    const last = e.until && e.until < end ? e.until : end;
+    while (d <= last) {
+      if (occursOn(e, d)) {
+        const cls = s.classes.find((c) => c.id === e.linkedClassId);
+        const r = row(cls ? cls.id : null, cls ? cls.name : "Unfiled school work");
+        const done = isDone(e, d, s);
+        r.total++; if (done) r.done++;
+        r.upcoming.push({ e, on: d, done });
+      }
+      d = addDays(d, 1);
+    }
+  }
+  const rows = [...groups.values()].map((r) => ({ ...r, pct: r.total ? Math.round((r.done / r.total) * 100) : 0 }));
+  // Sort: incomplete first, then by class name.
+  rows.sort((a, b) => (a.pct - b.pct) || a.className.localeCompare(b.className));
+  // Sort upcoming items chronologically.
+  for (const r of rows) r.upcoming.sort((a, b) => a.on.localeCompare(b.on) || (a.e.start ?? "").localeCompare(b.e.start ?? ""));
+  return rows;
+}
+
+// Total pre-done across all classes in a window. Used by the Get Ahead hero.
+export function aheadTotal(daysAhead: number, s: State = loadState()): { total: number; done: number; pct: number } {
+  let total = 0, done = 0;
+  for (const r of aheadByClass(daysAhead, s)) { total += r.total; done += r.done; }
+  return { total, done, pct: total ? Math.round((done / total) * 100) : 0 };
+}
+
+// Events scheduled today/tomorrow with at least one reminder set; surfaces a
+// strip on Today so you actually see what's coming. Not a firing system —
+// just visibility.
+export type UpcomingItem = { e: CalEvent; on: string; startMin: number; firstReminderMin: number };
+export function upcomingWithReminders(s: State = loadState(), horizonDays = 2): UpcomingItem[] {
+  const out: UpcomingItem[] = [];
+  const start = today();
+  for (let i = 0; i < horizonDays; i++) {
+    const d = addDays(start, i);
+    for (const e of eventsOnDate(d, s)) {
+      if (!e.reminders.length || e.allDay || !e.start) continue;
+      if (isDone(e, d, s)) continue;
+      out.push({ e, on: d, startMin: toMin(e.start), firstReminderMin: Math.min(...e.reminders) });
+    }
+  }
+  return out.sort((a, b) => a.on.localeCompare(b.on) || a.startMin - b.startMin).slice(0, 5);
 }
 
 // ── people ──────────────────────────────────────────────────────────────

@@ -102,11 +102,18 @@ DONE:
 - Rebuilt MoreMe as a calendar-first life OS (rich CalEvent model, month
   calendar, event editor, 20-level quadratic XP, 27 earnable achievements,
   projects/people/goals, passive distraction log, Mount Vernon iD framing).
-- NT5 News retained (wire scheduler + Origin pulse + newsroom/wire/studio).
+- Calendar Month/Week/Day views; Day + Week are real positioned-block
+  timelines (06:00–23:00). Empty-area click in Day/Week creates an event
+  at that hour.
+- Classes are first-class (`Class` entity); school events link to a class
+  so the **Get Ahead** tab rolls up % pre-done per course over the next
+  7 / 14 / 30 days, plus a top hero across all classes.
+- Upcoming-reminders strip on Today surfaces the next 5 timed items with
+  reminders set (read-only — no firing yet).
 
 NEXT / IDEAS:
-- Week/Day calendar views and a "get ahead" planner that rolls up upcoming
-  school work by class with a % pre-done bar (the story's superpower).
-- Reminders/notifications surfacing (reminders field exists; not yet wired).
+- Actually fire reminders (toast / OS notification) when the lead time
+  arrives — `reminders` field is wired into display only.
 - Sync MoreMe state to the Supabase account so it follows the user.
+- Per-class accent colors + bulk "add a week of class periods" template.
 - Owner: cut a release from main; Windows GUI testing.

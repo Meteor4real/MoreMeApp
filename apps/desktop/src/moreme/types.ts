@@ -47,6 +47,7 @@ export type CalEvent = {
   location?: string;
   people: string[];             // Person ids
   linkedProjectId?: string;
+  linkedClassId?: string;       // for category="school" or "class" — anchors Get Ahead
   checklist: ChecklistItem[];
   priority: Priority;
   visibility: Visibility;
@@ -57,6 +58,16 @@ export type CalEvent = {
   // use the completions map keyed by occurrence date instead.
   status: EventStatus;
   createdAt: number;
+};
+
+// A Mount Vernon class (or any course). School-work events link to a class
+// so the Get Ahead planner can roll up "% pre-done" per course over the
+// upcoming week / month.
+export type Class = {
+  id: string;
+  name: string;        // "World History", "Algebra II", etc.
+  teacher?: string;    // Person id
+  color?: string;      // optional accent override
 };
 
 export type ProjectKind = "arg" | "mod" | "venture" | "school" | "other";
@@ -93,12 +104,13 @@ export type DistractionLog = { id: string; date: string; note: string; ts: numbe
 export type LevelReward = { level: number; reward: string };
 
 export type State = {
-  schemaVersion: 5;
+  schemaVersion: 6;
   events: CalEvent[];
   // completions keyed by `${eventId}::${YYYY-MM-DD}` -> unlock timestamp.
   completions: Record<string, number>;
   projects: Project[];
   people: Person[];
+  classes: Class[];
   goals: Goals;
   distractions: DistractionLog[];
   rewards: LevelReward[];                        // user-set reward text per level

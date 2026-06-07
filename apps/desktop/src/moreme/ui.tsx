@@ -8,19 +8,26 @@ import {
   CATEGORY_META, CATEGORY_ORDER, MAX_LEVEL, cumulativeXp, levelStep,
 } from "./types";
 import type {
-  CalEvent, Category, ChecklistItem, Goal, Person, Priority, Project,
+  CalEvent, Category, ChecklistItem, Class, Goal, Person, Priority, Project,
   ProjectKind, Recurrence, State, Visibility,
 } from "./types";
 import {
-  ACHIEVEMENTS, achievementProgress, blankEvent, blankProject,
+  ACHIEVEMENTS, achievementProgress, blankClass, blankEvent, blankProject,
   conflictIds, dayComplete, distractionsOn, eventsOnDate, fmtTime, iso, isDone,
-  levelInfo, loadState, logDistraction, monthLabel, removeDistraction,
+  levelInfo, loadState, logDistraction, monthLabel, removeClass, removeDistraction,
   removeEvent, removePerson, removeProject, revealEvent, setGoals, setReward,
-  streakInfo, subscribeState, today, toggleDone, uid, upsertEvent, upsertPerson,
-  upsertProject, xpForDate,
+  streakInfo, subscribeState, today, toggleDone, uid, upcomingWithReminders,
+  upsertClass, upsertEvent, upsertPerson, upsertProject, xpForDate,
 } from "./store";
+import { DayView, WeekView, shiftWeek } from "./timeline";
+import { GetAheadView } from "./getahead";
 
-type Tab = "today" | "calendar" | "projects" | "goals" | "achievements" | "levels";
+type Tab = "today" | "ahead" | "calendar" | "projects" | "goals" | "achievements" | "levels";
+type CalMode = "month" | "week" | "day";
+const TAB_LABELS: Record<Tab, string> = {
+  today: "today", ahead: "get ahead", calendar: "calendar", projects: "projects",
+  goals: "goals", achievements: "achievements", levels: "levels",
+};
 
 function useStore(): State {
   const [s, setS] = useState<State>(loadState);
@@ -33,18 +40,19 @@ export function MoreMeUI() {
   const [tab, setTab] = useState<Tab>("today");
   const [editing, setEditing] = useState<CalEvent | null>(null);
 
-  const tabs: Tab[] = ["today", "calendar", "projects", "goals", "achievements", "levels"];
+  const tabs: Tab[] = ["today", "ahead", "calendar", "projects", "goals", "achievements", "levels"];
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <Header s={s} />
       <div style={{ display: "flex", gap: 6, padding: "10px 18px", flexWrap: "wrap", borderBottom: `1px solid ${T.line}` }}>
         {tabs.map((t) => (
-          <button key={t} className={"mm-tab" + (tab === t ? " active" : "")} onClick={() => setTab(t)}>{t}</button>
+          <button key={t} className={"mm-tab" + (tab === t ? " active" : "")} onClick={() => setTab(t)}>{TAB_LABELS[t]}</button>
         ))}
       </div>
       <div className="scrolly" style={{ flex: 1, minHeight: 0, padding: 18 }}>
         {tab === "today" && <TodayView s={s} onEdit={setEditing} />}
+        {tab === "ahead" && <GetAheadView s={s} onEdit={setEditing} />}
         {tab === "calendar" && <CalendarView s={s} onEdit={setEditing} />}
         {tab === "projects" && <ProjectsView s={s} />}
         {tab === "goals" && <GoalsView s={s} />}
@@ -137,6 +145,7 @@ function TodayView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }) {
   const rest = evs.filter((e) => e.category !== "routine");
   const dists = distractionsOn(date, s);
   const conflicts = conflictIds(date, s);
+  const upcoming = upcomingWithReminders(s);
 
   return (
     <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr", maxWidth: 760, margin: "0 auto" }}>
@@ -148,6 +157,26 @@ function TodayView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }) {
       {conflicts.size > 0 && (
         <div className="mm-card" style={{ padding: "10px 14px", borderColor: T.warn, color: T.warn, fontSize: 12 }}>
           {conflicts.size} item{conflicts.size === 1 ? "" : "s"} overlap in time today — adjust the schedule.
+        </div>
+      )}
+
+      {upcoming.length > 0 && (
+        <div className="mm-card-mint" style={{ padding: "10px 14px" }}>
+          <div style={{ fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: T.mint, marginBottom: 6 }}>
+            Upcoming reminders
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {upcoming.map((u) => (
+              <div key={u.e.id + u.on} onClick={() => onEdit(u.e)} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 12, cursor: "pointer" }}>
+                <span className="mm-dot" style={{ ["--c" as never]: CATEGORY_META[u.e.category].color, width: 6, height: 6 }} />
+                <b style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.e.title || CATEGORY_META[u.e.category].label}</b>
+                <span style={{ color: T.inkSoft, fontSize: 11 }}>
+                  {u.on === date ? "today" : new Date(u.on + "T00:00:00").toLocaleDateString(undefined, { weekday: "short" })}
+                  {" · "}{fmtTime(u.e.start)} · -{u.firstReminderMin}m
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -201,6 +230,7 @@ function Empty({ children }: { children: React.ReactNode }) {
 
 // ── Calendar ────────────────────────────────────────────────────────────────
 function CalendarView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }) {
+  const [mode, setMode] = useState<CalMode>("month");
   const [cursor, setCursor] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
   const [sel, setSel] = useState(today());
 
@@ -208,20 +238,41 @@ function CalendarView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }
   const selEvents = eventsOnDate(sel, s);
   const selConflicts = conflictIds(sel, s);
 
-  function shift(n: number) {
+  function shiftMonth(n: number) {
     setCursor((c) => { const d = new Date(c.y, c.m + n, 1); return { y: d.getFullYear(), m: d.getMonth() }; });
+  }
+  function shift(n: number) {
+    if (mode === "month") shiftMonth(n);
+    else if (mode === "week") setSel((d) => shiftWeek(d, n));
+    else { const d = new Date(sel + "T00:00:00"); d.setDate(d.getDate() + n); setSel(iso(d)); }
+  }
+  function goToday() {
+    const d = new Date();
+    setCursor({ y: d.getFullYear(), m: d.getMonth() });
+    setSel(today());
   }
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 320px", gap: 16, alignItems: "start" }}>
+    <div style={{ display: "grid", gridTemplateColumns: mode === "month" ? "minmax(0,1fr) 320px" : "minmax(0,1fr)", gap: 16, alignItems: "start" }}>
       <div className="mm-card" style={{ padding: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
           <button className="mm-btn" onClick={() => shift(-1)}>‹</button>
-          <div className="serif" style={{ fontSize: 18, flex: 1, textAlign: "center" }}>{monthLabel(cursor.y, cursor.m)}</div>
+          <div className="serif" style={{ fontSize: 18, flex: 1, textAlign: "center", minWidth: 160 }}>
+            {mode === "month"
+              ? monthLabel(cursor.y, cursor.m)
+              : mode === "week"
+                ? `Week of ${new Date(sel + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+                : new Date(sel + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+          </div>
           <button className="mm-btn" onClick={() => shift(1)}>›</button>
-          <button className="mm-btn" onClick={() => { const d = new Date(); setCursor({ y: d.getFullYear(), m: d.getMonth() }); setSel(today()); }}>Today</button>
+          <button className="mm-btn" onClick={goToday}>Today</button>
+          <div className="mm-seg">
+            {(["month", "week", "day"] as CalMode[]).map((m) => (
+              <button key={m} className={mode === m ? "on" : ""} onClick={() => setMode(m)}>{m}</button>
+            ))}
+          </div>
         </div>
-        <div className="mm-cal">
+        {mode === "month" && <div className="mm-cal">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => <div key={d} className="mm-dow">{d}</div>)}
           {grid.map((cell) => {
             const evs = eventsOnDate(cell.date, s);
@@ -246,19 +297,23 @@ function CalendarView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }
               </div>
             );
           })}
-        </div>
+        </div>}
+        {mode === "week" && <WeekView s={s} anchor={sel} onEdit={onEdit} onPickDate={(d) => { setSel(d); setMode("day"); }} />}
+        {mode === "day"  && <DayView  s={s} date={sel} onEdit={onEdit} />}
       </div>
 
-      <div className="mm-card" style={{ padding: 16, position: "sticky", top: 0 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <div className="serif" style={{ fontSize: 16 }}>{new Date(sel + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</div>
-          <button className="mm-btn mm-btn-primary" style={{ padding: "5px 10px" }} onClick={() => onEdit({ ...blankEvent(sel) })}>+ Add</button>
+      {mode === "month" && (
+        <div className="mm-card" style={{ padding: 16, position: "sticky", top: 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div className="serif" style={{ fontSize: 16 }}>{new Date(sel + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</div>
+            <button className="mm-btn mm-btn-primary" style={{ padding: "5px 10px" }} onClick={() => onEdit({ ...blankEvent(sel) })}>+ Add</button>
+          </div>
+          {selConflicts.size > 0 && <div style={{ fontSize: 11, color: T.warn, marginBottom: 8 }}>Time conflict on this day.</div>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {selEvents.length === 0 ? <Empty>Nothing scheduled. Double-click any day to add.</Empty> : selEvents.map((e) => <EventRow key={e.id} e={e} date={sel} s={s} onEdit={onEdit} />)}
+          </div>
         </div>
-        {selConflicts.size > 0 && <div style={{ fontSize: 11, color: T.warn, marginBottom: 8 }}>Time conflict on this day.</div>}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {selEvents.length === 0 ? <Empty>Nothing scheduled. Double-click any day to add.</Empty> : selEvents.map((e) => <EventRow key={e.id} e={e} date={sel} s={s} onEdit={onEdit} />)}
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -372,12 +427,28 @@ function EventEditor({ s, draft, onClose }: { s: State; draft: CalEvent; onClose
             </div>
           </Field>
 
-          <Field label="Link to project">
-            <select value={e.linkedProjectId ?? ""} onChange={(ev) => set("linkedProjectId", ev.target.value || undefined)}>
-              <option value="">None</option>
-              {s.projects.map((p) => <option key={p.id} value={p.id}>{p.name || "(untitled)"}</option>)}
-            </select>
-          </Field>
+          <div className="mm-row">
+            <Field label="Link to project">
+              <select value={e.linkedProjectId ?? ""} onChange={(ev) => set("linkedProjectId", ev.target.value || undefined)}>
+                <option value="">None</option>
+                {s.projects.map((p) => <option key={p.id} value={p.id}>{p.name || "(untitled)"}</option>)}
+              </select>
+            </Field>
+            <Field label="Class">
+              <select value={e.linkedClassId ?? ""} onChange={(ev) => set("linkedClassId", ev.target.value || undefined)}>
+                <option value="">None</option>
+                {s.classes.map((c) => <option key={c.id} value={c.id}>{c.name || "(untitled)"}</option>)}
+              </select>
+            </Field>
+            <Field label="Reminders (min before)">
+              <input
+                value={e.reminders.join(", ")}
+                placeholder="e.g. 10, 60"
+                onChange={(ev) => set("reminders", ev.target.value.split(",").map((x) => parseInt(x.trim(), 10)).filter((x) => Number.isFinite(x) && x >= 0))}
+                style={{ width: 140 }}
+              />
+            </Field>
+          </div>
 
           <Field label="Sub-tasks">
             <ChecklistEditor items={e.checklist} onChange={(items) => set("checklist", items)} />
@@ -433,7 +504,37 @@ function ProjectsView({ s }: { s: State }) {
         {s.projects.length === 0 && <Empty>No projects yet.</Empty>}
         {s.projects.map((p) => <ProjectCard key={p.id} p={p} />)}
       </div>
-      <CircleCard s={s} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <ClassesCard s={s} />
+        <CircleCard s={s} />
+      </div>
+    </div>
+  );
+}
+function ClassesCard({ s }: { s: State }) {
+  const [name, setName] = useState("");
+  return (
+    <div className="mm-card" style={{ padding: 16 }}>
+      <div className="serif" style={{ fontSize: 16, marginBottom: 10 }}>Classes</div>
+      <div style={{ fontSize: 11, color: T.inkTiny, marginBottom: 10 }}>
+        Link school work to a class so the Get Ahead view can show your %-pre-done per course.
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+        {s.classes.map((c: Class) => (
+          <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input value={c.name} placeholder="Class name" onChange={(e) => upsertClass({ ...c, name: e.target.value })} style={{ flex: 1 }} />
+            <select value={c.teacher ?? ""} onChange={(e) => upsertClass({ ...c, teacher: e.target.value || undefined })} style={{ width: 110 }}>
+              <option value="">No teacher</option>
+              {s.people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <button className="mm-btn mm-btn-danger" style={{ padding: "4px 8px" }} onClick={() => removeClass(c.id)}>×</button>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <input placeholder="Add a class…" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) { upsertClass({ ...blankClass(), name: name.trim() }); setName(""); } }} />
+        <button className="mm-btn" onClick={() => { if (name.trim()) { upsertClass({ ...blankClass(), name: name.trim() }); setName(""); } }}>Add</button>
+      </div>
     </div>
   );
 }
