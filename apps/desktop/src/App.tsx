@@ -7,6 +7,7 @@ import { applyAccent, loadAccent } from "./theme-accent";
 import { applyUiPrefs, loadPrefs } from "./uiPrefs";
 import { startWireScheduler } from "./services/nt5Wire";
 import { startOriginPolling } from "./services/originRealms";
+import { startSync, stopSync } from "./moreme/sync";
 
 // The Hub is now exactly two things: MoreMe (the product) and NT5 News (the
 // bonus wire). No rail, no browser, no terminal, no AI crew — a focused
@@ -27,15 +28,19 @@ export function App() {
     // The bundled local model powers the NT5 anchors — ensure it in the
     // background so the wire has a brain when it fires.
     void window.hub?.llm?.ensure?.().catch(() => undefined);
+    // MoreMe state syncs to Supabase so it follows the user across devices.
+    // Skips itself in guest mode.
+    startSync();
   }, []);
 
   function logout() {
+    stopSync();
     signOut();
     clearGuest();
     setAuthed(false);
   }
 
-  if (!authed) return <Login onDone={() => setAuthed(true)} />;
+  if (!authed) return <Login onDone={() => { setAuthed(true); startSync(); }} />;
 
   return (
     <div className="shell" style={{ display: "flex", flexDirection: "column", height: "100vh", minHeight: 0 }}>

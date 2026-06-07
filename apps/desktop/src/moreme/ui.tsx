@@ -14,18 +14,19 @@ import type {
 import {
   ACHIEVEMENTS, achievementProgress, blankClass, blankEvent, blankProject,
   captureInbox, conflictIds, dayComplete, distractionsOn, dueReminders,
-  eventsOnDate, fmtTime, gradeLabel, inboxToEventDraft, inboxToProject, iso, isDone,
-  levelInfo, loadState, logDistraction, monthLabel, removeClass, removeDistraction,
-  removeEvent, removeInbox, removePerson, removeProject, revealEvent, schoolYearLabel,
-  setGoals, setReward, setSchool, streakInfo, subscribeState, today, toggleDone, uid,
-  upcomingWithReminders, upsertClass, upsertEvent, upsertPerson, upsertProject,
-  xpForDate,
+  eventsOnDate, fmtTime, gradeLabel, gradeStatus, inboxToEventDraft,
+  inboxToProject, iso, isDone, levelInfo, loadState, logDistraction, monthLabel,
+  removeClass, removeDistraction, removeEvent, removeInbox, removePerson,
+  removeProject, revealEvent, schoolYearLabel, setGoals, setReward, setSchool,
+  streakInfo, subscribeState, today, toggleDone, uid, upcomingWithReminders,
+  upsertClass, upsertEvent, upsertPerson, upsertProject, xpForDate,
 } from "./store";
 import { DayView, WeekView, shiftWeek } from "./timeline";
 import { GetAheadView } from "./getahead";
 import { EmpireView } from "./empire";
 import { InsightsView } from "./insights";
 import { WeeklyReview } from "./review";
+import { pullOnce, pushOnce, subscribeSync, type SyncStatus } from "./sync";
 
 type Tab = "today" | "ahead" | "calendar" | "empire" | "projects" | "goals" | "achievements" | "insights" | "levels";
 type CalMode = "month" | "week" | "day";
@@ -161,10 +162,20 @@ function Header({ s, onReview }: { s: State; onReview: () => void }) {
   const { current } = streakInfo(s);
   const tx = xpForDate(today(), s);
   const pct = lv.isMax ? 100 : Math.round((lv.into / lv.span) * 100);
+  const status = gradeStatus(s);
+  const chipColor =
+    status.kind === "summer"  ? "#FFD23E" :
+    status.kind === "alumnus" ? "#A855F7" : T.mint;
+  const chipText =
+    status.kind === "summer"  ? "Summer" :
+    status.kind === "alumnus" ? "Alumnus" : "In school";
   return (
     <div style={{ padding: "16px 18px 12px", borderBottom: `1px solid ${T.line}`, display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
       <div>
-        <div className="mm-h1" style={{ fontSize: 26, lineHeight: 1 }}>MoreMe</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div className="mm-h1" style={{ fontSize: 26, lineHeight: 1 }}>MoreMe</div>
+          <span className="mm-pill" style={{ background: chipColor + "22", color: chipColor, border: `1px solid ${chipColor}55` }}>{chipText}</span>
+        </div>
         <div style={{ fontSize: 11, color: T.inkTiny, letterSpacing: ".08em", textTransform: "uppercase", marginTop: 3 }}>
           Mount Vernon · {s.school.path} · {gradeLabel(s)} · {schoolYearLabel(s)}
         </div>
@@ -178,8 +189,32 @@ function Header({ s, onReview }: { s: State; onReview: () => void }) {
       </div>
       <Stat label="Streak" value={`${current}d`} />
       <Stat label="Today" value={`${tx.earned}/${tx.possible} XP`} />
+      <SyncPip />
       <button className="mm-btn" onClick={onReview} title="Run your weekly review">Weekly Review</button>
     </div>
+  );
+}
+
+function SyncPip() {
+  const [s, setS] = useState<{ status: SyncStatus; error: string; at: number | null }>({ status: "off", error: "", at: null });
+  useEffect(() => subscribeSync(setS), []);
+  const color = s.status === "idle" ? T.mint : s.status === "error" ? T.warn : s.status === "off" ? T.inkTiny : "#FFD23E";
+  const label =
+    s.status === "off"     ? "Sync · guest" :
+    s.status === "idle"    ? (s.at ? `Synced · ${new Date(s.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Synced") :
+    s.status === "pulling" ? "Pulling…" :
+    s.status === "pushing" ? "Saving…" :
+                              `Sync error · ${s.error}`;
+  return (
+    <button
+      className="mm-btn"
+      title={`${label}\nClick to force a sync`}
+      onClick={() => { void pullOnce().then(() => pushOnce()); }}
+      style={{ padding: "5px 10px", fontSize: 11, display: "inline-flex", alignItems: "center", gap: 6 }}
+    >
+      <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, boxShadow: `0 0 8px ${color}` }} />
+      {label}
+    </button>
   );
 }
 function Stat({ label, value }: { label: string; value: string }) {

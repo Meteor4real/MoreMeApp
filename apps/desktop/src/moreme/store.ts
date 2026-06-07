@@ -10,11 +10,6 @@ import { MAX_LEVEL, cumulativeXp } from "./types";
 
 const KEY = "nchub.moreme.v8";
 
-// Mount Vernon's year rolls in August (students return ~Aug 10). We advance
-// the grade at the start of August so summer still shows the grade you're
-// "going into."
-const ROLLOVER_MONTH = 7; // 0-indexed: 7 = August
-
 // Current YYYY-MM month key (for venture revenue).
 export const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 
@@ -67,22 +62,92 @@ function seedClasses(): Class[] {
 // Seed: you're entering Grade 9 in the 2026-27 school year, Inquiry path.
 function seedSchool(): School { return { grade9Year: 2026, path: "Inquiry" }; }
 
-// Current grade DERIVED from today vs. the grade-9 anchor, rolling each
-// August. Returns 9-12, or 13+ once you'd have graduated.
+// Academic calendar — Mount Vernon-shaped defaults.
+//   First day of school: ~Aug 10 (students return that week).
+//   Last day of school:  ~May 28 (Upper School year ends late May / early June).
+// Summer is the gap between those two. After Grade 12's school end, you're
+// Alumnus forever — there's no August rollover into Grade 13.
+const SCHOOL_START_MONTH = 7;  // 0-indexed: August
+const SCHOOL_START_DAY   = 10;
+const SCHOOL_END_MONTH   = 4;  // 0-indexed: May
+const SCHOOL_END_DAY     = 28;
+
+// The fall year of the school year containing `at`. E.g. for Apr 2027 the
+// school year is 2026-27, so this returns 2026.
+function schoolYearStart(at: Date): number {
+  const y = at.getFullYear();
+  const m = at.getMonth(), d = at.getDate();
+  const past = m > SCHOOL_START_MONTH || (m === SCHOOL_START_MONTH && d >= SCHOOL_START_DAY);
+  return past ? y : y - 1;
+}
+function schoolStartOn(year: number): Date { return new Date(year, SCHOOL_START_MONTH, SCHOOL_START_DAY); }
+function schoolEndOn(year: number): Date { return new Date(year + 1, SCHOOL_END_MONTH, SCHOOL_END_DAY); }
+
+export type GradeStatus =
+  | { kind: "school"; grade: number }                          // in school, in grade
+  | { kind: "summer"; lastGrade: number; goingInto: number }    // summer between two grades
+  | { kind: "alumnus"; graduatedYear: number };                 // done, forever
+
+// Compute exactly where you are in your Mount Vernon arc right now. Summer
+// is a first-class state; graduation ends the journey in May/June, not in
+// the next August.
+export function gradeStatus(s: State = loadState(), at = new Date()): GradeStatus {
+  const lastSchoolEnd = schoolEndOn(s.school.grade9Year + 3); // end of Grade 12
+  if (at > lastSchoolEnd) return { kind: "alumnus", graduatedYear: lastSchoolEnd.getFullYear() };
+
+  const sy = schoolYearStart(at);
+  const start = schoolStartOn(sy);
+  const end = schoolEndOn(sy);
+  const grade = 9 + (sy - s.school.grade9Year);
+
+  // Inside the school window of school year sy → in school, in `grade`.
+  if (at >= start && at <= end) return { kind: "school", grade };
+
+  // Otherwise we're in summer. Summer between grade X and grade X+1:
+  //   - if we're after May 28 of school year sy → just finished `grade`
+  //   - if we're before Aug 10 of sy           → schoolYearStart returned sy-1,
+  //     and we're heading into `grade + 1`.
+  // Easier framing: `lastGrade` is the grade of the school year that just ended.
+  // If at > end of sy, lastGrade=grade, goingInto=grade+1.
+  // If at < start of sy, that's already handled by schoolYearStart returning sy-1,
+  // so grade above already equals the grade of the year just ended.
+  const lastGrade = grade;
+  const goingInto = grade + 1;
+  if (goingInto > 12) return { kind: "alumnus", graduatedYear: lastSchoolEnd.getFullYear() };
+  return { kind: "summer", lastGrade, goingInto };
+}
+
 export function gradeNumber(s: State = loadState(), at = new Date()): number {
-  const schoolStartYear = Math.max(s.school.grade9Year, at.getMonth() >= ROLLOVER_MONTH ? at.getFullYear() : at.getFullYear() - 1);
-  return 9 + (schoolStartYear - s.school.grade9Year);
+  const g = gradeStatus(s, at);
+  if (g.kind === "school") return g.grade;
+  if (g.kind === "summer") return g.goingInto;  // best single-number answer in summer
+  return 13;
 }
+const ordinal = (n: number) => `${n}${n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th"}`;
+const seniorName = (g: number) => g === 9 ? "Freshman" : g === 10 ? "Sophomore" : g === 11 ? "Junior" : g === 12 ? "Senior" : "";
+
 export function gradeLabel(s: State = loadState(), at = new Date()): string {
-  const g = gradeNumber(s, at);
-  if (g > 12) return "Alumnus";
-  const ord = g === 9 ? "9th" : g === 10 ? "10th" : g === 11 ? "11th" : "12th";
-  const name = g === 9 ? "Freshman" : g === 10 ? "Sophomore" : g === 11 ? "Junior" : "Senior";
-  return `Grade ${g} · ${ord} (${name})`;
+  const g = gradeStatus(s, at);
+  if (g.kind === "alumnus") return `Alumnus · Class of ${g.graduatedYear}`;
+  if (g.kind === "school")  return `Grade ${g.grade} · ${ordinal(g.grade)} (${seniorName(g.grade)})`;
+  return `Summer · Going into ${ordinal(g.goingInto)} (${seniorName(g.goingInto)})`;
 }
+
 export function schoolYearLabel(s: State = loadState(), at = new Date()): string {
-  const start = Math.max(s.school.grade9Year, at.getMonth() >= ROLLOVER_MONTH ? at.getFullYear() : at.getFullYear() - 1);
-  return `${start}–${String(start + 1).slice(2)}`;
+  const g = gradeStatus(s, at);
+  if (g.kind === "alumnus") return `${g.graduatedYear - 1}–${String(g.graduatedYear).slice(2)}`;
+  if (g.kind === "school") { const sy = schoolYearStart(at); return `${sy}–${String(sy + 1).slice(2)}`; }
+  // summer: the year just ended is the closer reference
+  const sy = schoolYearStart(at);
+  const next = sy + 1;
+  return `between ${sy}–${String(sy + 1).slice(2)} and ${next}–${String(next + 1).slice(2)}`;
+}
+
+export function isSummer(s: State = loadState(), at = new Date()): boolean {
+  return gradeStatus(s, at).kind === "summer";
+}
+export function isAlumnus(s: State = loadState(), at = new Date()): boolean {
+  return gradeStatus(s, at).kind === "alumnus";
 }
 export function setSchool(school: Partial<School>) {
   updateState((s) => ({ ...s, school: { ...s.school, ...school } }));

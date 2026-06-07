@@ -123,16 +123,25 @@ DONE:
   `inbox`; Today shows an Inbox triage section (Schedule / Project / discard).
 - **Insights** tab (`insights.tsx`): 30-day XP trend, completion rate, best
   streak, effort-by-category bars, distraction tally.
-- **Grade auto-advancement** (`school` in state): Inquiry path, Grade 9 in
-  2026-27, rolls over each August through Grade 12 then "Alumnus". Shown in
-  the header; configured in Projects → School.
+- **Grade auto-advancement + summer/school awareness** (`school` in state,
+  `gradeStatus()`): Inquiry path, Grade 9 in 2026-27. School window is
+  Aug 10 → May 28 of each year; outside that is **Summer** (a first-class
+  state, "Going into Xth"). After Grade 12's May 28 you're **Alumnus
+  forever** — no August rollover into a phantom Grade 13. A pill in the
+  header shows In school / Summer / Alumnus.
 - **Weekly Review** ritual (`review.tsx`): a guided modal — loose ends from
   last week, get-ahead %, the week ahead, project next-actions, inbox clear,
   lock this week's goals. Launched from the header.
 - Reminders also fire as **OS notifications** (web Notification API, which
   Electron honors) so they surface even on the News tab / backgrounded.
 
+- **Supabase sync** (`moreme/sync.ts`): MoreMe state syncs to
+  `public.moreme_state` (RLS, one row per auth user) on the bundled
+  project. Pull on startup + every 60s; debounced push (4s) on every local
+  change, with an `applyingRemote` guard so a pull doesn't bounce back. A
+  status pip in the header shows synced / saving / pulling / error / guest.
+  Guest mode skips sync entirely.
+
 NEXT / IDEAS:
-- Sync MoreMe state to the Supabase account so it follows the user.
 - Per-class accent colors + bulk "add a week of class periods" template.
 - Owner: cut a release from main; Windows GUI testing.
