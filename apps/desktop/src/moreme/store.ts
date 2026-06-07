@@ -3,12 +3,15 @@
 // economy, conflict detection, and rule-based (earnable) achievements.
 
 import type {
-  CalEvent, Category, Class, DistractionLog, Goal, Goals, LevelReward, Person, Project,
-  ProjectKind, State,
+  CalEvent, Category, Class, DistractionLog, Goal, Goals, InboxItem, LevelReward,
+  Person, Project, ProjectKind, State, Venture, VentureStatus,
 } from "./types";
 import { MAX_LEVEL, cumulativeXp } from "./types";
 
-const KEY = "nchub.moreme.v6";
+const KEY = "nchub.moreme.v7";
+
+// Current YYYY-MM month key (for venture revenue).
+export const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 
 // ── id + date helpers ─────────────────────────────────────────────────────
 export const uid = () => Math.random().toString(36).slice(2, 10);
@@ -93,10 +96,19 @@ function seedGoals(): Goals {
   };
 }
 
+function seedVentures(): Venture[] {
+  return [
+    {
+      id: "v-meteor", name: "Meteor Enterprises", tagline: "Your flagship company",
+      status: "scaling", revenue: [], nextAction: "Prep the exec meeting deck", createdAt: Date.now(),
+    },
+  ];
+}
+
 function seedState(): State {
   const start = today();
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     events: seedRoutines(start),
     completions: {},
     projects: [
@@ -110,6 +122,8 @@ function seedState(): State {
         ],
       },
     ],
+    ventures: seedVentures(),
+    inbox: [],
     people: seedPeople(),
     classes: seedClasses(),
     goals: seedGoals(),
@@ -132,10 +146,12 @@ export function loadState(): State {
       const p = JSON.parse(raw) as Partial<State>;
       const d = seedState();
       cache = {
-        schemaVersion: 6,
+        schemaVersion: 7,
         events: p.events ?? d.events,
         completions: p.completions ?? {},
         projects: p.projects ?? d.projects,
+        ventures: p.ventures ?? d.ventures,
+        inbox: p.inbox ?? [],
         people: p.people ?? d.people,
         classes: p.classes ?? d.classes,
         goals: { ...d.goals, ...(p.goals ?? {}) },
@@ -422,6 +438,148 @@ export function upcomingWithReminders(s: State = loadState(), horizonDays = 2): 
   return out.sort((a, b) => a.on.localeCompare(b.on) || a.startMin - b.startMin).slice(0, 5);
 }
 
+// ── ventures (the Empire) ────────────────────────────────────────────────
+export const blankVenture = (): Venture => ({
+  id: uid(), name: "", status: "idea", revenue: [], createdAt: Date.now(),
+});
+export function upsertVenture(v: Venture) {
+  updateState((s) => ({
+    ...s,
+    ventures: s.ventures.some((x) => x.id === v.id)
+      ? s.ventures.map((x) => (x.id === v.id ? v : x))
+      : [...s.ventures, v],
+  }));
+  refreshAchievements();
+}
+export function removeVenture(id: string) {
+  updateState((s) => ({ ...s, ventures: s.ventures.filter((v) => v.id !== id) }));
+}
+export function setVentureRevenue(ventureId: string, month: string, amount: number) {
+  updateState((s) => ({
+    ...s,
+    ventures: s.ventures.map((v) => {
+      if (v.id !== ventureId) return v;
+      const revenue = v.revenue.filter((r) => r.month !== month);
+      if (amount > 0) revenue.push({ id: uid(), month, amount });
+      revenue.sort((a, b) => a.month.localeCompare(b.month));
+      return { ...v, revenue };
+    }),
+  }));
+  refreshAchievements();
+}
+// Most recent month's revenue for a venture.
+export function ventureMRR(v: Venture): number {
+  if (!v.revenue.length) return 0;
+  return [...v.revenue].sort((a, b) => b.month.localeCompare(a.month))[0].amount;
+}
+export function empireMRR(s: State = loadState()): number {
+  return s.ventures.reduce((n, v) => n + ventureMRR(v), 0);
+}
+export function empireLifetime(s: State = loadState()): number {
+  return s.ventures.reduce((n, v) => n + v.revenue.reduce((m, r) => m + r.amount, 0), 0);
+}
+
+// ── inbox (GTD quick capture) ─────────────────────────────────────────────
+export function captureInbox(text: string) {
+  const t = text.trim();
+  if (!t) return;
+  updateState((s) => ({ ...s, inbox: [{ id: uid(), text: t, ts: Date.now() }, ...s.inbox] }));
+}
+export function removeInbox(id: string) {
+  updateState((s) => ({ ...s, inbox: s.inbox.filter((i) => i.id !== id) }));
+}
+// Triage: turn a captured note into an event (returns the draft to edit).
+export function inboxToEventDraft(item: InboxItem): CalEvent {
+  return { ...blankEvent(today()), title: item.text, allDay: true };
+}
+export function inboxToProject(item: InboxItem) {
+  upsertProject({ ...blankProject("other"), name: item.text });
+  removeInbox(item.id);
+}
+export function inboxToGoal(item: InboxItem, bucket: keyof Goals) {
+  updateState((s) => ({ ...s, goals: { ...s.goals, [bucket]: [...s.goals[bucket], { id: uid(), text: item.text }] } }));
+  removeInbox(item.id);
+}
+
+// ── insights (see yourself achieving it) ──────────────────────────────────
+export type Insights = {
+  xpByDay: { date: string; xp: number }[];     // last 30 days, completion ts based
+  xpLast7: number;
+  xpLast30: number;
+  completionRate30: number;                     // % of scheduled occurrences done, last 30d
+  byCategory: { category: Category; count: number }[];
+  bestStreak: number;
+  achievementsEarned: number;
+  distractions30: number;
+};
+export function insights(s: State = loadState()): Insights {
+  const now = new Date();
+  const start30 = addDays(today(), -29);
+  // XP earned per day from completion timestamps (when you actually did it).
+  const perDay: Record<string, number> = {};
+  for (const [key, ts] of Object.entries(s.completions)) {
+    const id = key.split("::")[0];
+    const e = s.events.find((x) => x.id === id);
+    if (!e) continue;
+    const day = iso(new Date(ts));
+    perDay[day] = (perDay[day] ?? 0) + e.xp;
+  }
+  const xpByDay: { date: string; xp: number }[] = [];
+  for (let i = 29; i >= 0; i--) { const day = addDays(today(), -i); xpByDay.push({ date: day, xp: perDay[day] ?? 0 }); }
+  const xpLast7 = xpByDay.slice(-7).reduce((n, d) => n + d.xp, 0);
+  const xpLast30 = xpByDay.reduce((n, d) => n + d.xp, 0);
+
+  // completion rate over last 30 days of scheduled occurrences
+  let possible = 0, done = 0;
+  for (let i = 0; i < 30; i++) {
+    const d = addDays(today(), -i);
+    if (d > today()) continue;
+    for (const e of eventsOnDate(d, s)) { possible++; if (isDone(e, d, s)) done++; }
+  }
+  const byCatMap: Record<string, number> = {};
+  for (const key of Object.keys(s.completions)) {
+    const id = key.split("::")[0];
+    const e = s.events.find((x) => x.id === id);
+    if (e) byCatMap[e.category] = (byCatMap[e.category] ?? 0) + 1;
+  }
+  const byCategory = Object.entries(byCatMap)
+    .map(([category, count]) => ({ category: category as Category, count }))
+    .sort((a, b) => b.count - a.count);
+
+  void now; void start30;
+  return {
+    xpByDay, xpLast7, xpLast30,
+    completionRate30: possible ? Math.round((done / possible) * 100) : 0,
+    byCategory,
+    bestStreak: streakInfo(s).best,
+    achievementsEarned: Object.keys(s.unlockedAchievements).length,
+    distractions30: s.distractions.filter((d) => d.date >= start30).length,
+  };
+}
+
+// ── reminders: which occurrences are due to fire right now ─────────────────
+// Returns events whose start is within their reminder lead-time of `now` and
+// not yet done. Caller dedupes by the returned key so a toast fires once.
+export type DueReminder = { key: string; e: CalEvent; date: string; startMin: number; lead: number };
+export function dueReminders(s: State = loadState(), at = new Date()): DueReminder[] {
+  const date = iso(at);
+  const nowMin = at.getHours() * 60 + at.getMinutes();
+  const out: DueReminder[] = [];
+  for (const e of eventsOnDate(date, s)) {
+    if (e.allDay || !e.start || !e.reminders.length) continue;
+    if (isDone(e, date, s)) continue;
+    const startMin = toMin(e.start);
+    for (const lead of e.reminders) {
+      const fireAt = startMin - lead;
+      // fire in a 1-minute window so the per-minute tick catches it once
+      if (nowMin >= fireAt && nowMin < fireAt + 1) {
+        out.push({ key: `${e.id}::${date}::${lead}`, e, date, startMin, lead });
+      }
+    }
+  }
+  return out;
+}
+
 // ── people ──────────────────────────────────────────────────────────────
 export function upsertPerson(p: Person) {
   updateState((s) => ({
@@ -485,6 +643,9 @@ type Aggregates = {
   streakCurrent: number;
   streakBest: number;
   level: number;
+  empireMRR: number;
+  empireLifetime: number;
+  liveVentures: number;
 };
 
 function aggregate(s: State): Aggregates {
@@ -556,6 +717,8 @@ function aggregate(s: State): Aggregates {
     milestonesDone, projectsDone, eventsLinkedToPeople, totalEvents: s.events.length,
     announcementsRevealed: s.events.filter((e) => e.category === "announcement" && e.visibility === "visible").length,
     streakCurrent: current, streakBest: best, level: levelInfo(s).level,
+    empireMRR: empireMRR(s), empireLifetime: empireLifetime(s),
+    liveVentures: s.ventures.filter((v) => v.status === "live" || v.status === "scaling").length,
   };
 }
 
@@ -570,6 +733,9 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: "investor", title: "Investor", desc: "Complete a meeting with its prep checklist fully done.", category: "build", progress: (a) => [a.meetingPrepDone, 1] },
   { id: "polymath", title: "Polymath", desc: "Complete items across 5 categories in one day.", category: "discipline", progress: (a) => [a.polymathMax, 5] },
   { id: "mogul", title: "Mogul", desc: "Complete 10 business / venture items.", category: "build", progress: (a) => [a.ventureDone, 10] },
+  { id: "first-dollar", title: "First Dollar", desc: "Log revenue on a venture.", category: "build", progress: (a) => [a.empireLifetime > 0 ? 1 : 0, 1] },
+  { id: "five-figures", title: "Five Figures", desc: "Reach $10,000 in combined monthly revenue.", category: "build", progress: (a) => [Math.min(a.empireMRR, 10000), 10000] },
+  { id: "empire", title: "Empire", desc: "Run 3 live or scaling ventures at once.", category: "build", progress: (a) => [a.liveVentures, 3] },
   { id: "quiet-quarter", title: "Quiet Quarter", desc: "7-day streak with zero logged distractions.", category: "discipline", progress: (a) => [a.quietStreak, 7] },
   { id: "locked-in", title: "Locked In", desc: "30 distraction-free productive days, total.", category: "discipline", progress: (a) => [a.quietDays, 30] },
   { id: "streak-3", title: "Three in a Row", desc: "3-day routine streak.", category: "discipline", progress: (a) => [a.streakBest, 3] },

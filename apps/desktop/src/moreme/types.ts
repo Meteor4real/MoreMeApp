@@ -91,6 +91,26 @@ export type Person = {
   notes?: string;
 };
 
+// A business / venture you run. Tracked separately from Projects so the
+// Empire view can sum monthly revenue and show health at a glance.
+export type VentureStatus = "idea" | "building" | "live" | "scaling" | "sold" | "paused";
+export type RevenueEntry = { id: string; month: string; amount: number };  // month = YYYY-MM
+export type Venture = {
+  id: string;
+  name: string;
+  tagline?: string;
+  status: VentureStatus;
+  link?: string;
+  notes?: string;
+  // monthly revenue history -> the Empire dashboard derives current MRR + trend
+  revenue: RevenueEntry[];
+  nextAction?: string;
+  createdAt: number;
+};
+
+// GTD quick-capture. Dump anything; triage later into an event/project/goal.
+export type InboxItem = { id: string; text: string; ts: number };
+
 export type Goal = { id: string; text: string; done?: boolean };
 export type Goals = {
   week: Goal[];
@@ -104,11 +124,13 @@ export type DistractionLog = { id: string; date: string; note: string; ts: numbe
 export type LevelReward = { level: number; reward: string };
 
 export type State = {
-  schemaVersion: 6;
+  schemaVersion: 7;
   events: CalEvent[];
   // completions keyed by `${eventId}::${YYYY-MM-DD}` -> unlock timestamp.
   completions: Record<string, number>;
   projects: Project[];
+  ventures: Venture[];
+  inbox: InboxItem[];
   people: Person[];
   classes: Class[];
   goals: Goals;

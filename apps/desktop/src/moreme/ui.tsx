@@ -8,25 +8,30 @@ import {
   CATEGORY_META, CATEGORY_ORDER, MAX_LEVEL, cumulativeXp, levelStep,
 } from "./types";
 import type {
-  CalEvent, Category, ChecklistItem, Class, Goal, Person, Priority, Project,
-  ProjectKind, Recurrence, State, Visibility,
+  CalEvent, Category, ChecklistItem, Class, Goal, InboxItem, Person, Priority,
+  Project, ProjectKind, Recurrence, State, Visibility,
 } from "./types";
 import {
   ACHIEVEMENTS, achievementProgress, blankClass, blankEvent, blankProject,
-  conflictIds, dayComplete, distractionsOn, eventsOnDate, fmtTime, iso, isDone,
+  captureInbox, conflictIds, dayComplete, distractionsOn, dueReminders,
+  eventsOnDate, fmtTime, inboxToEventDraft, inboxToProject, iso, isDone,
   levelInfo, loadState, logDistraction, monthLabel, removeClass, removeDistraction,
-  removeEvent, removePerson, removeProject, revealEvent, setGoals, setReward,
-  streakInfo, subscribeState, today, toggleDone, uid, upcomingWithReminders,
-  upsertClass, upsertEvent, upsertPerson, upsertProject, xpForDate,
+  removeEvent, removeInbox, removePerson, removeProject, revealEvent, setGoals,
+  setReward, streakInfo, subscribeState, today, toggleDone, uid,
+  upcomingWithReminders, upsertClass, upsertEvent, upsertPerson, upsertProject,
+  xpForDate,
 } from "./store";
 import { DayView, WeekView, shiftWeek } from "./timeline";
 import { GetAheadView } from "./getahead";
+import { EmpireView } from "./empire";
+import { InsightsView } from "./insights";
 
-type Tab = "today" | "ahead" | "calendar" | "projects" | "goals" | "achievements" | "levels";
+type Tab = "today" | "ahead" | "calendar" | "empire" | "projects" | "goals" | "achievements" | "insights" | "levels";
 type CalMode = "month" | "week" | "day";
 const TAB_LABELS: Record<Tab, string> = {
-  today: "today", ahead: "get ahead", calendar: "calendar", projects: "projects",
-  goals: "goals", achievements: "achievements", levels: "levels",
+  today: "today", ahead: "get ahead", calendar: "calendar", empire: "empire",
+  projects: "projects", goals: "goals", achievements: "achievements",
+  insights: "insights", levels: "levels",
 };
 
 function useStore(): State {
@@ -40,11 +45,12 @@ export function MoreMeUI() {
   const [tab, setTab] = useState<Tab>("today");
   const [editing, setEditing] = useState<CalEvent | null>(null);
 
-  const tabs: Tab[] = ["today", "ahead", "calendar", "projects", "goals", "achievements", "levels"];
+  const tabs: Tab[] = ["today", "ahead", "calendar", "empire", "projects", "goals", "achievements", "insights", "levels"];
 
   return (
-    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", position: "relative" }}>
       <Header s={s} />
+      <CaptureBar />
       <div style={{ display: "flex", gap: 6, padding: "10px 18px", flexWrap: "wrap", borderBottom: `1px solid ${T.line}` }}>
         {tabs.map((t) => (
           <button key={t} className={"mm-tab" + (tab === t ? " active" : "")} onClick={() => setTab(t)}>{TAB_LABELS[t]}</button>
@@ -54,12 +60,82 @@ export function MoreMeUI() {
         {tab === "today" && <TodayView s={s} onEdit={setEditing} />}
         {tab === "ahead" && <GetAheadView s={s} onEdit={setEditing} />}
         {tab === "calendar" && <CalendarView s={s} onEdit={setEditing} />}
+        {tab === "empire" && <EmpireView s={s} />}
         {tab === "projects" && <ProjectsView s={s} />}
         {tab === "goals" && <GoalsView s={s} />}
         {tab === "achievements" && <AchievementsView s={s} />}
+        {tab === "insights" && <InsightsView s={s} />}
         {tab === "levels" && <LevelsView s={s} />}
       </div>
       {editing && <EventEditor s={s} draft={editing} onClose={() => setEditing(null)} />}
+      <ReminderToasts s={s} onOpen={setEditing} />
+    </div>
+  );
+}
+
+// ── GTD quick capture: dump anything from anywhere, triage later ──────────
+function CaptureBar() {
+  const [v, setV] = useState("");
+  const fire = () => { if (v.trim()) { captureInbox(v); setV(""); } };
+  return (
+    <div style={{ display: "flex", gap: 8, padding: "8px 18px", borderBottom: `1px solid ${T.line}`, background: T.sunk }}>
+      <input
+        placeholder="Capture anything — a task, idea, follow-up… (lands in your inbox to triage)"
+        value={v}
+        onChange={(e) => setV(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") fire(); }}
+        style={{ flex: 1 }}
+      />
+      <button className="mm-btn" onClick={fire}>Capture</button>
+    </div>
+  );
+}
+
+// ── in-app reminder toasts (fire while the app is open) ───────────────────
+function ReminderToasts({ s, onOpen }: { s: State; onOpen: (e: CalEvent) => void }) {
+  const [active, setActive] = useState<{ key: string; e: CalEvent; date: string; lead: number }[]>([]);
+  const [fired] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    const tick = () => {
+      const due = dueReminders(loadState());
+      const fresh = due.filter((d) => !fired.has(d.key));
+      if (fresh.length) {
+        fresh.forEach((d) => fired.add(d.key));
+        setActive((cur) => [...cur, ...fresh.map((d) => ({ key: d.key, e: d.e, date: d.date, lead: d.lead }))]);
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 30000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  void s;
+
+  if (!active.length) return null;
+  return (
+    <div style={{ position: "absolute", right: 16, bottom: 16, display: "flex", flexDirection: "column", gap: 8, zIndex: 60, maxWidth: 320 }}>
+      {active.map((t) => {
+        const meta = CATEGORY_META[t.e.category];
+        return (
+          <div key={t.key} className="mm-card-mint" style={{ padding: "12px 14px", boxShadow: "0 12px 40px rgba(0,0,0,.5)" }}>
+            <div style={{ fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase", color: T.mint, marginBottom: 4 }}>
+              Reminder · {t.lead}m before
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="mm-dot" style={{ ["--c" as never]: meta.color }} />
+              <b style={{ flex: 1, fontSize: 13 }}>{t.e.title || meta.label}</b>
+            </div>
+            <div style={{ fontSize: 11, color: T.inkSoft, margin: "4px 0 8px" }}>
+              {fmtTime(t.e.start)}{t.e.location ? ` · ${t.e.location}` : ""}
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button className="mm-btn" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => { onOpen(t.e); setActive((c) => c.filter((x) => x.key !== t.key)); }}>Open</button>
+              <button className="mm-btn" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => setActive((c) => c.filter((x) => x.key !== t.key))}>Dismiss</button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -180,6 +256,12 @@ function TodayView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }) {
         </div>
       )}
 
+      {s.inbox.length > 0 && (
+        <Section title={`Inbox · ${s.inbox.length} to triage`}>
+          {s.inbox.map((it) => <InboxRow key={it.id} item={it} onEdit={onEdit} />)}
+        </Section>
+      )}
+
       <Section title={`Routine · ${routines.filter((e) => isDone(e, date, s)).length}/${routines.length}`}>
         {routines.length === 0 ? <Empty>No routines today.</Empty> : routines.map((e) => <EventRow key={e.id} e={e} date={date} s={s} onEdit={onEdit} />)}
       </Section>
@@ -204,6 +286,17 @@ function TodayView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }) {
         )}
         <DistractionAdder />
       </Section>
+    </div>
+  );
+}
+function InboxRow({ item, onEdit }: { item: InboxItem; onEdit: (e: CalEvent) => void }) {
+  return (
+    <div className="mm-action" style={{ cursor: "default" }}>
+      <span className="mm-dot" style={{ ["--c" as never]: "#FFD23E" }} />
+      <div style={{ flex: 1, minWidth: 0, fontSize: 13 }}>{item.text}</div>
+      <button className="mm-btn" style={{ padding: "3px 8px" }} title="Schedule it" onClick={() => { onEdit(inboxToEventDraft(item)); removeInbox(item.id); }}>Schedule</button>
+      <button className="mm-btn" style={{ padding: "3px 8px" }} title="Make it a project" onClick={() => inboxToProject(item)}>Project</button>
+      <button className="mm-btn mm-btn-danger" style={{ padding: "3px 8px" }} title="Discard" onClick={() => removeInbox(item.id)}>×</button>
     </div>
   );
 }

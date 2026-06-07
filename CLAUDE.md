@@ -108,12 +108,19 @@ DONE:
 - Classes are first-class (`Class` entity); school events link to a class
   so the **Get Ahead** tab rolls up % pre-done per course over the next
   7 / 14 / 30 days, plus a top hero across all classes.
-- Upcoming-reminders strip on Today surfaces the next 5 timed items with
-  reminders set (read-only — no firing yet).
+- Upcoming-reminders strip on Today; reminders also **fire as in-app toasts**
+  while the app is open (per-minute tick via `dueReminders`, deduped).
+- **Empire** tab (`empire.tsx`): ventures with status + monthly revenue
+  history → derived MRR, lifetime, and a mini revenue chart. Achievements:
+  First Dollar, Five Figures ($10k MRR), Empire (3 live/scaling).
+- **GTD quick-capture**: a Capture bar over every tab drops notes into an
+  `inbox`; Today shows an Inbox triage section (Schedule / Project / discard).
+- **Insights** tab (`insights.tsx`): 30-day XP trend, completion rate, best
+  streak, effort-by-category bars, distraction tally.
 
 NEXT / IDEAS:
-- Actually fire reminders (toast / OS notification) when the lead time
-  arrives — `reminders` field is wired into display only.
+- OS-level notifications (Electron Notification) so reminders fire even when
+  MoreMe isn't the focused tab.
 - Sync MoreMe state to the Supabase account so it follows the user.
 - Per-class accent colors + bulk "add a week of class periods" template.
 - Owner: cut a release from main; Windows GUI testing.
