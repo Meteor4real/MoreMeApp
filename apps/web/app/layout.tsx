@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "NetworkChuck Hub — Download",
+  title: "MoreMe — Download",
   description:
-    "NetworkChuck Hub — your unified personal-ops command center. Browser, terminal, AI group chat, homelab, and all your apps in one glowing-red desktop app.",
+    "MoreMe — a calendar-first personal life OS. Real event model, Get Ahead per class, an Empire dashboard, GTD capture + Weekly Review, and 20 levels you actually earn. Synced. Quiet. Always on.",
   icons: {
     icon: "/icon.png",
   },

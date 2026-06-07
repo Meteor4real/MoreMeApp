@@ -9,7 +9,7 @@
 //   space    — api.le-systeme-solaire / ISS now (open-notify mirror) + NASA APOD (DEMO_KEY)
 //   sports   — site.api.espn.com hidden scoreboard JSON
 
-const net = (url: string) => window.hub.net({ method: "GET", url, headers: { "User-Agent": "Mozilla/5.0 NetworkChuckHub" } });
+const net = (url: string) => window.hub.net({ method: "GET", url, headers: { "User-Agent": "Mozilla/5.0 MoreMe" } });
 
 // ── Weather ─────────────────────────────────────────────────────────────────
 export type Weather = {

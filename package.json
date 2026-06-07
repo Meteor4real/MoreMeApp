@@ -2,7 +2,7 @@
   "name": "networkchuck-hub",
   "version": "4.0.0",
   "private": true,
-  "description": "NetworkChuck Hub — unified personal-ops command center. Download page (web) + desktop app.",
+  "description": "MoreMe — a calendar-first personal life OS, plus NT5 News (bonus). Download page (web) + desktop app.",
   "workspaces": [
     "apps/*",
     "packages/*"
