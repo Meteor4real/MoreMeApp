@@ -123,8 +123,19 @@ export type DistractionLog = { id: string; date: string; note: string; ts: numbe
 
 export type LevelReward = { level: number; reward: string };
 
+// Mount Vernon Upper School context. `grade9Year` is the calendar year you
+// START 9th grade (the fall). The current grade is DERIVED from today's date
+// vs. that anchor, rolling over each August — so it advances automatically
+// every school year with no manual bump. `path` is the Upper School pathway.
+export type SchoolPath = "Inquiry" | "Global Impact Diploma" | "Innovation Diploma";
+export type School = {
+  grade9Year: number;     // e.g. 2026 = you enter Grade 9 in Aug 2026
+  path: SchoolPath;
+};
+
 export type State = {
-  schemaVersion: 7;
+  schemaVersion: 8;
+  school: School;
   events: CalEvent[];
   // completions keyed by `${eventId}::${YYYY-MM-DD}` -> unlock timestamp.
   completions: Record<string, number>;

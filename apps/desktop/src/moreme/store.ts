@@ -4,11 +4,16 @@
 
 import type {
   CalEvent, Category, Class, DistractionLog, Goal, Goals, InboxItem, LevelReward,
-  Person, Project, ProjectKind, State, Venture, VentureStatus,
+  Person, Project, ProjectKind, School, SchoolPath, State, Venture, VentureStatus,
 } from "./types";
 import { MAX_LEVEL, cumulativeXp } from "./types";
 
-const KEY = "nchub.moreme.v7";
+const KEY = "nchub.moreme.v8";
+
+// Mount Vernon's year rolls in August (students return ~Aug 10). We advance
+// the grade at the start of August so summer still shows the grade you're
+// "going into."
+const ROLLOVER_MONTH = 7; // 0-indexed: 7 = August
 
 // Current YYYY-MM month key (for venture revenue).
 export const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -55,8 +60,32 @@ function seedClasses(): Class[] {
     { id: "c-math",    name: "Algebra II" },
     { id: "c-english", name: "English" },
     { id: "c-science", name: "Biology" },
-    { id: "c-iD",      name: "Innovation Diploma" },
+    { id: "c-iproj",   name: "iProject" },
   ];
+}
+
+// Seed: you're entering Grade 9 in the 2026-27 school year, Inquiry path.
+function seedSchool(): School { return { grade9Year: 2026, path: "Inquiry" }; }
+
+// Current grade DERIVED from today vs. the grade-9 anchor, rolling each
+// August. Returns 9-12, or 13+ once you'd have graduated.
+export function gradeNumber(s: State = loadState(), at = new Date()): number {
+  const schoolStartYear = Math.max(s.school.grade9Year, at.getMonth() >= ROLLOVER_MONTH ? at.getFullYear() : at.getFullYear() - 1);
+  return 9 + (schoolStartYear - s.school.grade9Year);
+}
+export function gradeLabel(s: State = loadState(), at = new Date()): string {
+  const g = gradeNumber(s, at);
+  if (g > 12) return "Alumnus";
+  const ord = g === 9 ? "9th" : g === 10 ? "10th" : g === 11 ? "11th" : "12th";
+  const name = g === 9 ? "Freshman" : g === 10 ? "Sophomore" : g === 11 ? "Junior" : "Senior";
+  return `Grade ${g} · ${ord} (${name})`;
+}
+export function schoolYearLabel(s: State = loadState(), at = new Date()): string {
+  const start = Math.max(s.school.grade9Year, at.getMonth() >= ROLLOVER_MONTH ? at.getFullYear() : at.getFullYear() - 1);
+  return `${start}–${String(start + 1).slice(2)}`;
+}
+export function setSchool(school: Partial<School>) {
+  updateState((s) => ({ ...s, school: { ...s.school, ...school } }));
 }
 
 // Default recurring routines for a Mount Vernon Innovation Diploma student.
@@ -108,7 +137,8 @@ function seedVentures(): Venture[] {
 function seedState(): State {
   const start = today();
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
+    school: seedSchool(),
     events: seedRoutines(start),
     completions: {},
     projects: [
@@ -146,7 +176,8 @@ export function loadState(): State {
       const p = JSON.parse(raw) as Partial<State>;
       const d = seedState();
       cache = {
-        schemaVersion: 7,
+        schemaVersion: 8,
+        school: p.school ?? d.school,
         events: p.events ?? d.events,
         completions: p.completions ?? {},
         projects: p.projects ?? d.projects,

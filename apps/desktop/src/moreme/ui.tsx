@@ -9,15 +9,15 @@ import {
 } from "./types";
 import type {
   CalEvent, Category, ChecklistItem, Class, Goal, InboxItem, Person, Priority,
-  Project, ProjectKind, Recurrence, State, Visibility,
+  Project, ProjectKind, Recurrence, SchoolPath, State, Visibility,
 } from "./types";
 import {
   ACHIEVEMENTS, achievementProgress, blankClass, blankEvent, blankProject,
   captureInbox, conflictIds, dayComplete, distractionsOn, dueReminders,
-  eventsOnDate, fmtTime, inboxToEventDraft, inboxToProject, iso, isDone,
+  eventsOnDate, fmtTime, gradeLabel, inboxToEventDraft, inboxToProject, iso, isDone,
   levelInfo, loadState, logDistraction, monthLabel, removeClass, removeDistraction,
-  removeEvent, removeInbox, removePerson, removeProject, revealEvent, setGoals,
-  setReward, streakInfo, subscribeState, today, toggleDone, uid,
+  removeEvent, removeInbox, removePerson, removeProject, revealEvent, schoolYearLabel,
+  setGoals, setReward, setSchool, streakInfo, subscribeState, today, toggleDone, uid,
   upcomingWithReminders, upsertClass, upsertEvent, upsertPerson, upsertProject,
   xpForDate,
 } from "./store";
@@ -25,6 +25,7 @@ import { DayView, WeekView, shiftWeek } from "./timeline";
 import { GetAheadView } from "./getahead";
 import { EmpireView } from "./empire";
 import { InsightsView } from "./insights";
+import { WeeklyReview } from "./review";
 
 type Tab = "today" | "ahead" | "calendar" | "empire" | "projects" | "goals" | "achievements" | "insights" | "levels";
 type CalMode = "month" | "week" | "day";
@@ -44,12 +45,13 @@ export function MoreMeUI() {
   const s = useStore();
   const [tab, setTab] = useState<Tab>("today");
   const [editing, setEditing] = useState<CalEvent | null>(null);
+  const [review, setReview] = useState(false);
 
   const tabs: Tab[] = ["today", "ahead", "calendar", "empire", "projects", "goals", "achievements", "insights", "levels"];
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", position: "relative" }}>
-      <Header s={s} />
+      <Header s={s} onReview={() => setReview(true)} />
       <CaptureBar />
       <div style={{ display: "flex", gap: 6, padding: "10px 18px", flexWrap: "wrap", borderBottom: `1px solid ${T.line}` }}>
         {tabs.map((t) => (
@@ -68,6 +70,7 @@ export function MoreMeUI() {
         {tab === "levels" && <LevelsView s={s} />}
       </div>
       {editing && <EventEditor s={s} draft={editing} onClose={() => setEditing(null)} />}
+      {review && <WeeklyReview s={s} onClose={() => setReview(false)} onEdit={(e) => { setReview(false); setEditing(e); }} />}
       <ReminderToasts s={s} onOpen={setEditing} />
     </div>
   );
@@ -97,11 +100,23 @@ function ReminderToasts({ s, onOpen }: { s: State; onOpen: (e: CalEvent) => void
   const [fired] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
+    // Ask once for OS notification permission so reminders surface even when
+    // you're on the News tab or the window is in the background.
+    try { if ("Notification" in window && Notification.permission === "default") void Notification.requestPermission(); } catch { /* ignore */ }
     const tick = () => {
       const due = dueReminders(loadState());
       const fresh = due.filter((d) => !fired.has(d.key));
       if (fresh.length) {
         fresh.forEach((d) => fired.add(d.key));
+        for (const d of fresh) {
+          try {
+            if ("Notification" in window && Notification.permission === "granted") {
+              new Notification(`MoreMe · ${d.lead}m before`, {
+                body: `${d.e.title || CATEGORY_META[d.e.category].label}${d.e.start ? " · " + fmtTime(d.e.start) : ""}${d.e.location ? " · " + d.e.location : ""}`,
+              });
+            }
+          } catch { /* ignore */ }
+        }
         setActive((cur) => [...cur, ...fresh.map((d) => ({ key: d.key, e: d.e, date: d.date, lead: d.lead }))]);
       }
     };
@@ -141,7 +156,7 @@ function ReminderToasts({ s, onOpen }: { s: State; onOpen: (e: CalEvent) => void
 }
 
 // ── header: level bar + streak + today XP ─────────────────────────────────
-function Header({ s }: { s: State }) {
+function Header({ s, onReview }: { s: State; onReview: () => void }) {
   const lv = levelInfo(s);
   const { current } = streakInfo(s);
   const tx = xpForDate(today(), s);
@@ -151,7 +166,7 @@ function Header({ s }: { s: State }) {
       <div>
         <div className="mm-h1" style={{ fontSize: 26, lineHeight: 1 }}>MoreMe</div>
         <div style={{ fontSize: 11, color: T.inkTiny, letterSpacing: ".08em", textTransform: "uppercase", marginTop: 3 }}>
-          Mount Vernon · Innovation Diploma
+          Mount Vernon · {s.school.path} · {gradeLabel(s)} · {schoolYearLabel(s)}
         </div>
       </div>
       <div style={{ flex: 1, minWidth: 240 }}>
@@ -163,6 +178,7 @@ function Header({ s }: { s: State }) {
       </div>
       <Stat label="Streak" value={`${current}d`} />
       <Stat label="Today" value={`${tx.earned}/${tx.possible} XP`} />
+      <button className="mm-btn" onClick={onReview} title="Run your weekly review">Weekly Review</button>
     </div>
   );
 }
@@ -598,8 +614,37 @@ function ProjectsView({ s }: { s: State }) {
         {s.projects.map((p) => <ProjectCard key={p.id} p={p} />)}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <SchoolCard s={s} />
         <ClassesCard s={s} />
         <CircleCard s={s} />
+      </div>
+    </div>
+  );
+}
+function SchoolCard({ s }: { s: State }) {
+  const paths: SchoolPath[] = ["Inquiry", "Global Impact Diploma", "Innovation Diploma"];
+  const incoming9 = new Date().getFullYear() + (new Date().getMonth() >= 7 ? 1 : 0);
+  // offer a sensible range of "year you started 9th grade"
+  const years: number[] = [];
+  for (let y = incoming9 + 1; y >= incoming9 - 5; y--) years.push(y);
+  return (
+    <div className="mm-card" style={{ padding: 16 }}>
+      <div className="serif" style={{ fontSize: 16, marginBottom: 4 }}>School</div>
+      <div style={{ fontSize: 12, color: T.mint, marginBottom: 10 }}>{gradeLabel(s)} · {schoolYearLabel(s)}</div>
+      <div style={{ fontSize: 11, color: T.inkTiny, marginBottom: 10 }}>
+        Your grade advances automatically every August — no need to bump it.
+      </div>
+      <div className="mm-field" style={{ marginBottom: 10 }}>
+        <label>Upper School path</label>
+        <select value={s.school.path} onChange={(e) => setSchool({ path: e.target.value as SchoolPath })}>
+          {paths.map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
+      </div>
+      <div className="mm-field">
+        <label>Year you started (or start) 9th grade</label>
+        <select value={s.school.grade9Year} onChange={(e) => setSchool({ grade9Year: Number(e.target.value) })}>
+          {years.map((y) => <option key={y} value={y}>{y}–{String(y + 1).slice(2)}</option>)}
+        </select>
       </div>
     </div>
   );

@@ -35,11 +35,17 @@ releasable.
 
 ## MoreMe — the product (apps/desktop/src/moreme)
 
-A calendar-first life OS for a Mount Vernon **Innovation Diploma (iD)**
-student. Real school research: The Mount Vernon School (Sandy Springs, GA) —
-iD is the 4-year project-based signature program; **iProject** is the
-independent passion-project block (the story's "GTD"). Characters Lily
-(friend), Mrs. Bridget (teacher), Principal Harrison stay as fictional NPCs.
+A calendar-first life OS for a Mount Vernon Upper School student. Real school
+research: The Mount Vernon School (Sandy Springs, GA), grades 9-12, three
+Upper School pathways — **Inquiry** (the owner's path; the flagship depth
+track across Humanities/Numeracy/Scientific Inquiry/Maker-Arts-Design),
+Global Impact Diploma, and Innovation Diploma. **iProject** (independent
+passion-project, the story's "GTD") is a graduation requirement that starts
+in Grade 9 on every path. The owner enters **Grade 9 in the 2026-27 year**.
+Grade level **auto-advances every August** (`gradeNumber`/`gradeLabel`,
+rollover month = August) — anchored to `school.grade9Year`, configurable in
+Projects → School, never manually bumped. Characters Lily (friend), Mrs.
+Bridget (teacher), Principal Harrison stay as fictional NPCs.
 
 Data model (`moreme/types.ts`, `moreme/store.ts`):
 - **`CalEvent`** is the one schedulable unit: recurring routines AND one-off
@@ -117,10 +123,16 @@ DONE:
   `inbox`; Today shows an Inbox triage section (Schedule / Project / discard).
 - **Insights** tab (`insights.tsx`): 30-day XP trend, completion rate, best
   streak, effort-by-category bars, distraction tally.
+- **Grade auto-advancement** (`school` in state): Inquiry path, Grade 9 in
+  2026-27, rolls over each August through Grade 12 then "Alumnus". Shown in
+  the header; configured in Projects → School.
+- **Weekly Review** ritual (`review.tsx`): a guided modal — loose ends from
+  last week, get-ahead %, the week ahead, project next-actions, inbox clear,
+  lock this week's goals. Launched from the header.
+- Reminders also fire as **OS notifications** (web Notification API, which
+  Electron honors) so they surface even on the News tab / backgrounded.
 
 NEXT / IDEAS:
-- OS-level notifications (Electron Notification) so reminders fire even when
-  MoreMe isn't the focused tab.
 - Sync MoreMe state to the Supabase account so it follows the user.
 - Per-class accent colors + bulk "add a week of class periods" template.
 - Owner: cut a release from main; Windows GUI testing.
