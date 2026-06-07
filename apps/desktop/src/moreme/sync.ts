@@ -114,10 +114,18 @@ function schedulePush(delay = 4000) {
   if (pushTimer != null) window.clearTimeout(pushTimer);
   pushTimer = window.setTimeout(() => { pushTimer = null; void pushOnce(); }, delay);
 }
+// Cancel any pending debounce and push right now (e.g. when going to the
+// background or closing) so recent edits are saved before we lose focus.
+function flushNow() {
+  if (pushTimer != null) { window.clearTimeout(pushTimer); pushTimer = null; }
+  void pushOnce();
+}
 
 let started = false;
 let stopSubscription: (() => void) | null = null;
 let pollTimer: number | null = null;
+let onVisibility: (() => void) | null = null;
+let onBeforeUnload: (() => void) | null = null;
 
 // Kick off sync. Idempotent: safe to call repeatedly. Skips entirely in
 // guest mode, and tears down cleanly on signOut() via stopSync().
@@ -136,11 +144,23 @@ export function startSync() {
   stopSubscription = subscribeState(() => { if (started && !applyingRemote) schedulePush(); });
   // Light polling so a write from another device shows up here within a minute.
   pollTimer = window.setInterval(() => { void pullOnce(); }, 60_000);
+  // Going to the background → flush now. Coming back → pull fresh.
+  onVisibility = () => {
+    if (!started) return;
+    if (document.hidden) flushNow();
+    else void pullOnce();
+  };
+  document.addEventListener("visibilitychange", onVisibility);
+  // Best-effort save when the window is actually torn down.
+  onBeforeUnload = () => { if (started) flushNow(); };
+  window.addEventListener("beforeunload", onBeforeUnload);
 }
 export function stopSync() {
   started = false;
   if (stopSubscription) { stopSubscription(); stopSubscription = null; }
   if (pollTimer != null) { window.clearInterval(pollTimer); pollTimer = null; }
   if (pushTimer != null) { window.clearTimeout(pushTimer); pushTimer = null; }
+  if (onVisibility) { document.removeEventListener("visibilitychange", onVisibility); onVisibility = null; }
+  if (onBeforeUnload) { window.removeEventListener("beforeunload", onBeforeUnload); onBeforeUnload = null; }
   setStatus("off");
 }

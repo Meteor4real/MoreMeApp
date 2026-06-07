@@ -650,10 +650,41 @@ function ProjectsView({ s }: { s: State }) {
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <SchoolCard s={s} />
+        <BackgroundCard />
         <ClassesCard s={s} />
         <CircleCard s={s} />
       </div>
     </div>
+  );
+}
+function BackgroundCard() {
+  const bg = (window.hub as { bg?: { get(): Promise<{ minimizeToTray: boolean; runOnStartup: boolean }>; set(p: Partial<{ minimizeToTray: boolean; runOnStartup: boolean }>): Promise<{ minimizeToTray: boolean; runOnStartup: boolean }> } }).bg;
+  const [prefs, setPrefs] = useState<{ minimizeToTray: boolean; runOnStartup: boolean } | null>(null);
+  useEffect(() => { if (bg) void bg.get().then(setPrefs); }, [bg]);
+  if (!bg) return null;
+  const toggle = (k: "minimizeToTray" | "runOnStartup") => {
+    if (!prefs) return;
+    void bg.set({ [k]: !prefs[k] }).then(setPrefs);
+  };
+  return (
+    <div className="mm-card" style={{ padding: 16 }}>
+      <div className="serif" style={{ fontSize: 16, marginBottom: 4 }}>Background</div>
+      <div style={{ fontSize: 11, color: T.inkTiny, marginBottom: 10 }}>
+        Keep MoreMe syncing, reminding, and running the wire even when the window's closed.
+      </div>
+      <Toggle on={!!prefs?.minimizeToTray} disabled={!prefs} onClick={() => toggle("minimizeToTray")} label="Closing hides to tray (keeps running)" />
+      <Toggle on={!!prefs?.runOnStartup} disabled={!prefs} onClick={() => toggle("runOnStartup")} label="Launch on system startup" />
+    </div>
+  );
+}
+function Toggle({ on, label, onClick, disabled }: { on: boolean; label: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button onClick={onClick} disabled={disabled} className="mm-action" style={{ marginTop: 8, opacity: disabled ? 0.5 : 1 }}>
+      <span style={{ width: 34, height: 18, borderRadius: 999, background: on ? T.mint : T.line, position: "relative", flex: "none", transition: "background .15s" }}>
+        <span style={{ position: "absolute", top: 2, left: on ? 18 : 2, width: 14, height: 14, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
+      </span>
+      <span style={{ flex: 1, fontSize: 12, textAlign: "left" }}>{label}</span>
+    </button>
   );
 }
 function SchoolCard({ s }: { s: State }) {

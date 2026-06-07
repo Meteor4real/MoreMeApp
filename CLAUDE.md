@@ -140,7 +140,12 @@ DONE:
   project. Pull on startup + every 60s; debounced push (4s) on every local
   change, with an `applyingRemote` guard so a pull doesn't bounce back. A
   status pip in the header shows synced / saving / pulling / error / guest.
-  Guest mode skips sync entirely.
+  Guest mode skips sync entirely. Runs in the background: window has
+  `backgroundThrottling:false` so timers keep full speed when minimized/
+  hidden; sync flushes on visibility-hidden + beforeunload and pulls on
+  refocus; the existing tray + "close hides to tray" pref keeps the renderer
+  (and thus sync) alive after the window is closed. Toggles surfaced in
+  Projects → Background.
 
 NEXT / IDEAS:
 - Per-class accent colors + bulk "add a week of class periods" template.
