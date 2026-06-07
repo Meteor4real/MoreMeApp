@@ -3,12 +3,13 @@
 // economy, conflict detection, and rule-based (earnable) achievements.
 
 import type {
-  CalEvent, Category, Class, DistractionLog, Goal, Goals, InboxItem, LevelReward,
-  Person, Project, ProjectKind, School, SchoolPath, State, Venture, VentureStatus,
+  CalEvent, Category, Class, ClassPeriod, DistractionLog, Goal, Goals, InboxItem,
+  LevelReward, Note, Person, Project, ProjectKind, School, SchoolPath, State,
+  Venture, VentureStatus,
 } from "./types";
 import { MAX_LEVEL, cumulativeXp } from "./types";
 
-const KEY = "nchub.moreme.v8";
+const KEY = "nchub.moreme.v9";
 
 // Current YYYY-MM month key (for venture revenue).
 export const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -202,7 +203,8 @@ function seedVentures(): Venture[] {
 function seedState(): State {
   const start = today();
   return {
-    schemaVersion: 8,
+    schemaVersion: 9,
+    notes: [],
     school: seedSchool(),
     events: seedRoutines(start),
     completions: {},
@@ -241,13 +243,14 @@ export function loadState(): State {
       const p = JSON.parse(raw) as Partial<State>;
       const d = seedState();
       cache = {
-        schemaVersion: 8,
+        schemaVersion: 9,
         school: p.school ?? d.school,
         events: p.events ?? d.events,
         completions: p.completions ?? {},
         projects: p.projects ?? d.projects,
         ventures: p.ventures ?? d.ventures,
         inbox: p.inbox ?? [],
+        notes: p.notes ?? [],
         people: p.people ?? d.people,
         classes: p.classes ?? d.classes,
         goals: { ...d.goals, ...(p.goals ?? {}) },
@@ -457,7 +460,66 @@ export function removeClass(id: string) {
     classes: s.classes.filter((c) => c.id !== id),
     // clear the link on any events that referenced it, rather than orphaning
     events: s.events.map((e) => (e.linkedClassId === id ? { ...e, linkedClassId: undefined } : e)),
+    // drop the generated recurring period event for this class
+    completions: s.completions,
   }));
+}
+
+// Lay a class's weekly period onto the calendar as one recurring event.
+// Idempotent: re-running updates the same event (id derived from the class)
+// instead of stacking duplicates. Anchored to the current school-year start so
+// it doesn't paint dates before the year began.
+const classEventId = (classId: string) => `clsperiod-${classId}`;
+export function generateClassPeriods(classId: string) {
+  updateState((s) => {
+    const c = s.classes.find((x) => x.id === classId);
+    if (!c || !c.period || !c.period.days.length) return s;
+    const id = classEventId(classId);
+    const anchorYear = Math.max(s.school.grade9Year, new Date().getMonth() >= 7 ? new Date().getFullYear() : new Date().getFullYear() - 1);
+    const ev: CalEvent = {
+      id,
+      title: c.name || "Class",
+      category: "class",
+      date: `${anchorYear}-08-10`,
+      until: `${anchorYear + 1}-05-28`,
+      allDay: false,
+      start: c.period.start,
+      end: c.period.end,
+      location: c.room,
+      people: c.teacher ? [c.teacher] : [],
+      linkedClassId: classId,
+      checklist: [],
+      priority: "normal",
+      visibility: "visible",
+      recurrence: { kind: "weekly", days: c.period.days },
+      reminders: [],
+      xp: 0,                 // showing up to class isn't graded XP; school work is
+      status: "planned",
+      createdAt: Date.now(),
+    };
+    return { ...s, events: [...s.events.filter((e) => e.id !== id), ev] };
+  });
+}
+export function clearClassPeriods(classId: string) {
+  const id = classEventId(classId);
+  updateState((s) => ({ ...s, events: s.events.filter((e) => e.id !== id) }));
+}
+export function setClassPeriod(classId: string, period: ClassPeriod | undefined) {
+  updateState((s) => ({ ...s, classes: s.classes.map((c) => (c.id === classId ? { ...c, period } : c)) }));
+}
+
+// ── notes / plans ─────────────────────────────────────────────────────────
+export const blankNote = (): Note => ({ id: uid(), title: "", body: "", ts: Date.now(), updatedAt: Date.now() });
+export function upsertNote(n: Note) {
+  updateState((s) => ({
+    ...s,
+    notes: s.notes.some((x) => x.id === n.id)
+      ? s.notes.map((x) => (x.id === n.id ? { ...n, updatedAt: Date.now() } : x))
+      : [{ ...n, ts: Date.now(), updatedAt: Date.now() }, ...s.notes],
+  }));
+}
+export function removeNote(id: string) {
+  updateState((s) => ({ ...s, notes: s.notes.filter((n) => n.id !== id) }));
 }
 
 // "Get Ahead" rollup — for each class, how much of the upcoming `days` window

@@ -62,12 +62,30 @@ export type CalEvent = {
 
 // A Mount Vernon class (or any course). School-work events link to a class
 // so the Get Ahead planner can roll up "% pre-done" per course over the
-// upcoming week / month.
+// upcoming week / month. An optional weekly `period` lets MoreMe generate the
+// recurring class meetings onto the calendar in one click.
+export type ClassPeriod = { days: number[]; start: string; end: string };  // days: 0=Sun..6=Sat
 export type Class = {
   id: string;
   name: string;        // "World History", "Algebra II", etc.
   teacher?: string;    // Person id
   color?: string;      // optional accent override
+  room?: string;       // where it meets
+  period?: ClassPeriod; // weekly meeting pattern (drives the timetable generator)
+};
+
+// A freeform note / plan. The "folders of plans in development" bucket — the
+// unannounced ideas, ARG planning, meeting talking points, anything that's
+// reference rather than a scheduled action.
+export type Note = {
+  id: string;
+  title: string;
+  body: string;
+  pinned?: boolean;
+  linkedProjectId?: string;
+  hidden?: boolean;     // an unannounced plan — dimmed + marked in the list
+  ts: number;
+  updatedAt: number;
 };
 
 export type ProjectKind = "arg" | "mod" | "venture" | "school" | "other";
@@ -134,7 +152,7 @@ export type School = {
 };
 
 export type State = {
-  schemaVersion: 8;
+  schemaVersion: 9;
   school: School;
   events: CalEvent[];
   // completions keyed by `${eventId}::${YYYY-MM-DD}` -> unlock timestamp.
@@ -142,6 +160,7 @@ export type State = {
   projects: Project[];
   ventures: Venture[];
   inbox: InboxItem[];
+  notes: Note[];
   people: Person[];
   classes: Class[];
   goals: Goals;

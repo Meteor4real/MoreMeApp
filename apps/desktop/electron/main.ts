@@ -17,11 +17,14 @@ let tray: Tray | null = null;
 let quitting = false;
 
 // Background prefs — stored on disk so the user's choices survive restarts.
+// Default ON: the app is meant to live in the tray and stay synced 24/7.
+// A user who turns either off writes `false`, which then persists (the file
+// overrides these defaults), so this only seeds the very first run.
 type BgPrefs = { minimizeToTray: boolean; runOnStartup: boolean };
 function bgPrefsPath() { return path.join(app.getPath("userData"), "bg-prefs.json"); }
 function readBgPrefs(): BgPrefs {
-  try { return { minimizeToTray: false, runOnStartup: false, ...JSON.parse(fs.readFileSync(bgPrefsPath(), "utf8")) }; }
-  catch { return { minimizeToTray: false, runOnStartup: false }; }
+  try { return { minimizeToTray: true, runOnStartup: true, ...JSON.parse(fs.readFileSync(bgPrefsPath(), "utf8")) }; }
+  catch { return { minimizeToTray: true, runOnStartup: true }; }
 }
 function writeBgPrefs(p: BgPrefs) {
   try { fs.mkdirSync(path.dirname(bgPrefsPath()), { recursive: true }); fs.writeFileSync(bgPrefsPath(), JSON.stringify(p)); } catch { /* ignore */ }

@@ -144,8 +144,14 @@ DONE:
   `backgroundThrottling:false` so timers keep full speed when minimized/
   hidden; sync flushes on visibility-hidden + beforeunload and pulls on
   refocus; the existing tray + "close hides to tray" pref keeps the renderer
-  (and thus sync) alive after the window is closed. Toggles surfaced in
-  Projects → Background.
+  (and thus sync) alive after the window is closed. Background prefs
+  (close-to-tray + launch-on-startup) now **default ON** so it's 24/7 out of
+  the box; toggles surfaced in Projects → Background.
+- **Class timetables**: a class can carry a weekly `period` (days + start/end
+  + room); "Add to calendar" generates one idempotent recurring `class` event
+  for the school year (id `clsperiod-<classId>`). In Projects → Classes.
+- **Plans** tab (`plans.tsx`): freeform notes/plans (title + body, pin,
+  link-to-project, "unannounced" hidden flag) — the GTD reference bucket.
 
 NEXT / IDEAS:
 - Per-class accent colors + bulk "add a week of class periods" template.

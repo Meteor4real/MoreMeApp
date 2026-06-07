@@ -26,13 +26,15 @@ import { GetAheadView } from "./getahead";
 import { EmpireView } from "./empire";
 import { InsightsView } from "./insights";
 import { WeeklyReview } from "./review";
+import { PlansView } from "./plans";
+import { generateClassPeriods, clearClassPeriods, setClassPeriod } from "./store";
 import { pullOnce, pushOnce, subscribeSync, type SyncStatus } from "./sync";
 
-type Tab = "today" | "ahead" | "calendar" | "empire" | "projects" | "goals" | "achievements" | "insights" | "levels";
+type Tab = "today" | "ahead" | "calendar" | "empire" | "projects" | "plans" | "goals" | "achievements" | "insights" | "levels";
 type CalMode = "month" | "week" | "day";
 const TAB_LABELS: Record<Tab, string> = {
   today: "today", ahead: "get ahead", calendar: "calendar", empire: "empire",
-  projects: "projects", goals: "goals", achievements: "achievements",
+  projects: "projects", plans: "plans", goals: "goals", achievements: "achievements",
   insights: "insights", levels: "levels",
 };
 
@@ -48,7 +50,7 @@ export function MoreMeUI() {
   const [editing, setEditing] = useState<CalEvent | null>(null);
   const [review, setReview] = useState(false);
 
-  const tabs: Tab[] = ["today", "ahead", "calendar", "empire", "projects", "goals", "achievements", "insights", "levels"];
+  const tabs: Tab[] = ["today", "ahead", "calendar", "empire", "projects", "plans", "goals", "achievements", "insights", "levels"];
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", position: "relative" }}>
@@ -65,6 +67,7 @@ export function MoreMeUI() {
         {tab === "calendar" && <CalendarView s={s} onEdit={setEditing} />}
         {tab === "empire" && <EmpireView s={s} />}
         {tab === "projects" && <ProjectsView s={s} />}
+        {tab === "plans" && <PlansView s={s} />}
         {tab === "goals" && <GoalsView s={s} />}
         {tab === "achievements" && <AchievementsView s={s} />}
         {tab === "insights" && <InsightsView s={s} />}
@@ -717,21 +720,24 @@ function SchoolCard({ s }: { s: State }) {
 }
 function ClassesCard({ s }: { s: State }) {
   const [name, setName] = useState("");
+  const [openId, setOpenId] = useState<string | null>(null);
   return (
     <div className="mm-card" style={{ padding: 16 }}>
       <div className="serif" style={{ fontSize: 16, marginBottom: 10 }}>Classes</div>
       <div style={{ fontSize: 11, color: T.inkTiny, marginBottom: 10 }}>
-        Link school work to a class so the Get Ahead view can show your %-pre-done per course.
+        Link school work to a class for Get Ahead %. Set a weekly period to drop the class onto your calendar automatically.
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
         {s.classes.map((c: Class) => (
-          <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input value={c.name} placeholder="Class name" onChange={(e) => upsertClass({ ...c, name: e.target.value })} style={{ flex: 1 }} />
-            <select value={c.teacher ?? ""} onChange={(e) => upsertClass({ ...c, teacher: e.target.value || undefined })} style={{ width: 110 }}>
-              <option value="">No teacher</option>
-              {s.people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-            <button className="mm-btn mm-btn-danger" style={{ padding: "4px 8px" }} onClick={() => removeClass(c.id)}>×</button>
+          <div key={c.id}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input value={c.name} placeholder="Class name" onChange={(e) => upsertClass({ ...c, name: e.target.value })} style={{ flex: 1 }} />
+              <button className="mm-btn" style={{ padding: "4px 8px", color: c.period ? T.mint : undefined }} title="Weekly schedule" onClick={() => setOpenId(openId === c.id ? null : c.id)}>
+                {c.period ? "◷ set" : "◷"}
+              </button>
+              <button className="mm-btn mm-btn-danger" style={{ padding: "4px 8px" }} onClick={() => removeClass(c.id)}>×</button>
+            </div>
+            {openId === c.id && <ClassPeriodEditor s={s} c={c} />}
           </div>
         ))}
       </div>
@@ -739,6 +745,37 @@ function ClassesCard({ s }: { s: State }) {
         <input placeholder="Add a class…" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) { upsertClass({ ...blankClass(), name: name.trim() }); setName(""); } }} />
         <button className="mm-btn" onClick={() => { if (name.trim()) { upsertClass({ ...blankClass(), name: name.trim() }); setName(""); } }}>Add</button>
       </div>
+    </div>
+  );
+}
+function ClassPeriodEditor({ s, c }: { s: State; c: Class }) {
+  const p = c.period ?? { days: [], start: "09:00", end: "10:00" };
+  const setP = (next: Partial<typeof p>) => setClassPeriod(c.id, { ...p, ...next });
+  return (
+    <div style={{ marginTop: 6, padding: 10, background: T.sunk, borderRadius: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="mm-seg">
+        {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => {
+          const on = p.days.includes(i);
+          return <button key={i} className={on ? "on" : ""} onClick={() => setP({ days: on ? p.days.filter((x) => x !== i) : [...p.days, i].sort() })}>{d}</button>;
+        })}
+      </div>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <input type="time" value={p.start} onChange={(e) => setP({ start: e.target.value })} style={{ width: 110 }} />
+        <span style={{ color: T.inkTiny }}>–</span>
+        <input type="time" value={p.end} onChange={(e) => setP({ end: e.target.value })} style={{ width: 110 }} />
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <input placeholder="Room" value={c.room ?? ""} onChange={(e) => upsertClass({ ...c, room: e.target.value })} style={{ flex: 1 }} />
+        <select value={c.teacher ?? ""} onChange={(e) => upsertClass({ ...c, teacher: e.target.value || undefined })} style={{ width: 110 }}>
+          <option value="">Teacher</option>
+          {s.people.map((pp) => <option key={pp.id} value={pp.id}>{pp.name}</option>)}
+        </select>
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button className="mm-btn mm-btn-primary" style={{ flex: 1 }} disabled={!p.days.length} onClick={() => generateClassPeriods(c.id)}>Add to calendar</button>
+        <button className="mm-btn" onClick={() => clearClassPeriods(c.id)}>Remove from calendar</button>
+      </div>
+      <div style={{ fontSize: 10, color: T.inkTiny }}>Generates a recurring class block for this school year ({schoolYearLabel(s)}).</div>
     </div>
   );
 }
