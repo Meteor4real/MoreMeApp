@@ -1,572 +1,589 @@
-import { useEffect, useMemo, useState } from "react";
-import type { CalendarEvent, Goal, Goals, Mode, Project, ProjectCategory, ProjectStatus, State, Achievement } from "./types";
-import { LEVELS_PER_TIER, MAX_LEVEL, TIERS, XP_PER_LEVEL } from "./types";
-import {
-  ACHIEVEMENTS, addEvent, cycleDayType, dayComplete, effectiveMode, fmtTime, getSchedule, iso, levelInfo,
-  loadState, logBonus, logPenalty, prestige, refreshAchievements, removeEvent, removeProject,
-  resetSeason, setBattlepassReward, setGoals, setReflection, streakInfo, subscribeState,
-  toggleBlock, toMin, totalXp, upsertProject, xpForDay,
-} from "./store";
-import { ASSIGNABLE_MODES, BONUS_CATALOG, FITNESS_DAYS, FOOD_RULES, GAMING_RULES, MODE_COLOR, MODE_LABEL, PENALTY_CATALOG, TRAVEL_KIT } from "./schedules";
-import { T, inp } from "./styles";
+// MoreMe — calendar-first UI. Today / Calendar / Projects / Goals /
+// Achievements / Levels, plus a full event editor. Subscribes to the single
+// store; XP is earned by completing scheduled items and project milestones.
 
-type Tab = "today" | "calendar" | "routines" | "goals" | "projects" | "battlepass" | "achievements" | "settings";
+import { useEffect, useMemo, useState } from "react";
+import { T } from "./styles";
+import {
+  CATEGORY_META, CATEGORY_ORDER, MAX_LEVEL, cumulativeXp, levelStep,
+} from "./types";
+import type {
+  CalEvent, Category, ChecklistItem, Goal, Person, Priority, Project,
+  ProjectKind, Recurrence, State, Visibility,
+} from "./types";
+import {
+  ACHIEVEMENTS, achievementProgress, blankEvent, blankProject,
+  conflictIds, dayComplete, distractionsOn, eventsOnDate, fmtTime, iso, isDone,
+  levelInfo, loadState, logDistraction, monthLabel, removeDistraction,
+  removeEvent, removePerson, removeProject, revealEvent, setGoals, setReward,
+  streakInfo, subscribeState, today, toggleDone, uid, upsertEvent, upsertPerson,
+  upsertProject, xpForDate,
+} from "./store";
+
+type Tab = "today" | "calendar" | "projects" | "goals" | "achievements" | "levels";
+
+function useStore(): State {
+  const [s, setS] = useState<State>(loadState);
+  useEffect(() => subscribeState(setS), []);
+  return s;
+}
 
 export function MoreMeUI() {
-  const [state, setState] = useState<State>(loadState);
+  const s = useStore();
   const [tab, setTab] = useState<Tab>("today");
-  const [now, setNow] = useState(() => new Date());
+  const [editing, setEditing] = useState<CalEvent | null>(null);
 
-  useEffect(() => subscribeState(setState), []);
-  useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
-  useEffect(() => { refreshAchievements(); }, [state]);
+  const tabs: Tab[] = ["today", "calendar", "projects", "goals", "achievements", "levels"];
 
   return (
-    <>
-      <Header tab={tab} setTab={setTab} state={state} now={now} />
-      {tab === "today" && <Today state={state} now={now} />}
-      {tab === "calendar" && <CalendarPanel state={state} now={now} />}
-      {tab === "routines" && <RoutinesPanel />}
-      {tab === "goals" && <GoalsPanel state={state} />}
-      {tab === "projects" && <ProjectsPanel state={state} />}
-      {tab === "battlepass" && <BattlepassPanel state={state} />}
-      {tab === "achievements" && <AchievementsPanel state={state} />}
-      {tab === "settings" && <SettingsPanel state={state} />}
-    </>
-  );
-}
-
-// ── Header / nav ─────────────────────────────────────────────────────────
-function Header({ tab, setTab, state, now }: { tab: Tab; setTab: (t: Tab) => void; state: State; now: Date }) {
-  const tk = iso(now);
-  const lv = levelInfo(state);
-  const { mode } = effectiveMode(tk, state);
-  const { current } = streakInfo(now, state);
-  const tabs: Tab[] = ["today", "calendar", "routines", "goals", "projects", "battlepass", "achievements", "settings"];
-  return (
-    <div style={{ padding: "12px 18px", borderBottom: `1px solid ${T.line}`, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-      <span className="serif" style={{ fontSize: 24, color: T.ink }}>More Me</span>
-      <span style={{ fontSize: 11, color: T.inkTiny, letterSpacing: ".14em", textTransform: "uppercase" }}>{lv.tier} · Lvl {lv.level}{state.prestige > 0 && ` · P${state.prestige}`}</span>
-      <span className="mm-pill" style={{ background: MODE_COLOR[mode] + "22", color: MODE_COLOR[mode], border: `1px solid ${MODE_COLOR[mode]}66` }}>{MODE_LABEL[mode]}</span>
-      <span style={{ fontSize: 11, color: T.inkSoft }}>🔥 {current}-day streak</span>
-      <div style={{ display: "flex", gap: 6, marginLeft: "auto", flexWrap: "wrap" }}>
-        {tabs.map((t) => <button key={t} className={`mm-tab${tab === t ? " active" : ""}`} onClick={() => setTab(t)}>{t}</button>)}
-      </div>
-    </div>
-  );
-}
-
-// ── TODAY ───────────────────────────────────────────────────────────────
-function Today({ state, now }: { state: State; now: Date }) {
-  const tk = iso(now);
-  const { mode, reason } = effectiveMode(tk, state);
-  const schedule = getSchedule(tk, state);
-  const nowMin = now.getHours() * 60 + now.getMinutes();
-  const day = state.dayLogs[tk] ?? { checked: [], bonus: [], penalty: [] };
-  const xp = xpForDay(tk, state);
-  const lv = levelInfo(state);
-
-  const [oneWin, setOneWin] = useState(day.oneWin || "");
-  const [improvement, setImprovement] = useState(day.improvement || "");
-  useEffect(() => { setOneWin(day.oneWin || ""); setImprovement(day.improvement || ""); }, [tk]);
-
-  function saveReflection() { setReflection(tk, oneWin.trim(), improvement.trim()); }
-
-  return (
-    <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
-      {/* XP / Level card */}
-      <div className="mm-card-mint" style={{ padding: 22, marginBottom: 18 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-          <div>
-            <div className="serif" style={{ fontSize: 28, color: T.ink }}>Level {lv.level} · {lv.tier}</div>
-            <div style={{ fontSize: 13, color: T.inkSoft, marginTop: 2 }}>{lv.total.toLocaleString()} XP total · season started {state.seasonStart}</div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 600, color: MODE_COLOR[mode] }}>{MODE_LABEL[mode]} mode</div>
-            <div style={{ fontSize: 11, color: T.inkTiny }}>{reason}</div>
-          </div>
-        </div>
-        <div className="mm-progress" style={{ marginTop: 16 }}>
-          <div className="mm-progress-fill" style={{ width: `${(lv.xpIntoLevel / lv.levelXp) * 100}%` }} />
-          <div className="mm-progress-text">{lv.xpIntoLevel} / {lv.levelXp} XP to next level</div>
-        </div>
-        <div style={{ marginTop: 10, fontSize: 13, color: T.inkSoft }}>
-          Today: <span style={{ color: T.mint, fontWeight: 600 }}>{xp.net}</span> / {xp.possible} XP{xp.bonus !== 0 && ` · bonus +${xp.bonus}`}{xp.penalty !== 0 && ` · penalty ${xp.penalty}`} · {dayComplete(tk, state) ? "day complete ✓" : `${Math.ceil(xp.possible * 0.7)} XP completes the day`}
-        </div>
-      </div>
-
-      {/* Schedule blocks */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {schedule.map((b) => {
-          const done = day.checked.includes(b.id);
-          const locked = nowMin < toMin(b.start);
-          const active = !locked && nowMin <= toMin(b.end);
-          return (
-            <button key={b.id} onClick={() => toggleBlock(tk, b.id, nowMin)} disabled={locked}
-              className={`mm-action${done ? " done" : ""}${locked ? " locked" : ""}`}
-              style={{ cursor: locked ? "not-allowed" : "pointer", opacity: locked ? 0.5 : undefined, borderColor: active ? T.mint : undefined }}>
-              <span style={{ width: 22, height: 22, borderRadius: 6, border: `1px solid ${done ? T.mint : T.line}`, background: done ? T.mint : T.bg, color: T.bg, display: "grid", placeItems: "center", flex: "none", fontSize: 13, fontWeight: 700 }}>{done ? "✓" : ""}</span>
-              <span style={{ fontSize: 11, color: T.inkTiny, width: 150, flex: "none", fontVariantNumeric: "tabular-nums" }}>{fmtTime(b.start)} – {fmtTime(b.end)}</span>
-              <span style={{ flex: 1, fontSize: 14, fontWeight: 500, textDecoration: done ? "line-through" : "none" }}>
-                {b.label}
-                {b.note && <div style={{ fontSize: 11, color: T.inkTiny, marginTop: 2, textDecoration: "none" }}>{b.note}</div>}
-              </span>
-              <span style={{ fontSize: 12, color: locked ? T.inkTiny : T.mint, fontWeight: 600, flex: "none", fontVariantNumeric: "tabular-nums" }}>
-                {locked ? `unlocks ${fmtTime(b.start)}` : `+${b.xp}`}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Bonus + Penalty */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 20 }}>
-        <div className="mm-card" style={{ padding: 16 }}>
-          <div className="serif" style={{ fontSize: 18, color: T.ink, marginBottom: 6 }}>Bonus XP</div>
-          <div style={{ fontSize: 12, color: T.inkTiny, marginBottom: 10 }}>Stack extra effort.</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {BONUS_CATALOG.map((b) => (
-              <button key={b.kind} className="mm-btn" onClick={() => logBonus(tk, b.kind)}>
-                + {b.label} <span style={{ color: T.mint, marginLeft: 6 }}>+{b.xp}</span>
-              </button>
-            ))}
-          </div>
-          {day.bonus.length > 0 && <div style={{ marginTop: 10, fontSize: 11, color: T.inkSoft }}>Today: {day.bonus.map((b) => `${b.kind} +${b.xp}`).join(" · ")}</div>}
-        </div>
-        <div className="mm-card" style={{ padding: 16 }}>
-          <div className="serif" style={{ fontSize: 18, color: T.ink, marginBottom: 6 }}>Penalty</div>
-          <div style={{ fontSize: 12, color: T.inkTiny, marginBottom: 10 }}>Own the slip so the streak still counts.</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {PENALTY_CATALOG.map((p) => (
-              <button key={p.kind} className="mm-btn" style={{ borderColor: T.warn + "66", color: T.warn }} onClick={() => logPenalty(tk, p.kind)}>
-                − {p.label} <span style={{ marginLeft: 6 }}>{p.xp}</span>
-              </button>
-            ))}
-          </div>
-          {day.penalty.length > 0 && <div style={{ marginTop: 10, fontSize: 11, color: T.warn }}>Today: {day.penalty.map((p) => `${p.kind} ${p.xp}`).join(" · ")}</div>}
-        </div>
-      </div>
-
-      {/* End-of-day reflection */}
-      <div className="mm-card" style={{ padding: 16, marginTop: 16 }}>
-        <div className="serif" style={{ fontSize: 18, color: T.ink, marginBottom: 6 }}>End-of-day check-in</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <label style={{ fontSize: 11, color: T.inkSoft, letterSpacing: ".08em", textTransform: "uppercase" }}>
-            One win
-            <input style={inp} value={oneWin} onChange={(e) => setOneWin(e.target.value)} placeholder="celebrate one thing" />
-          </label>
-          <label style={{ fontSize: 11, color: T.inkSoft, letterSpacing: ".08em", textTransform: "uppercase" }}>
-            One thing to improve
-            <input style={inp} value={improvement} onChange={(e) => setImprovement(e.target.value)} placeholder="tomorrow's small fix" />
-          </label>
-        </div>
-        <button className="mm-btn mm-btn-primary" style={{ marginTop: 10 }} onClick={saveReflection}>Save</button>
-      </div>
-
-      <p style={{ color: T.inkTiny, fontSize: 12, marginTop: 18 }}>
-        The day's schedule is chosen automatically from your Calendar — weekends auto, day-types and events override. XP only comes from blocks you check during or after their window, plus bonus/penalty adjustments.
-      </p>
-    </div>
-  );
-}
-
-// ── CALENDAR ────────────────────────────────────────────────────────────
-function CalendarPanel({ state, now }: { state: State; now: Date }) {
-  const [year, setYear] = useState(now.getFullYear());
-  const [evt, setEvt] = useState<{ start: string; end: string; title: string; mode: Mode }>({ start: iso(now), end: iso(now), title: "", mode: "vacation" });
-
-  function add() {
-    if (!evt.title.trim()) return;
-    addEvent({ ...evt, title: evt.title.trim() });
-    setEvt({ ...evt, title: "" });
-  }
-
-  return (
-    <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
-      {/* year nav */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-        <button className="mm-btn" onClick={() => setYear((y) => y - 1)}>‹</button>
-        <div className="serif" style={{ fontSize: 24, color: T.ink, minWidth: 100, textAlign: "center" }}>{year}</div>
-        <button className="mm-btn" onClick={() => setYear((y) => y + 1)}>›</button>
-        <button className="mm-btn" onClick={() => setYear(now.getFullYear())}>Today's year</button>
-        <span style={{ fontSize: 11, color: T.inkTiny, marginLeft: 8 }}>
-          Click a day to cycle its mode (semester → vacation → exam → travel → clear). Events take priority.
-        </span>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
-        {Array.from({ length: 12 }).map((_, m) => <MonthCard key={m} year={year} month={m} state={state} now={now} />)}
-      </div>
-
-      {/* legend */}
-      <div style={{ display: "flex", gap: 18, marginTop: 18, flexWrap: "wrap", fontSize: 12, color: T.inkSoft }}>
-        {(Object.keys(MODE_COLOR) as Mode[]).map((m) => (
-          <span key={m} style={{ display: "flex", alignItems: "center", gap: 6, textTransform: "capitalize" }}>
-            <span style={{ width: 12, height: 12, borderRadius: 3, background: MODE_COLOR[m] }} /> {MODE_LABEL[m]}
-          </span>
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      <Header s={s} />
+      <div style={{ display: "flex", gap: 6, padding: "10px 18px", flexWrap: "wrap", borderBottom: `1px solid ${T.line}` }}>
+        {tabs.map((t) => (
+          <button key={t} className={"mm-tab" + (tab === t ? " active" : "")} onClick={() => setTab(t)}>{t}</button>
         ))}
       </div>
-
-      {/* events */}
-      <div className="mm-card" style={{ padding: 18, marginTop: 18 }}>
-        <div className="serif" style={{ fontSize: 18, color: T.ink, marginBottom: 4 }}>Events</div>
-        <div style={{ fontSize: 12, color: T.inkTiny, marginBottom: 12 }}>School blocks, breaks, finals weeks, trips. Each event forces its mode for the range.</div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
-          <input type="date" value={evt.start} onChange={(e) => setEvt({ ...evt, start: e.target.value })} style={{ fontSize: 12 }} />
-          <span style={{ color: T.inkTiny }}>→</span>
-          <input type="date" value={evt.end} onChange={(e) => setEvt({ ...evt, end: e.target.value })} style={{ fontSize: 12 }} />
-          <input placeholder="title (e.g. Winter break · Spring Trip · Finals)" value={evt.title} onChange={(e) => setEvt({ ...evt, title: e.target.value })} style={{ flex: 1, minWidth: 200, fontSize: 12 }} />
-          <select value={evt.mode} onChange={(e) => setEvt({ ...evt, mode: e.target.value as Mode })} style={{ fontSize: 12 }}>
-            {ASSIGNABLE_MODES.map((m) => <option key={m} value={m}>{MODE_LABEL[m]}</option>)}
-          </select>
-          <button className="mm-btn mm-btn-primary" onClick={add}>Add event</button>
-        </div>
-        {state.events.length === 0 && <div style={{ fontSize: 12, color: T.inkTiny }}>No events yet. Add breaks, finals weeks, and trips so the schedule auto-adjusts.</div>}
-        {state.events.slice().sort((a, b) => a.start.localeCompare(b.start)).map((e) => (
-          <div key={e.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "4px 0" }}>
-            <span><span style={{ color: MODE_COLOR[e.mode] }}>●</span> {e.start} – {e.end} · {e.title} <span style={{ color: T.inkTiny }}>({MODE_LABEL[e.mode]})</span></span>
-            <button onClick={() => removeEvent(e.id)} style={{ background: "none", border: "none", color: T.inkTiny, cursor: "pointer" }}>✕</button>
-          </div>
-        ))}
+      <div className="scrolly" style={{ flex: 1, minHeight: 0, padding: 18 }}>
+        {tab === "today" && <TodayView s={s} onEdit={setEditing} />}
+        {tab === "calendar" && <CalendarView s={s} onEdit={setEditing} />}
+        {tab === "projects" && <ProjectsView s={s} />}
+        {tab === "goals" && <GoalsView s={s} />}
+        {tab === "achievements" && <AchievementsView s={s} />}
+        {tab === "levels" && <LevelsView s={s} />}
       </div>
+      {editing && <EventEditor s={s} draft={editing} onClose={() => setEditing(null)} />}
     </div>
   );
 }
 
-function MonthCard({ year, month, state, now }: { year: number; month: number; state: State; now: Date }) {
-  const first = new Date(year, month, 1);
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const lead = first.getDay();
-  const cells: (string | null)[] = [];
-  for (let i = 0; i < lead; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(iso(new Date(year, month, d)));
-  const monthName = first.toLocaleString(undefined, { month: "long" });
+// ── header: level bar + streak + today XP ─────────────────────────────────
+function Header({ s }: { s: State }) {
+  const lv = levelInfo(s);
+  const { current } = streakInfo(s);
+  const tx = xpForDate(today(), s);
+  const pct = lv.isMax ? 100 : Math.round((lv.into / lv.span) * 100);
   return (
-    <div className="mm-card" style={{ padding: 12 }}>
-      <div className="serif" style={{ fontSize: 16, color: T.ink, marginBottom: 8 }}>{monthName}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
-        {["S","M","T","W","T","F","S"].map((d, i) => <div key={i} style={{ fontSize: 10, color: T.inkTiny, textAlign: "center", padding: 2, fontWeight: 600 }}>{d}</div>)}
-        {cells.map((dateStr, i) => {
-          if (!dateStr) return <div key={i} />;
-          const m = effectiveMode(dateStr, state).mode;
-          const isToday = dateStr === iso(now);
-          const ev = state.events.find((e) => dateStr >= e.start && dateStr <= e.end);
-          return (
-            <button key={i} onClick={() => cycleDayType(dateStr)} title={ev?.title || `${MODE_LABEL[m]}`}
-              style={{ aspectRatio: "1", border: `1px solid ${isToday ? T.mint : T.line}`, borderRadius: 6, background: `${MODE_COLOR[m]}22`, color: T.ink, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, padding: 1, fontSize: 11 }}>
-              <span style={{ fontVariantNumeric: "tabular-nums" }}>{Number(dateStr.slice(8))}</span>
-              <span style={{ width: 10, height: 2, borderRadius: 2, background: MODE_COLOR[m] }} />
-              {ev && <span style={{ width: 3, height: 3, borderRadius: "50%", background: T.mintHi }} />}
-            </button>
-          );
-        })}
+    <div style={{ padding: "16px 18px 12px", borderBottom: `1px solid ${T.line}`, display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
+      <div>
+        <div className="mm-h1" style={{ fontSize: 26, lineHeight: 1 }}>MoreMe</div>
+        <div style={{ fontSize: 11, color: T.inkTiny, letterSpacing: ".08em", textTransform: "uppercase", marginTop: 3 }}>
+          Mount Vernon · Innovation Diploma
+        </div>
       </div>
+      <div style={{ flex: 1, minWidth: 240 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
+          <b style={{ color: T.mint }}>Level {lv.level}{lv.isMax ? " · MAX" : ""}</b>
+          <span style={{ color: T.inkTiny }}>{lv.total.toLocaleString()} XP{lv.isMax ? "" : ` · ${lv.nextAt.toLocaleString()} to L${lv.level + 1}`}</span>
+        </div>
+        <div className="mm-progress"><div className="mm-progress-fill" style={{ width: pct + "%" }} /><div className="mm-progress-text">{pct}%</div></div>
+      </div>
+      <Stat label="Streak" value={`${current}d`} />
+      <Stat label="Today" value={`${tx.earned}/${tx.possible} XP`} />
+    </div>
+  );
+}
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ textAlign: "center", minWidth: 64 }}>
+      <div style={{ fontSize: 18, fontWeight: 700, color: T.mint }}>{value}</div>
+      <div style={{ fontSize: 10, color: T.inkTiny, letterSpacing: ".1em", textTransform: "uppercase" }}>{label}</div>
     </div>
   );
 }
 
-// ── ROUTINES ────────────────────────────────────────────────────────────
-function RoutinesPanel() {
+// ── shared: one event row with a complete checkbox ────────────────────────
+function EventRow({ e, date, s, onEdit }: { e: CalEvent; date: string; s: State; onEdit: (e: CalEvent) => void }) {
+  const meta = CATEGORY_META[e.category];
+  const done = isDone(e, date, s);
+  const conflict = conflictIds(date, s).has(e.id);
+  const hidden = e.visibility === "hidden";
   return (
-    <div style={{ flex: 1, overflow: "auto", padding: 20, display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
-      <div className="mm-card" style={{ padding: 16 }}>
-        <div className="serif" style={{ fontSize: 18, color: T.ink, marginBottom: 6 }}>Morning routine</div>
-        <ul style={{ paddingLeft: 18, color: T.inkSoft, fontSize: 13, lineHeight: 1.6 }}>
-          <li>Drink water</li><li>Stretch (2–3 min)</li><li>Quick movement (push-ups, squats, or walk)</li><li>Set top 3 goals</li><li>Deep breaths</li>
-        </ul>
-      </div>
-      <div className="mm-card" style={{ padding: 16 }}>
-        <div className="serif" style={{ fontSize: 18, color: T.ink, marginBottom: 6 }}>Bedtime routine</div>
-        <ul style={{ paddingLeft: 18, color: T.inkSoft, fontSize: 13, lineHeight: 1.6 }}>
-          <li>Light stretching or slow breathing</li><li>Set clothes out</li><li>Think of one win</li><li>Turn off loud stuff + screens</li><li>Lights out by 22:00</li>
-        </ul>
-      </div>
-      <div className="mm-card" style={{ padding: 16 }}>
-        <div className="serif" style={{ fontSize: 18, color: T.ink, marginBottom: 6 }}>Fitness · weekly cycle</div>
-        {FITNESS_DAYS.map((d) => (
-          <div key={d.day} style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 13, color: T.mint, fontWeight: 600 }}>{d.day} · {d.title}</div>
-            <ul style={{ paddingLeft: 18, color: T.inkSoft, fontSize: 12, lineHeight: 1.5, margin: "2px 0 0" }}>
-              {d.items.map((i) => <li key={i}>{i}</li>)}
-            </ul>
+    <div className={"mm-action" + (done ? " done" : "") + (conflict ? " mm-conflict" : "")} style={{ cursor: "default" }}>
+      <button
+        onClick={() => toggleDone(e.id, date)}
+        title={done ? "Mark not done" : "Complete (+XP)"}
+        style={{ width: 22, height: 22, flex: "none", borderRadius: 6, border: `2px solid ${meta.color}`, background: done ? meta.color : "transparent", color: T.bg, cursor: "pointer", fontSize: 13, lineHeight: 1 }}
+      >{done ? "✓" : ""}</button>
+      <span className="mm-dot" style={{ ["--c" as never]: meta.color }} />
+      <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => onEdit(e)}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <b style={{ fontSize: 13 }}>{e.title || "(untitled)"}</b>
+          {e.priority === "high" && <span className="mm-pill" style={{ background: T.warn + "22", color: T.warn }}>High</span>}
+          {hidden && <span className="mm-pill" style={{ background: "#FFD23E22", color: "#FFD23E" }}>Hidden</span>}
+        </div>
+        <div style={{ fontSize: 11, color: T.inkTiny, marginTop: 2 }}>
+          {meta.label}
+          {!e.allDay && e.start ? ` · ${fmtTime(e.start)}${e.end ? "–" + fmtTime(e.end) : ""}` : e.allDay ? " · all day" : ""}
+          {e.location ? ` · ${e.location}` : ""}
+          {e.xp ? ` · ${e.xp} XP` : ""}
+          {e.people.length ? ` · ${e.people.map((id) => s.people.find((p) => p.id === id)?.name).filter(Boolean).join(", ")}` : ""}
+        </div>
+        {e.checklist.length > 0 && (
+          <div style={{ fontSize: 11, color: T.inkSoft, marginTop: 3 }}>
+            {e.checklist.filter((c) => c.done).length}/{e.checklist.length} sub-tasks
           </div>
-        ))}
-        <div style={{ fontSize: 11, color: T.inkTiny }}>Minimum daily commitment: 2 minutes of movement. Anything counts.</div>
-      </div>
-      <div className="mm-card" style={{ padding: 16 }}>
-        <div className="serif" style={{ fontSize: 18, color: T.ink, marginBottom: 6 }}>Food + hydration</div>
-        <ul style={{ paddingLeft: 18, color: T.inkSoft, fontSize: 13, lineHeight: 1.6 }}>
-          {FOOD_RULES.map((r) => <li key={r}>{r}</li>)}
-        </ul>
-      </div>
-      <div className="mm-card" style={{ padding: 16 }}>
-        <div className="serif" style={{ fontSize: 18, color: T.ink, marginBottom: 6 }}>Gaming rules</div>
-        <ul style={{ paddingLeft: 18, color: T.inkSoft, fontSize: 13, lineHeight: 1.6 }}>
-          {GAMING_RULES.map((r) => <li key={r}>{r}</li>)}
-        </ul>
-      </div>
-      <div className="mm-card" style={{ padding: 16, gridColumn: "1 / -1" }}>
-        <div className="serif" style={{ fontSize: 18, color: T.ink, marginBottom: 6 }}>Travel kit</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-          {TRAVEL_KIT.map((k) => (
-            <div key={k.group}>
-              <div style={{ fontSize: 13, color: T.mint, fontWeight: 600, marginBottom: 4 }}>{k.group}</div>
-              <ul style={{ paddingLeft: 18, color: T.inkSoft, fontSize: 12, lineHeight: 1.5, margin: 0 }}>
-                {k.items.map((i) => <li key={i}>{i}</li>)}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── GOALS ───────────────────────────────────────────────────────────────
-function GoalsPanel({ state }: { state: State }) {
-  const [g, setG] = useState<Goals>(state.goals);
-  useEffect(() => setG(state.goals), [state.goals]);
-  function commit(next: Goals) { setG(next); setGoals(next); }
-
-  function GoalList({ title, keyName }: { title: string; keyName: keyof Goals }) {
-    const list = g[keyName];
-    const [add, setAdd] = useState("");
-    return (
-      <div className="mm-card" style={{ padding: 16 }}>
-        <div className="serif" style={{ fontSize: 18, color: T.ink, marginBottom: 6 }}>{title}</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {list.map((item) => (
-            <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input type="checkbox" checked={!!item.done} onChange={(e) => commit({ ...g, [keyName]: list.map((x: Goal) => x.id === item.id ? { ...x, done: e.target.checked } : x) })} />
-              <input value={item.text} onChange={(e) => commit({ ...g, [keyName]: list.map((x: Goal) => x.id === item.id ? { ...x, text: e.target.value } : x) })} style={{ ...inp, fontSize: 13, padding: "4px 8px", textDecoration: item.done ? "line-through" : "none" }} />
-              <button className="mm-btn" onClick={() => commit({ ...g, [keyName]: list.filter((x: Goal) => x.id !== item.id) })}>✕</button>
-            </div>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-          <input value={add} onChange={(e) => setAdd(e.target.value)} placeholder="add goal" style={{ ...inp, fontSize: 13, padding: "4px 8px" }} onKeyDown={(e) => {
-            if (e.key === "Enter" && add.trim()) { commit({ ...g, [keyName]: [...list, { id: Math.random().toString(36).slice(2,8), text: add.trim() }] }); setAdd(""); }
-          }} />
-          <button className="mm-btn mm-btn-primary" onClick={() => { if (add.trim()) { commit({ ...g, [keyName]: [...list, { id: Math.random().toString(36).slice(2,8), text: add.trim() }] }); setAdd(""); } }}>Add</button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ flex: 1, overflow: "auto", padding: 20, display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
-      <GoalList title="Weekly · Digital" keyName="weeklyDigital" />
-      <GoalList title="Weekly · Physical" keyName="weeklyPhysical" />
-      <GoalList title="Weekly · Identity" keyName="weeklyIdentity" />
-      <GoalList title="Semester · Digital" keyName="semesterDigital" />
-      <GoalList title="Semester · Physical" keyName="semesterPhysical" />
-      <GoalList title="Yearly · Academic" keyName="yearlyAcademic" />
-      <GoalList title="Yearly · Personal" keyName="yearlyPersonal" />
-      <GoalList title="Yearly · Physical" keyName="yearlyPhysical" />
-      <GoalList title="Identity" keyName="identity" />
-    </div>
-  );
-}
-
-// ── PROJECTS ────────────────────────────────────────────────────────────
-function ProjectsPanel({ state }: { state: State }) {
-  const [editing, setEditing] = useState<Project | null>(null);
-  const [draft, setDraft] = useState<Project>({ id: "", title: "", category: "school", status: "active", nextAction: "", milestones: 0 });
-  const activeCount = state.projects.filter((p) => p.status === "active").length;
-  const overActive = activeCount >= 3;
-
-  function open(p: Project | null) {
-    setEditing(p);
-    setDraft(p ?? { id: Math.random().toString(36).slice(2,9), title: "", category: "school", status: "active", nextAction: "", milestones: 0 });
-  }
-  function save() {
-    if (!draft.title.trim()) return;
-    upsertProject(draft);
-    setEditing(null);
-  }
-
-  return (
-    <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
-        <div className="serif" style={{ fontSize: 22, color: T.ink }}>Projects</div>
-        <span style={{ fontSize: 12, color: overActive ? T.warn : T.inkSoft }}>{activeCount} active{overActive ? " — over the 3-project cap" : ""}</span>
-        <div style={{ flex: 1 }} />
-        <button className="mm-btn mm-btn-primary" onClick={() => open(null)}>+ New project</button>
-      </div>
-
-      {state.projects.length === 0 && <div className="mm-card" style={{ padding: 22, color: T.inkSoft }}>No projects yet. Pick one — only 3 active at a time.</div>}
-
-      <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
-        {state.projects.map((p) => (
-          <div key={p.id} className="mm-card" style={{ padding: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <span className="serif" style={{ fontSize: 17, color: T.ink }}>{p.title}</span>
-              <span className="mm-pill" style={{ background: T.mint + "22", color: T.mint, border: `1px solid ${T.mint}55` }}>{p.category}</span>
-            </div>
-            <div style={{ fontSize: 11, color: T.inkTiny, marginTop: 4 }}>{p.status.toUpperCase()}{p.deadline && ` · due ${p.deadline}`}</div>
-            <div style={{ fontSize: 13, color: T.inkSoft, marginTop: 8 }}>
-              <span style={{ color: T.inkTiny, textTransform: "uppercase", fontSize: 10, letterSpacing: ".08em" }}>Next action</span><br/>
-              {p.nextAction || "—"}
-            </div>
-            {p.notes && <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 8 }}>{p.notes}</div>}
-            <div style={{ fontSize: 11, color: T.mint, marginTop: 8 }}>{p.milestones} milestones logged</div>
-            <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-              <button className="mm-btn" onClick={() => open(p)}>Edit</button>
-              <button className="mm-btn" onClick={() => upsertProject({ ...p, milestones: p.milestones + 1 })}>+ milestone</button>
-              <button className="mm-btn" onClick={() => upsertProject({ ...p, status: p.status === "done" ? "active" : "done" })}>{p.status === "done" ? "Reopen" : "Mark done"}</button>
-              <button className="mm-btn" style={{ borderColor: T.warn + "66", color: T.warn }} onClick={() => removeProject(p.id)}>Delete</button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {editing !== null || draft.id ? null : null}
-      {(editing !== null || (draft.id && !state.projects.some((p) => p.id === draft.id))) && (
-        <div className="mm-card" style={{ padding: 16, marginTop: 16, borderColor: T.mint + "55" }}>
-          <div className="serif" style={{ fontSize: 18, color: T.ink, marginBottom: 8 }}>{editing ? "Edit project" : "New project"}</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="title" style={{ gridColumn: "1 / -1" }} />
-            <select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value as ProjectCategory })}>
-              {(["school","personal","physical","digital"] as ProjectCategory[]).map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as ProjectStatus })}>
-              {(["active","paused","done"] as ProjectStatus[]).map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <input value={draft.nextAction} onChange={(e) => setDraft({ ...draft, nextAction: e.target.value })} placeholder="next action (concrete, doable today)" style={{ gridColumn: "1 / -1" }} />
-            <input type="date" value={draft.deadline || ""} onChange={(e) => setDraft({ ...draft, deadline: e.target.value })} />
-            <input value={draft.notes || ""} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="notes" />
-          </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <button className="mm-btn mm-btn-primary" onClick={save}>{editing ? "Save" : "Add project"}</button>
-            <button className="mm-btn" onClick={() => { setEditing(null); setDraft({ id: "", title: "", category: "school", status: "active", nextAction: "", milestones: 0 }); }}>Cancel</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── BATTLEPASS ──────────────────────────────────────────────────────────
-function BattlepassPanel({ state }: { state: State }) {
-  const lv = levelInfo(state);
-  return (
-    <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
-      <div className="mm-card-mint" style={{ padding: 18, marginBottom: 18 }}>
-        <div className="serif" style={{ fontSize: 22, color: T.ink }}>Battlepass · Season</div>
-        <div style={{ fontSize: 13, color: T.inkSoft, marginTop: 4 }}>
-          Started {state.seasonStart} · {lv.total.toLocaleString()} XP earned · prestige {state.prestige}
-        </div>
-        <div className="mm-progress" style={{ marginTop: 14 }}>
-          <div className="mm-progress-fill" style={{ width: `${(lv.level / MAX_LEVEL) * 100}%` }} />
-          <div className="mm-progress-text">Level {lv.level} / {MAX_LEVEL} · {lv.tier}</div>
-        </div>
-        {lv.level >= MAX_LEVEL && (
-          <button className="mm-btn mm-btn-primary" style={{ marginTop: 12 }} onClick={prestige}>Prestige</button>
         )}
       </div>
+      <button className="mm-btn" style={{ padding: "4px 8px" }} onClick={() => onEdit(e)}>Edit</button>
+    </div>
+  );
+}
 
-      {/* tier track */}
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(${TIERS.length}, 1fr)`, gap: 8, marginBottom: 18 }}>
-        {TIERS.map((tier, i) => {
-          const reached = lv.tierIndex >= i;
-          return (
-            <div key={tier} className="mm-card" style={{ padding: 10, textAlign: "center", borderColor: reached ? T.mint : T.line, opacity: reached ? 1 : 0.55 }}>
-              <div className="serif" style={{ fontSize: 13, color: reached ? T.mint : T.ink }}>{tier}</div>
-              <div style={{ fontSize: 10, color: T.inkTiny }}>Lvl {i * LEVELS_PER_TIER + 1}–{(i + 1) * LEVELS_PER_TIER}</div>
-            </div>
-          );
-        })}
+// ── Today ─────────────────────────────────────────────────────────────────
+function TodayView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }) {
+  const date = today();
+  const evs = eventsOnDate(date, s);
+  const routines = evs.filter((e) => e.category === "routine");
+  const rest = evs.filter((e) => e.category !== "routine");
+  const dists = distractionsOn(date, s);
+  const conflicts = conflictIds(date, s);
+
+  return (
+    <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr", maxWidth: 760, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div className="serif" style={{ fontSize: 20 }}>{new Date(date + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</div>
+        <button className="mm-btn mm-btn-primary" onClick={() => onEdit({ ...blankEvent(date) })}>+ New item</button>
       </div>
 
-      {/* level rewards (user-set) */}
+      {conflicts.size > 0 && (
+        <div className="mm-card" style={{ padding: "10px 14px", borderColor: T.warn, color: T.warn, fontSize: 12 }}>
+          {conflicts.size} item{conflicts.size === 1 ? "" : "s"} overlap in time today — adjust the schedule.
+        </div>
+      )}
+
+      <Section title={`Routine · ${routines.filter((e) => isDone(e, date, s)).length}/${routines.length}`}>
+        {routines.length === 0 ? <Empty>No routines today.</Empty> : routines.map((e) => <EventRow key={e.id} e={e} date={date} s={s} onEdit={onEdit} />)}
+      </Section>
+
+      <Section title="Scheduled">
+        {rest.length === 0 ? <Empty>Nothing scheduled. Add a class, meeting, or project block.</Empty> : rest.map((e) => <EventRow key={e.id} e={e} date={date} s={s} onEdit={onEdit} />)}
+      </Section>
+
+      <Section title="Distraction-free check">
+        <div style={{ fontSize: 12, color: T.inkSoft, marginBottom: 8 }}>
+          Zero distractions is the standing expectation — not a box to check. If you slipped, log it honestly; a clean day counts toward Quiet streaks.
+        </div>
+        {dists.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+            {dists.map((d) => (
+              <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: T.warn }}>
+                <span style={{ flex: 1 }}>{d.note}</span>
+                <button className="mm-btn" style={{ padding: "2px 8px" }} onClick={() => removeDistraction(d.id)}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <DistractionAdder />
+      </Section>
+    </div>
+  );
+}
+function DistractionAdder() {
+  const [v, setV] = useState("");
+  return (
+    <div style={{ display: "flex", gap: 8 }}>
+      <input placeholder="What pulled you off-task?" value={v} onChange={(e) => setV(e.target.value)} style={{ flex: 1 }} />
+      <button className="mm-btn mm-btn-danger" onClick={() => { logDistraction(v.trim()); setV(""); }}>Log distraction</button>
+    </div>
+  );
+}
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="mm-card" style={{ padding: 16 }}>
+      <div style={{ fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: T.inkTiny, marginBottom: 10 }}>{title}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{children}</div>
+    </div>
+  );
+}
+function Empty({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 12, color: T.inkTiny, fontStyle: "italic" }}>{children}</div>;
+}
+
+// ── Calendar ────────────────────────────────────────────────────────────────
+function CalendarView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }) {
+  const [cursor, setCursor] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
+  const [sel, setSel] = useState(today());
+
+  const grid = useMemo(() => buildMonth(cursor.y, cursor.m), [cursor]);
+  const selEvents = eventsOnDate(sel, s);
+  const selConflicts = conflictIds(sel, s);
+
+  function shift(n: number) {
+    setCursor((c) => { const d = new Date(c.y, c.m + n, 1); return { y: d.getFullYear(), m: d.getMonth() }; });
+  }
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 320px", gap: 16, alignItems: "start" }}>
       <div className="mm-card" style={{ padding: 16 }}>
-        <div className="serif" style={{ fontSize: 18, color: T.ink, marginBottom: 6 }}>Set your level rewards</div>
-        <div style={{ fontSize: 12, color: T.inkTiny, marginBottom: 12 }}>Whatever you want to unlock at each level. Be specific — it's part of the carrot.</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 8 }}>
-          {state.battlepass.map((r) => {
-            const reached = lv.level >= r.level;
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <button className="mm-btn" onClick={() => shift(-1)}>‹</button>
+          <div className="serif" style={{ fontSize: 18, flex: 1, textAlign: "center" }}>{monthLabel(cursor.y, cursor.m)}</div>
+          <button className="mm-btn" onClick={() => shift(1)}>›</button>
+          <button className="mm-btn" onClick={() => { const d = new Date(); setCursor({ y: d.getFullYear(), m: d.getMonth() }); setSel(today()); }}>Today</button>
+        </div>
+        <div className="mm-cal">
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => <div key={d} className="mm-dow">{d}</div>)}
+          {grid.map((cell) => {
+            const evs = eventsOnDate(cell.date, s);
+            const isToday = cell.date === today();
             return (
-              <div key={r.level} style={{ display: "flex", alignItems: "center", gap: 8, padding: 8, borderRadius: 8, background: reached ? T.mint + "11" : "transparent", border: `1px solid ${reached ? T.mint + "55" : T.line}` }}>
-                <span className="mm-pill" style={{ background: reached ? T.mint : T.line, color: T.bg, minWidth: 36, textAlign: "center" }}>{r.level}</span>
-                <input style={{ ...inp, fontSize: 13, padding: "4px 8px" }} value={r.reward} onChange={(e) => setBattlepassReward(r.level, e.target.value)} placeholder={`reward at level ${r.level}`} />
+              <div
+                key={cell.date}
+                className={"mm-day" + (cell.inMonth ? "" : " other") + (isToday ? " today" : "") + (cell.date === sel ? " selected" : "")}
+                onClick={() => setSel(cell.date)}
+                onDoubleClick={() => onEdit({ ...blankEvent(cell.date) })}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span className="mm-daynum">{cell.day}</span>
+                  {dayComplete(cell.date, s) && <span style={{ color: T.mint, fontSize: 11 }}>✓</span>}
+                </div>
+                {evs.slice(0, 3).map((e) => (
+                  <div key={e.id} className={"mm-chip" + (isDone(e, cell.date, s) ? " done" : "")} style={{ ["--c" as never]: CATEGORY_META[e.category].color }}>
+                    {e.visibility === "hidden" ? "• " : ""}{e.title || CATEGORY_META[e.category].label}
+                  </div>
+                ))}
+                {evs.length > 3 && <div style={{ fontSize: 10, color: T.inkTiny }}>+{evs.length - 3} more</div>}
               </div>
             );
           })}
         </div>
       </div>
+
+      <div className="mm-card" style={{ padding: 16, position: "sticky", top: 0 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <div className="serif" style={{ fontSize: 16 }}>{new Date(sel + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</div>
+          <button className="mm-btn mm-btn-primary" style={{ padding: "5px 10px" }} onClick={() => onEdit({ ...blankEvent(sel) })}>+ Add</button>
+        </div>
+        {selConflicts.size > 0 && <div style={{ fontSize: 11, color: T.warn, marginBottom: 8 }}>Time conflict on this day.</div>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {selEvents.length === 0 ? <Empty>Nothing scheduled. Double-click any day to add.</Empty> : selEvents.map((e) => <EventRow key={e.id} e={e} date={sel} s={s} onEdit={onEdit} />)}
+        </div>
+      </div>
     </div>
   );
 }
+function buildMonth(y: number, m: number): { date: string; day: number; inMonth: boolean }[] {
+  const first = new Date(y, m, 1);
+  const start = new Date(first);
+  start.setDate(1 - first.getDay());
+  const cells: { date: string; day: number; inMonth: boolean }[] = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    cells.push({ date: iso(d), day: d.getDate(), inMonth: d.getMonth() === m });
+  }
+  return cells;
+}
 
-// ── ACHIEVEMENTS ────────────────────────────────────────────────────────
-function AchievementsPanel({ state }: { state: State }) {
-  const cats: Achievement["category"][] = ["skill", "learning", "discipline", "project", "special"];
+// ── Event editor ────────────────────────────────────────────────────────────
+function EventEditor({ s, draft, onClose }: { s: State; draft: CalEvent; onClose: () => void }) {
+  const [e, setE] = useState<CalEvent>(draft);
+  const exists = s.events.some((x) => x.id === e.id);
+  const set = <K extends keyof CalEvent>(k: K, v: CalEvent[K]) => setE((p) => ({ ...p, [k]: v }));
+  const meta = CATEGORY_META[e.category];
+
+  function save() {
+    upsertEvent({ ...e, title: e.title.trim() || CATEGORY_META[e.category].label });
+    onClose();
+  }
+
   return (
-    <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
-      <div className="mm-card-mint" style={{ padding: 18, marginBottom: 18 }}>
-        <div className="serif" style={{ fontSize: 22, color: T.ink }}>Achievements</div>
-        <div style={{ fontSize: 13, color: T.inkSoft, marginTop: 4 }}>{Object.keys(state.unlockedAchievements).length} / {ACHIEVEMENTS.length} unlocked.</div>
-      </div>
-      {cats.map((c) => (
-        <div key={c} style={{ marginBottom: 18 }}>
-          <div className="serif" style={{ fontSize: 18, color: T.ink, textTransform: "capitalize", marginBottom: 8 }}>{c}</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
-            {ACHIEVEMENTS.filter((a) => a.category === c).map((a) => {
-              const unlocked = !!state.unlockedAchievements[a.id];
-              return (
-                <div key={a.id} className="mm-card" style={{ padding: 14, opacity: unlocked ? 1 : 0.5, borderColor: unlocked ? T.mint + "66" : T.line }}>
-                  <div className="serif" style={{ fontSize: 15, color: unlocked ? T.mint : T.ink }}>{a.title}</div>
-                  <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 4 }}>{a.desc}</div>
-                  {unlocked && <div style={{ fontSize: 10, color: T.inkTiny, marginTop: 6 }}>Unlocked {new Date(state.unlockedAchievements[a.id]).toLocaleDateString()}</div>}
-                </div>
-              );
-            })}
+    <div className="mm-modal-back" onClick={onClose}>
+      <div className="mm-modal" onClick={(ev) => ev.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <span className="mm-dot" style={{ ["--c" as never]: meta.color, width: 12, height: 12 }} />
+          <div className="serif" style={{ fontSize: 20, flex: 1 }}>{exists ? "Edit item" : "New item"}</div>
+          <button className="mm-btn" onClick={onClose}>Close</button>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <Field label="Title">
+            <input value={e.title} placeholder={meta.label} onChange={(ev) => set("title", ev.target.value)} autoFocus />
+          </Field>
+
+          <Field label="Category">
+            <select value={e.category} onChange={(ev) => set("category", ev.target.value as Category)}>
+              {CATEGORY_ORDER.map((c) => <option key={c} value={c}>{CATEGORY_META[c].label}</option>)}
+            </select>
+          </Field>
+
+          <div className="mm-row">
+            <Field label="Date"><input type="date" value={e.date} onChange={(ev) => set("date", ev.target.value)} /></Field>
+            <Field label="All day">
+              <div className="mm-seg">
+                <button className={e.allDay ? "on" : ""} onClick={() => set("allDay", true)}>Yes</button>
+                <button className={!e.allDay ? "on" : ""} onClick={() => set("allDay", false)}>No</button>
+              </div>
+            </Field>
+            {!e.allDay && <>
+              <Field label="Start"><input type="time" value={e.start ?? ""} onChange={(ev) => set("start", ev.target.value)} /></Field>
+              <Field label="End"><input type="time" value={e.end ?? ""} onChange={(ev) => set("end", ev.target.value)} /></Field>
+            </>}
+          </div>
+
+          <Field label="Location"><input value={e.location ?? ""} placeholder="Mrs. Bridget's room · Meteor HQ · Helipad" onChange={(ev) => set("location", ev.target.value)} /></Field>
+
+          <div className="mm-row">
+            <Field label="Priority">
+              <div className="mm-seg">
+                {(["low", "normal", "high"] as Priority[]).map((p) => (
+                  <button key={p} className={e.priority === p ? "on" : ""} onClick={() => set("priority", p)}>{p}</button>
+                ))}
+              </div>
+            </Field>
+            <Field label="XP reward"><input type="number" min={0} max={500} value={e.xp} onChange={(ev) => set("xp", Math.max(0, Number(ev.target.value) || 0))} style={{ width: 90 }} /></Field>
+            <Field label="Visibility">
+              <div className="mm-seg">
+                {(["visible", "hidden"] as Visibility[]).map((v) => (
+                  <button key={v} className={e.visibility === v ? "on" : ""} onClick={() => set("visibility", v)}>{v === "hidden" ? "Unannounced" : "Visible"}</button>
+                ))}
+              </div>
+            </Field>
+          </div>
+
+          <Field label="Repeats">
+            <div className="mm-seg">
+              {(["none", "daily", "weekdays", "weekly"] as Recurrence["kind"][]).map((k) => (
+                <button key={k} className={e.recurrence.kind === k ? "on" : ""}
+                  onClick={() => set("recurrence", k === "weekly" ? { kind: "weekly", days: [dowOf(e.date)] } : { kind: k } as Recurrence)}>{k}</button>
+              ))}
+            </div>
+          </Field>
+          {e.recurrence.kind === "weekly" && (
+            <div className="mm-seg">
+              {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => {
+                const days = (e.recurrence as { kind: "weekly"; days: number[] }).days;
+                const on = days.includes(i);
+                return <button key={i} className={on ? "on" : ""} onClick={() => set("recurrence", { kind: "weekly", days: on ? days.filter((x) => x !== i) : [...days, i] })}>{d}</button>;
+              })}
+            </div>
+          )}
+          {e.recurrence.kind !== "none" && (
+            <Field label="Repeat until (optional)"><input type="date" value={e.until ?? ""} onChange={(ev) => set("until", ev.target.value || undefined)} /></Field>
+          )}
+
+          <Field label="People">
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {s.people.map((p) => {
+                const on = e.people.includes(p.id);
+                return <button key={p.id} className={"mm-tab" + (on ? " active" : "")} onClick={() => set("people", on ? e.people.filter((x) => x !== p.id) : [...e.people, p.id])}>{p.name}</button>;
+              })}
+              {s.people.length === 0 && <Empty>Add people in Projects → Circle.</Empty>}
+            </div>
+          </Field>
+
+          <Field label="Link to project">
+            <select value={e.linkedProjectId ?? ""} onChange={(ev) => set("linkedProjectId", ev.target.value || undefined)}>
+              <option value="">None</option>
+              {s.projects.map((p) => <option key={p.id} value={p.id}>{p.name || "(untitled)"}</option>)}
+            </select>
+          </Field>
+
+          <Field label="Sub-tasks">
+            <ChecklistEditor items={e.checklist} onChange={(items) => set("checklist", items)} />
+          </Field>
+
+          <Field label="Notes"><textarea rows={2} value={e.notes ?? ""} onChange={(ev) => set("notes", ev.target.value)} /></Field>
+
+          <div style={{ display: "flex", gap: 10, justifyContent: "space-between", marginTop: 4 }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              {exists && <button className="mm-btn mm-btn-danger" onClick={() => { removeEvent(e.id); onClose(); }}>Delete</button>}
+              {exists && e.visibility === "hidden" && <button className="mm-btn" onClick={() => { revealEvent(e.id); onClose(); }}>Reveal</button>}
+            </div>
+            <button className="mm-btn mm-btn-primary" onClick={save}>Save</button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+function dowOf(date: string) { return new Date(date + "T00:00:00").getDay(); }
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div className="mm-field"><label>{label}</label>{children}</div>;
+}
+function ChecklistEditor({ items, onChange }: { items: ChecklistItem[]; onChange: (i: ChecklistItem[]) => void }) {
+  const [v, setV] = useState("");
+  const add = () => { if (v.trim()) { onChange([...items, { id: uid(), text: v.trim(), done: false }]); setV(""); } };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {items.map((it) => (
+        <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input type="checkbox" checked={it.done} onChange={() => onChange(items.map((x) => x.id === it.id ? { ...x, done: !x.done } : x))} style={{ width: "auto" }} />
+          <span style={{ flex: 1, fontSize: 13, textDecoration: it.done ? "line-through" : "none", color: it.done ? T.inkTiny : T.ink }}>{it.text}</span>
+          <button className="mm-btn" style={{ padding: "2px 8px" }} onClick={() => onChange(items.filter((x) => x.id !== it.id))}>×</button>
+        </div>
       ))}
+      <div style={{ display: "flex", gap: 6 }}>
+        <input placeholder="Add a sub-task…" value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
+        <button className="mm-btn" onClick={add}>Add</button>
+      </div>
     </div>
   );
 }
 
-// ── SETTINGS ────────────────────────────────────────────────────────────
-function SettingsPanel({ state }: { state: State }) {
-  const today = iso(new Date());
-  const lv = levelInfo(state);
-  const [adjust, setAdjust] = useState(0);
+// ── Projects + Circle ─────────────────────────────────────────────────────
+function ProjectsView({ s }: { s: State }) {
   return (
-    <div style={{ flex: 1, overflow: "auto", padding: 20, display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
-      <div className="mm-card" style={{ padding: 16 }}>
-        <div className="serif" style={{ fontSize: 18, color: T.ink, marginBottom: 6 }}>Season</div>
-        <div style={{ fontSize: 12, color: T.inkSoft, marginBottom: 10 }}>Started {state.seasonStart}. Reset to start a fresh 1-month season.</div>
-        <button className="mm-btn" onClick={resetSeason}>Reset season start</button>
-      </div>
-      <div className="mm-card" style={{ padding: 16 }}>
-        <div className="serif" style={{ fontSize: 18, color: T.ink, marginBottom: 6 }}>XP adjustment</div>
-        <div style={{ fontSize: 12, color: T.inkSoft, marginBottom: 10 }}>For life events the schedule didn't cover. Logged on today.</div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input type="number" value={adjust} onChange={(e) => setAdjust(Number(e.target.value))} style={{ width: 100 }} />
-          <button className="mm-btn" onClick={() => { logBonus(today, "difficult-thing"); }}>+ Quick bonus</button>
-          <button className="mm-btn" onClick={() => { logPenalty(today, "rule-break"); }}>− Quick penalty</button>
+    <div style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(0,1fr) 300px", alignItems: "start" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div className="serif" style={{ fontSize: 20 }}>Projects & Ventures</div>
+          <button className="mm-btn mm-btn-primary" onClick={() => upsertProject({ ...blankProject(), name: "New project" })}>+ Project</button>
         </div>
-        {/* Adjust slot kept for raw delta if user wants */}
-        <div style={{ fontSize: 11, color: T.inkTiny, marginTop: 8 }}>Custom value: {adjust} (use the per-day bonus/penalty buttons on the Today page for tracked entries).</div>
+        {s.projects.length === 0 && <Empty>No projects yet.</Empty>}
+        {s.projects.map((p) => <ProjectCard key={p.id} p={p} />)}
       </div>
-      <div className="mm-card" style={{ padding: 16 }}>
-        <div className="serif" style={{ fontSize: 18, color: T.ink, marginBottom: 6 }}>Prestige</div>
-        <div style={{ fontSize: 12, color: T.inkSoft, marginBottom: 10 }}>Available at Dude Perfect (level {MAX_LEVEL}). Resets your day-logs and season; tier remains tracked separately via prestige count.</div>
-        <div style={{ fontSize: 11, color: T.inkTiny }}>Current: {state.prestige}</div>
-        <button className="mm-btn mm-btn-primary" disabled={lv.level < MAX_LEVEL} onClick={prestige} style={{ marginTop: 10, opacity: lv.level < MAX_LEVEL ? 0.5 : 1 }}>
-          {lv.level < MAX_LEVEL ? `Locked · level ${lv.level}/${MAX_LEVEL}` : "Prestige now"}
-        </button>
+      <CircleCard s={s} />
+    </div>
+  );
+}
+function ProjectCard({ p }: { p: Project }) {
+  const done = p.milestones.filter((m) => m.done).length;
+  const pct = p.milestones.length ? Math.round((done / p.milestones.length) * 100) : 0;
+  return (
+    <div className="mm-card" style={{ padding: 16, opacity: p.status === "done" ? 0.75 : 1 }}>
+      <div className="mm-row" style={{ alignItems: "center" }}>
+        <input value={p.name} onChange={(e) => upsertProject({ ...p, name: e.target.value })} style={{ flex: 1, fontSize: 15, fontWeight: 600 }} />
+        <select value={p.kind} onChange={(e) => upsertProject({ ...p, kind: e.target.value as ProjectKind })}>
+          {(["arg", "mod", "venture", "school", "other"] as ProjectKind[]).map((k) => <option key={k} value={k}>{k}</option>)}
+        </select>
+        <select value={p.status} onChange={(e) => upsertProject({ ...p, status: e.target.value as Project["status"] })}>
+          {(["active", "paused", "done"] as Project["status"][]).map((k) => <option key={k} value={k}>{k}</option>)}
+        </select>
+        <button className="mm-btn mm-btn-danger" style={{ padding: "4px 8px" }} onClick={() => removeProject(p.id)}>×</button>
       </div>
-      <div className="mm-card" style={{ padding: 16 }}>
-        <div className="serif" style={{ fontSize: 18, color: T.ink, marginBottom: 6 }}>XP rules</div>
-        <ul style={{ paddingLeft: 18, color: T.inkSoft, fontSize: 13, lineHeight: 1.6 }}>
-          <li>{XP_PER_LEVEL} XP per level · {LEVELS_PER_TIER} levels per tier · {MAX_LEVEL} levels to Dude Perfect</li>
-          <li>Day completes at 70% of scheduled XP</li>
-          <li>Blocks only check during or after their window</li>
-          <li>Bonus/penalty stack on the day's net</li>
-        </ul>
+      <div className="mm-progress" style={{ margin: "10px 0" }}><div className="mm-progress-fill" style={{ width: pct + "%" }} /><div className="mm-progress-text">{done}/{p.milestones.length} milestones · {pct}%</div></div>
+      <ChecklistEditor items={p.milestones} onChange={(milestones) => upsertProject({ ...p, milestones })} />
+      <div style={{ fontSize: 11, color: T.inkTiny, marginTop: 8 }}>Each milestone +30 XP · completing the project +100 XP</div>
+    </div>
+  );
+}
+function CircleCard({ s }: { s: State }) {
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("");
+  return (
+    <div className="mm-card" style={{ padding: 16 }}>
+      <div className="serif" style={{ fontSize: 16, marginBottom: 10 }}>Circle</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+        {s.people.map((p: Person) => (
+          <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input value={p.name} onChange={(e) => upsertPerson({ ...p, name: e.target.value })} style={{ flex: 1 }} />
+            <input value={p.role} onChange={(e) => upsertPerson({ ...p, role: e.target.value })} style={{ width: 96 }} />
+            <button className="mm-btn mm-btn-danger" style={{ padding: "4px 8px" }} onClick={() => removePerson(p.id)}>×</button>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
+        <input placeholder="Role" value={role} onChange={(e) => setRole(e.target.value)} style={{ width: 90 }} />
+      </div>
+      <button className="mm-btn" style={{ marginTop: 8, width: "100%" }} onClick={() => { if (name.trim()) { upsertPerson({ id: uid(), name: name.trim(), role: role.trim() || "Contact" }); setName(""); setRole(""); } }}>Add person</button>
+    </div>
+  );
+}
+
+// ── Goals ───────────────────────────────────────────────────────────────────
+function GoalsView({ s }: { s: State }) {
+  const cols: { key: keyof typeof s.goals; title: string }[] = [
+    { key: "week", title: "This Week" },
+    { key: "semester", title: "This Semester" },
+    { key: "year", title: "This Year" },
+    { key: "identity", title: "Identity" },
+  ];
+  return (
+    <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+      {cols.map((c) => <GoalColumn key={c.key} title={c.title} goals={s.goals[c.key]} onChange={(g) => setGoals({ ...s.goals, [c.key]: g })} />)}
+    </div>
+  );
+}
+function GoalColumn({ title, goals, onChange }: { title: string; goals: Goal[]; onChange: (g: Goal[]) => void }) {
+  const [v, setV] = useState("");
+  return (
+    <div className="mm-card" style={{ padding: 16 }}>
+      <div className="serif" style={{ fontSize: 16, marginBottom: 10 }}>{title}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {goals.map((g) => (
+          <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input type="checkbox" checked={!!g.done} onChange={() => onChange(goals.map((x) => x.id === g.id ? { ...x, done: !x.done } : x))} style={{ width: "auto" }} />
+            <span style={{ flex: 1, fontSize: 13, textDecoration: g.done ? "line-through" : "none", color: g.done ? T.inkTiny : T.ink }}>{g.text}</span>
+            <button className="mm-btn" style={{ padding: "2px 8px" }} onClick={() => onChange(goals.filter((x) => x.id !== g.id))}>×</button>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+        <input placeholder="Add a goal…" value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && v.trim()) { onChange([...goals, { id: uid(), text: v.trim() }]); setV(""); } }} />
+      </div>
+    </div>
+  );
+}
+
+// ── Achievements ──────────────────────────────────────────────────────────
+function AchievementsView({ s }: { s: State }) {
+  const prog = achievementProgress(s);
+  const unlockedCount = ACHIEVEMENTS.filter((a) => s.unlockedAchievements[a.id]).length;
+  const cats = ["discipline", "school", "build", "social", "level", "special"] as const;
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
+        <div className="serif" style={{ fontSize: 20 }}>Achievements</div>
+        <div style={{ fontSize: 12, color: T.inkTiny }}>{unlockedCount}/{ACHIEVEMENTS.length} earned</div>
+      </div>
+      {cats.map((cat) => {
+        const list = ACHIEVEMENTS.filter((a) => a.category === cat);
+        return (
+          <div key={cat} style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 11, letterSpacing: ".12em", textTransform: "uppercase", color: T.inkTiny, marginBottom: 8 }}>{cat}</div>
+            <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
+              {list.map((a) => {
+                const p = prog[a.id];
+                const unlocked = !!s.unlockedAchievements[a.id];
+                return (
+                  <div key={a.id} className={"mm-ach" + (unlocked ? " unlocked" : "")}>
+                    <div className="mm-medal">{unlocked ? "★" : "◇"}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <b style={{ fontSize: 13 }}>{a.title}</b>
+                      <div style={{ fontSize: 11, color: T.inkSoft, margin: "2px 0 5px" }}>{a.desc}</div>
+                      <div className="mm-progress" style={{ height: 8 }}><div className="mm-progress-fill" style={{ width: (p.need ? (p.have / p.need) * 100 : 0) + "%" }} /></div>
+                      <div style={{ fontSize: 10, color: T.inkTiny, marginTop: 3 }}>{p.have}/{p.need}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Levels / rewards ────────────────────────────────────────────────────────
+function LevelsView({ s }: { s: State }) {
+  const lv = levelInfo(s);
+  return (
+    <div style={{ maxWidth: 720, margin: "0 auto" }}>
+      <div className="serif" style={{ fontSize: 20, marginBottom: 6 }}>Level Track</div>
+      <div style={{ fontSize: 12, color: T.inkSoft, marginBottom: 16 }}>
+        20 levels on a steep curve — each level costs more than the last. Set a reward you'll actually give yourself at each one.
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {Array.from({ length: MAX_LEVEL }, (_, i) => i + 1).map((level) => {
+          const reached = lv.level >= level;
+          const need = cumulativeXp(level);
+          const reward = s.rewards.find((r) => r.level === level)?.reward ?? "";
+          return (
+            <div key={level} className="mm-card" style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 12, borderColor: reached ? T.mint : T.line, background: reached ? T.mint + "0d" : T.elev }}>
+              <div style={{ width: 40, textAlign: "center" }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: reached ? T.mint : T.inkTiny }}>{level}</div>
+              </div>
+              <div style={{ width: 130, fontSize: 11, color: T.inkTiny }}>
+                {need.toLocaleString()} XP{level < MAX_LEVEL ? <><br />+{levelStep(level).toLocaleString()} to next</> : <><br />max level</>}
+              </div>
+              <input style={{ flex: 1 }} placeholder="Reward for reaching this level…" value={reward} onChange={(e) => setReward(level, e.target.value)} />
+              {reached && <span className="mm-pill" style={{ background: T.mint, color: T.bg }}>Reached</span>}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
