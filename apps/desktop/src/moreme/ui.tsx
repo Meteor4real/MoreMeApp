@@ -186,7 +186,7 @@ function Header({ s, onReview }: { s: State; onReview: () => void }) {
       <div style={{ flex: 1, minWidth: 240 }}>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
           <b style={{ color: T.mint }}>Level {lv.level}{lv.isMax ? " · MAX" : ""}</b>
-          <span style={{ color: T.inkTiny }}>{lv.total.toLocaleString()} XP{lv.isMax ? "" : ` · ${lv.nextAt.toLocaleString()} to L${lv.level + 1}`}</span>
+          <span style={{ color: T.inkTiny }}>{lv.total.toLocaleString()} XP{lv.isMax ? "" : ` · ${Math.max(0, lv.nextAt - lv.total).toLocaleString()} to L${lv.level + 1}`}</span>
         </div>
         <div className="mm-progress"><div className="mm-progress-fill" style={{ width: pct + "%" }} /><div className="mm-progress-text">{pct}%</div></div>
       </div>

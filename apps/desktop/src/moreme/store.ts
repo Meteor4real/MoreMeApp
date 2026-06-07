@@ -127,11 +127,12 @@ export function gradeNumber(s: State = loadState(), at = new Date()): number {
 const ordinal = (n: number) => `${n}${n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th"}`;
 const seniorName = (g: number) => g === 9 ? "Freshman" : g === 10 ? "Sophomore" : g === 11 ? "Junior" : g === 12 ? "Senior" : "";
 
+const withName = (n: number) => { const name = seniorName(n); return name ? ` (${name})` : ""; };
 export function gradeLabel(s: State = loadState(), at = new Date()): string {
   const g = gradeStatus(s, at);
   if (g.kind === "alumnus") return `Alumnus · Class of ${g.graduatedYear}`;
-  if (g.kind === "school")  return `Grade ${g.grade} · ${ordinal(g.grade)} (${seniorName(g.grade)})`;
-  return `Summer · Going into ${ordinal(g.goingInto)} (${seniorName(g.goingInto)})`;
+  if (g.kind === "school")  return `Grade ${g.grade} · ${ordinal(g.grade)}${withName(g.grade)}`;
+  return `Summer · Going into ${ordinal(g.goingInto)}${withName(g.goingInto)}`;
 }
 
 export function schoolYearLabel(s: State = loadState(), at = new Date()): string {
@@ -832,8 +833,8 @@ function aggregate(s: State): Aggregates {
   let eventsLinkedToPeople = 0;
   for (const e of s.events) {
     if (e.people.length) eventsLinkedToPeople++;
-    if (e.category === "travel" && (e.location ?? "").toLowerCase().includes("heli")) {
-      if (isDone(e, e.date, s) || e.recurrence.kind === "none") helipad = true;
+    if (e.category === "travel" && (e.location ?? "").toLowerCase().includes("heli") && isDone(e, e.date, s)) {
+      helipad = true;
     }
     // single-occurrence completion checks
     const done = isDone(e, e.date, s);

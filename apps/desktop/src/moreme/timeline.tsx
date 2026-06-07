@@ -7,7 +7,7 @@ import { T } from "./styles";
 import { CATEGORY_META } from "./types";
 import type { CalEvent, State } from "./types";
 import {
-  blankEvent, conflictIds, eventsOnDate, fmtTime, isDone, toMin, toggleDone,
+  blankEvent, conflictIds, eventsOnDate, fmtTime, iso, isDone, toMin, today, toggleDone,
 } from "./store";
 
 const DAY_START = 6 * 60;     // 06:00
@@ -165,17 +165,16 @@ function weekDays(anchor: string): string[] {
   d0.setDate(d0.getDate() - d0.getDay()); // Sunday
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(d0); d.setDate(d0.getDate() + i);
-    return d.toISOString().slice(0, 10);
+    return iso(d); // tz-safe local date, consistent with the rest of the app
   });
 }
 
 function todayStr(): string {
-  const d = new Date();
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  return today();
 }
 
 export function shiftWeek(anchor: string, weeks: number): string {
   const d = new Date(anchor + "T00:00:00");
   d.setDate(d.getDate() + weeks * 7);
-  return d.toISOString().slice(0, 10);
+  return iso(d);
 }
