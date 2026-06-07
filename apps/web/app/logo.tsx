@@ -1,39 +1,25 @@
-// MoreMe wordmark — pure SVG so the download page has no PNG asset to ship.
-// A hexagonal mint sigil with a stylized "M" inside, plus the wordmark.
+// MoreMe wordmark — the real one: sun + mountain peaks + barbell on a mint
+// tile. Same mark that ships inside the app (apps/desktop/public/embedded/
+// moreme/icon-*.svg) so the download page and the installed app match.
 export function Logo({ size = 104 }: { size?: number }) {
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 120 120"
+      viewBox="0 0 192 192"
       role="img"
       aria-label="MoreMe"
       style={{ display: "block", filter: "drop-shadow(0 0 18px rgba(62,219,181,0.45))" }}
     >
-      <defs>
-        <linearGradient id="mm-grad" x1="0" y1="0" x2="120" y2="120">
-          <stop offset="0" stopColor="#7FEBD0" />
-          <stop offset="1" stopColor="#3EDBB5" />
-        </linearGradient>
-      </defs>
-      <rect x="4" y="4" width="112" height="112" rx="22" fill="#0F1318" stroke="url(#mm-grad)" strokeWidth="2.5" />
-      <path
-        d="M30 84 V40 L46 64 L62 40 V84"
-        fill="none"
-        stroke="url(#mm-grad)"
-        strokeWidth="6"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-      <path
-        d="M62 84 V40 L78 64 L94 40 V84"
-        fill="none"
-        stroke="url(#mm-grad)"
-        strokeWidth="6"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-        opacity="0.55"
-      />
+      <rect width="192" height="192" rx="36" fill="#00C896" />
+      <g transform="translate(0,6) scale(3)" stroke="#FFFFFF" fill="#FFFFFF">
+        <circle cx="32" cy="10" r="4" stroke="none" />
+        <path d="M6 52 L20 24 L32 42 L44 24 L58 52" fill="none" strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M6 56 L58 56" fill="none" strokeWidth={1.6} strokeLinecap="round" opacity={0.4} />
+        <path d="M22 58 L42 58" fill="none" strokeWidth={3} strokeLinecap="round" />
+        <circle cx="20" cy="58" r="3" stroke="none" />
+        <circle cx="44" cy="58" r="3" stroke="none" />
+      </g>
     </svg>
   );
 }
