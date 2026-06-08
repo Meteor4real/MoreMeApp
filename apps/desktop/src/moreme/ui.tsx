@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { T } from "./styles";
 import {
-  CATEGORY_META, CATEGORY_ORDER, MAX_LEVEL, cumulativeXp, levelStep,
+  CATEGORY_META, CATEGORY_ORDER, MAX_LEVEL, RANK_NAMES, cumulativeXp, levelStep,
 } from "./types";
 import type {
   CalEvent, Category, ChecklistItem, Class, Goal, InboxItem, Person, Priority,
@@ -185,8 +185,8 @@ function Header({ s, onReview }: { s: State; onReview: () => void }) {
       </div>
       <div style={{ flex: 1, minWidth: 240 }}>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
-          <b style={{ color: T.mint }}>Level {lv.level}{lv.isMax ? " · MAX" : ""}</b>
-          <span style={{ color: T.inkTiny }}>{lv.total.toLocaleString()} XP{lv.isMax ? "" : ` · ${Math.max(0, lv.nextAt - lv.total).toLocaleString()} to L${lv.level + 1}`}</span>
+          <b style={{ color: T.mint }}>Level {lv.level} · {RANK_NAMES[lv.level - 1] ?? ""}{lv.isMax ? " · MAX" : ""}</b>
+          <span style={{ color: T.inkTiny }}>{lv.total.toLocaleString()} XP{lv.isMax ? "" : ` · ${Math.max(0, lv.nextAt - lv.total).toLocaleString()} to L${lv.level + 1} (${RANK_NAMES[lv.level] ?? ""})`}</span>
         </div>
         <div className="mm-progress"><div className="mm-progress-fill" style={{ width: pct + "%" }} /><div className="mm-progress-text">{pct}%</div></div>
       </div>
@@ -918,8 +918,11 @@ function LevelsView({ s }: { s: State }) {
               <div style={{ width: 40, textAlign: "center" }}>
                 <div style={{ fontSize: 18, fontWeight: 800, color: reached ? T.mint : T.inkTiny }}>{level}</div>
               </div>
-              <div style={{ width: 130, fontSize: 11, color: T.inkTiny }}>
-                {need.toLocaleString()} XP{level < MAX_LEVEL ? <><br />+{levelStep(level).toLocaleString()} to next</> : <><br />max level</>}
+              <div style={{ width: 150 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: reached ? T.ink : T.inkSoft }}>{RANK_NAMES[level - 1]}</div>
+                <div style={{ fontSize: 10, color: T.inkTiny, marginTop: 2 }}>
+                  {need.toLocaleString()} XP{level < MAX_LEVEL ? ` · +${levelStep(level).toLocaleString()}` : " · max"}
+                </div>
               </div>
               <input style={{ flex: 1 }} placeholder="Reward for reaching this level…" value={reward} onChange={(e) => setReward(level, e.target.value)} />
               {reached && <span className="mm-pill" style={{ background: T.mint, color: T.bg }}>Reached</span>}
