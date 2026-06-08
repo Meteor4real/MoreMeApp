@@ -184,10 +184,11 @@ function seedGoals(): Goals {
     semester: [g("Stay a full week ahead in every class"), g("Launch a new venture"), g("Complete 3 personal projects")],
     year: [g("Known at Mount Vernon as focused and reliable"), g("Grow the businesses"), g("Run a mile without stopping")],
     identity: [
-      g("I am someone who shows up."),
-      g("I am someone who finishes what I start."),
-      g("I am someone who doesn't distract myself or others."),
-      g("I get my work done before it's even due."),
+      g("I show up."),
+      g("I finish what I start."),
+      g("I take responsibility."),
+      g("I don't distract myself or others."),
+      g("My work is done before it's due."),
     ],
   };
 }
@@ -882,36 +883,47 @@ function aggregate(s: State): Aggregates {
 }
 
 export const ACHIEVEMENTS: AchievementDef[] = [
-  { id: "first-step", title: "First Step", desc: "Complete any scheduled item.", category: "discipline", progress: (a) => [Math.min(a.completionCount, 1), 1] },
-  { id: "ahead-of-bell", title: "Ahead of the Bell", desc: "Finish something before its day even arrives.", category: "school", progress: (a) => [Math.min(a.aheadCompletions, 1), 1] },
-  { id: "week-ahead", title: "Week Ahead", desc: "Complete 5 future school items inside the next week.", category: "school", progress: (a) => [a.futureSchoolDone7, 5] },
-  { id: "month-ahead", title: "Month Ahead", desc: "Complete 15 future school items inside the next month.", category: "school", progress: (a) => [a.futureSchoolDone30, 15] },
-  { id: "iproject-marathon", title: "iProject Marathon", desc: "Complete a 3-hour iProject block.", category: "build", progress: (a) => [a.longIProjectDone ? 1 : 0, 1] },
-  { id: "helipad", title: "Helipad", desc: "Log a travel item that lands on the helipad.", category: "special", progress: (a) => [a.helipad ? 1 : 0, 1] },
-  { id: "arg-architect", title: "ARG Architect", desc: "Ship 3 Cosmos Crew ARG stages.", category: "build", progress: (a) => [a.argDone, 3] },
-  { id: "investor", title: "Investor", desc: "Complete a meeting with its prep checklist fully done.", category: "build", progress: (a) => [a.meetingPrepDone, 1] },
+  // Discipline — showing up, staying on it
+  { id: "first-step", title: "Showed Up", desc: "Complete anything you scheduled.", category: "discipline", progress: (a) => [Math.min(a.completionCount, 1), 1] },
   { id: "polymath", title: "Polymath", desc: "Complete items across 5 categories in one day.", category: "discipline", progress: (a) => [a.polymathMax, 5] },
-  { id: "mogul", title: "Mogul", desc: "Complete 10 business / venture items.", category: "build", progress: (a) => [a.ventureDone, 10] },
-  { id: "first-dollar", title: "First Dollar", desc: "Log revenue on a venture.", category: "build", progress: (a) => [a.empireLifetime > 0 ? 1 : 0, 1] },
-  { id: "five-figures", title: "Five Figures", desc: "Reach $10,000 in combined monthly revenue.", category: "build", progress: (a) => [Math.min(a.empireMRR, 10000), 10000] },
-  { id: "empire", title: "Empire", desc: "Run 3 live or scaling ventures at once.", category: "build", progress: (a) => [a.liveVentures, 3] },
-  { id: "quiet-quarter", title: "Quiet Quarter", desc: "7-day streak with zero logged distractions.", category: "discipline", progress: (a) => [a.quietStreak, 7] },
-  { id: "locked-in", title: "Locked In", desc: "30 distraction-free productive days, total.", category: "discipline", progress: (a) => [a.quietDays, 30] },
+  { id: "quiet-quarter", title: "Heads Down", desc: "7-day streak with zero logged distractions.", category: "discipline", progress: (a) => [a.quietStreak, 7] },
+  { id: "locked-in", title: "Phone Off", desc: "30 productive days with no distractions logged, total.", category: "discipline", progress: (a) => [a.quietDays, 30] },
   { id: "streak-3", title: "Three in a Row", desc: "3-day routine streak.", category: "discipline", progress: (a) => [a.streakBest, 3] },
   { id: "streak-7", title: "Week Lit", desc: "7-day routine streak.", category: "discipline", progress: (a) => [a.streakBest, 7] },
-  { id: "streak-30", title: "Locked Month", desc: "30-day routine streak.", category: "discipline", progress: (a) => [a.streakBest, 30] },
+  { id: "streak-30", title: "Lock-In · 30d", desc: "30-day routine streak.", category: "discipline", progress: (a) => [a.streakBest, 30] },
   { id: "early-bird", title: "Early Bird", desc: "Complete the morning routine 30 times.", category: "discipline", progress: (a) => [a.routineCounts["rt-morning"] ?? 0, 30] },
   { id: "sleep-pro", title: "Sleep Pro", desc: "Complete the bedtime routine 14 times.", category: "discipline", progress: (a) => [a.routineCounts["rt-bed"] ?? 0, 14] },
+  { id: "planner", title: "All Booked Up", desc: "Have 25 items on your calendar.", category: "discipline", progress: (a) => [a.totalEvents, 25] },
+
+  // School — the get-ahead superpower
+  { id: "ahead-of-bell", title: "Ahead of the Bell", desc: "Finish a school item before its day even arrives.", category: "school", progress: (a) => [Math.min(a.aheadCompletions, 1), 1] },
+  { id: "week-ahead", title: "A Week Up On You", desc: "Complete 5 future school items inside the next week.", category: "school", progress: (a) => [a.futureSchoolDone7, 5] },
+  { id: "month-ahead", title: "Already Doing Next Month", desc: "Complete 15 future school items inside the next month.", category: "school", progress: (a) => [a.futureSchoolDone30, 15] },
+
+  // Build — what you make, ship, and run
+  { id: "iproject-marathon", title: "Locked In", desc: "Complete a 3-hour iProject block in a single sitting.", category: "build", progress: (a) => [a.longIProjectDone ? 1 : 0, 1] },
+  { id: "arg-architect", title: "ARG Architect", desc: "Ship 3 Cosmos Crew ARG stages.", category: "build", progress: (a) => [a.argDone, 3] },
+  { id: "investor", title: "Walks In Prepared", desc: "Complete a meeting with its prep checklist fully done.", category: "build", progress: (a) => [a.meetingPrepDone, 1] },
   { id: "ship-it", title: "Shipped It", desc: "Complete a project.", category: "build", progress: (a) => [a.projectsDone, 1] },
-  { id: "trilogy", title: "Trilogy", desc: "Complete 3 projects.", category: "build", progress: (a) => [a.projectsDone, 3] },
+  { id: "trilogy", title: "Three Down", desc: "Complete 3 projects.", category: "build", progress: (a) => [a.projectsDone, 3] },
   { id: "mile-markers", title: "Mile Markers", desc: "Finish 10 project milestones.", category: "build", progress: (a) => [a.milestonesDone, 10] },
-  { id: "people-person", title: "People Person", desc: "Link 5 items to people in your circle.", category: "social", progress: (a) => [a.eventsLinkedToPeople, 5] },
-  { id: "announcer", title: "Announcer", desc: "Reveal a planned announcement to the school.", category: "social", progress: (a) => [a.announcementsRevealed, 1] },
-  { id: "planner", title: "Planner", desc: "Have 25 items on your calendar.", category: "discipline", progress: (a) => [a.totalEvents, 25] },
-  { id: "level-5", title: "Level 5", desc: "Reach level 5.", category: "level", progress: (a) => [a.level, 5] },
-  { id: "level-10", title: "Level 10", desc: "Reach level 10.", category: "level", progress: (a) => [a.level, 10] },
-  { id: "level-15", title: "Level 15", desc: "Reach level 15.", category: "level", progress: (a) => [a.level, 15] },
-  { id: "level-20", title: "Maxed", desc: "Reach level 20.", category: "level", progress: (a) => [a.level, 20] },
+  { id: "mogul", title: "Mogul", desc: "Complete 10 business / venture items.", category: "build", progress: (a) => [a.ventureDone, 10] },
+  { id: "first-dollar", title: "First Dollar", desc: "Log revenue on a venture for the first time.", category: "build", progress: (a) => [a.empireLifetime > 0 ? 1 : 0, 1] },
+  { id: "five-figures", title: "Five Figures", desc: "Reach $10,000 in combined monthly revenue.", category: "build", progress: (a) => [Math.min(a.empireMRR, 10000), 10000] },
+  { id: "empire", title: "Empire", desc: "Run 3 live or scaling ventures at once.", category: "build", progress: (a) => [a.liveVentures, 3] },
+
+  // Social — your reputation at school
+  { id: "people-person", title: "Knows Everyone", desc: "Link 5 items to people in your circle.", category: "social", progress: (a) => [a.eventsLinkedToPeople, 5] },
+  { id: "announcer", title: "Made It Official", desc: "Reveal a planned announcement to the school.", category: "social", progress: (a) => [a.announcementsRevealed, 1] },
+
+  // Level milestones — the rank ladder, big steps only
+  { id: "level-5", title: "Up the Ladder", desc: "Reach level 5 — Operator.", category: "level", progress: (a) => [a.level, 5] },
+  { id: "level-10", title: "Halfway", desc: "Reach level 10 — Tycoon.", category: "level", progress: (a) => [a.level, 10] },
+  { id: "level-15", title: "Top Floor", desc: "Reach level 15 — Titan.", category: "level", progress: (a) => [a.level, 15] },
+  { id: "level-20", title: "It's You", desc: "Reach level 20 — Davis.", category: "level", progress: (a) => [a.level, 20] },
+
+  // Special — story-easter-egg territory
+  { id: "helipad", title: "Helipad", desc: "Complete a travel item that lands on the helipad.", category: "special", progress: (a) => [a.helipad ? 1 : 0, 1] },
 ];
 
 export function achievementProgress(s: State = loadState()): Record<string, { have: number; need: number; done: boolean }> {

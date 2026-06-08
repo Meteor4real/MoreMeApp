@@ -174,6 +174,32 @@ export type State = {
 // 20 levels on a quadratic per-level cost curve. Each level is a real haul.
 export const MAX_LEVEL = 20;
 
+// Each level has a name — the climb from "showed up today" to "owns the
+// place." Mount Vernon-flavored for the Inquiry path + the businessman arc.
+// Level n ↔ RANK_NAMES[n-1].
+export const RANK_NAMES: readonly string[] = [
+  "Inquirer",        //  1 — showed up
+  "Always Ahead",    //  2 — finishes things early
+  "Maker",           //  3 — building stuff
+  "Founder",         //  4 — started a thing
+  "Operator",        //  5 — runs the thing
+  "Strategist",      //  6 — plays the long game
+  "Polymath",        //  7 — many fronts at once
+  "Architect",       //  8 — designs systems
+  "Magnate",         //  9 — moves real money
+  "Tycoon",          // 10 — halfway · serious money
+  "Mogul",           // 11
+  "Empire-Builder",  // 12
+  "Visionary",       // 13
+  "Powerhouse",      // 14
+  "Titan",           // 15
+  "Page Six",        // 16 — you're in the news
+  "Helipad Class",   // 17 — you arrive by helicopter
+  "Icon",            // 18
+  "Legend",          // 19
+  "Davis",           // 20 — the namesake. Top.
+];
+
 // XP required to advance FROM level n TO level n+1.
 export function levelStep(n: number): number {
   return 500 * n * n; // L1→L2 = 500, L2→L3 = 2,000, L5→L6 = 12,500 …
