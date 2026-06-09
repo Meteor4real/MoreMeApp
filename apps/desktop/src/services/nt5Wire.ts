@@ -10,13 +10,17 @@
 import { loadPrefs, subscribePrefs } from "../uiPrefs";
 import { getOriginPulse } from "./originRealms";
 import { ANCHORS as LORE_ANCHORS, loreContextBlock, STORYLINES } from "./nt5Lore";
+import {
+  enabledTopics, googleNewsUrl, redditUrl, parseGoogleNews, parseReddit,
+  type Topic, type TopicHit,
+} from "./nt5Topics";
 
 export type WireArticle = {
   id: string;
   slug: string;
   title: string;
   body: string;
-  category: string;        // "breaking" | "latest" | "earth_trending" | "gaming" | "space" | "cc_lore" | "culture" | "tech"
+  category: string;        // "breaking" | "field" | "earth_trending" | "gaming" | "space" | "cc_lore" | "culture" | "tech"
   anchor_id: string;       // "voss" | "zara" | "dex" | "lena" | "orin"
   author_display: string;
   published_at: string;    // ISO
@@ -24,7 +28,9 @@ export type WireArticle = {
   voice_audio_url: null;
   is_broadcast: false;
   broadcast_segment: null;
-  source_urls: [];
+  source_urls: string[];   // real article link(s); empty for in-universe lore items
+  source_name?: string;    // publisher / subreddit for attribution
+  topic_label?: string;    // which user topic produced it
   topics: string[];
 };
 
@@ -46,7 +52,9 @@ function readAll(): WireArticle[] {
     const raw = localStorage.getItem(KEY);
     if (!raw) return [];
     const arr = JSON.parse(raw) as WireArticle[];
-    return Array.isArray(arr) ? arr : [];
+    if (!Array.isArray(arr)) return [];
+    // Newest-first by publish time so the freshest real headlines lead.
+    return arr.slice().sort((a, b) => Date.parse(b.published_at) - Date.parse(a.published_at));
   } catch { return []; }
 }
 function writeAll(arts: WireArticle[]) {
@@ -205,73 +213,58 @@ function schedule(minutes: number) {
 }
 
 async function tryRun() {
+  // Real, realtime news on the user's topics is the MAIN event — pull it
+  // every tick regardless of whether the house model is ready (the snippet
+  // itself is real; the model only re-voices it when available).
+  await runRealWorldOnce(3).catch(() => undefined);
+  // A little in-universe Nova Terris flavor on top, only when the model's up.
   try {
     const s = await window.hub.llm.status();
-    if (!s.ready) return;
-    await runWireOnce(3);
-    // After every house-model run, also pull real-world headlines from a
-    // few public RSS feeds and convert them into anchor-voiced items.
-    // This is the "accurate reporting" path — the items reference real
-    // current events, just filed in the NT5 anchor's voice.
-    await runRealWorldOnce(2).catch(() => undefined);
+    if (s.ready) await runWireOnce(1).catch(() => undefined);
   } catch { /* ignore — wire stays quiet */ }
 }
 
 // ---------------------------------------------------------------------------
-// Real-world news source. Pulls a handful of public RSS feeds (Hacker News,
-// NASA, BBC tech, Ars), parses them, picks fresh headlines, and rewrites
-// each into a 2-sentence NT5-anchor brief. Items get filed with a sourceUrl
-// pointing back to the original article so they're verifiably real.
+// Real-world news engine — the heart of NT5. Walks the user's configured
+// topics (services/nt5Topics), fetches actual current headlines per topic
+// (Google News search for ANY query, Reddit for community pulse, or a direct
+// RSS feed), dedupes, and re-voices each into a tight anchor brief — keeping
+// the real source link + publisher for attribution. "Real, realtime news on
+// everything you set."
 // ---------------------------------------------------------------------------
 
-const REAL_FEEDS: { url: string; topic: string; anchor: string; category: string }[] = [
-  { url: "https://hnrss.org/frontpage?count=8",          topic: "tech / startups", anchor: "orin", category: "tech" },
-  { url: "https://www.nasa.gov/feed/",                   topic: "space",           anchor: "lena", category: "space" },
-  { url: "https://feeds.bbci.co.uk/news/technology/rss.xml", topic: "technology",  anchor: "orin", category: "tech" },
-  { url: "https://feeds.arstechnica.com/arstechnica/index/", topic: "deep tech",   anchor: "orin", category: "tech" },
-];
+async function fetchTopic(topic: Topic): Promise<TopicHit[]> {
+  let url: string;
+  if (topic.source === "reddit") url = redditUrl(topic.query);
+  else if (topic.source === "rss") url = topic.query.trim();
+  else url = googleNewsUrl(topic.query, topic.recency);
 
-type RealHit = { title: string; link: string; pubDate?: string; description?: string };
-
-function parseRss(xml: string): RealHit[] {
-  const out: RealHit[] = [];
-  const itemRe = /<item[^>]*>([\s\S]*?)<\/item>/g;
-  let m: RegExpExecArray | null;
-  while ((m = itemRe.exec(xml))) {
-    const block = m[1];
-    const pick = (tag: string) => {
-      const r = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`).exec(block);
-      if (!r) return "";
-      let v = r[1].trim();
-      const cdata = /<!\[CDATA\[([\s\S]*?)\]\]>/.exec(v);
-      if (cdata) v = cdata[1];
-      return v.replace(/<[^>]+>/g, "").trim();
-    };
-    const title = pick("title");
-    const link = pick("link");
-    if (!title || !link) continue;
-    out.push({ title, link, pubDate: pick("pubDate"), description: pick("description") });
-    if (out.length >= 6) break;
-  }
-  return out;
-}
-
-async function fetchFeed(url: string): Promise<RealHit[]> {
-  const r = await window.hub.net({ method: "GET", url, headers: { "User-Agent": "Mozilla/5.0 MoreMe" } });
+  const r = await window.hub.net({
+    method: "GET",
+    url,
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; NT5Wire/1.0; +https://moreme.app)" },
+  });
   if (!r.ok || typeof r.data !== "string") return [];
-  return parseRss(r.data);
+  if (topic.source === "reddit") return parseReddit(r.data);
+  return parseGoogleNews(r.data); // google-news + generic RSS share the <item> shape
 }
 
-export async function runRealWorldOnce(perFeed = 2): Promise<{ ok: boolean; added: WireArticle[]; error?: string }> {
+// `maxPerTopic` caps how many fresh items we re-voice per topic in one pass —
+// keeps a single refresh quick and the model from being hammered.
+export async function runRealWorldOnce(maxPerTopic = 3): Promise<{ ok: boolean; added: WireArticle[]; error?: string }> {
+  const topics = enabledTopics();
+  if (!topics.length) return { ok: true, added: [] };
   const existing = readAll();
   const existingTitles = new Set(existing.map((a) => a.title.toLowerCase()));
   const added: WireArticle[] = [];
-  for (const feed of REAL_FEEDS) {
-    let hits: RealHit[] = [];
-    try { hits = await fetchFeed(feed.url); } catch { continue; }
-    const fresh = hits.filter((h) => !existingTitles.has(h.title.toLowerCase())).slice(0, perFeed);
+  for (const topic of topics) {
+    let hits: TopicHit[] = [];
+    try { hits = await fetchTopic(topic); } catch { continue; }
+    const fresh = hits
+      .filter((h) => h.title && !existingTitles.has(h.title.toLowerCase()))
+      .slice(0, Math.min(topic.perPull, maxPerTopic));
     for (const h of fresh) {
-      const filed = await fileRealItem(feed.anchor, feed.category, h);
+      const filed = await fileRealItem(topic, h);
       if (filed) {
         added.push(filed);
         existingTitles.add(filed.title.toLowerCase());
@@ -279,9 +272,9 @@ export async function runRealWorldOnce(perFeed = 2): Promise<{ ok: boolean; adde
     }
   }
   if (added.length) {
-    const merged = [...added, ...existing].slice(0, 80);
+    const merged = [...added, ...existing].slice(0, 120);
     writeAll(merged);
-    subs.forEach((fn) => fn(merged));
+    subs.forEach((fn) => fn(readAll()));
     document.querySelectorAll("iframe").forEach((f) => {
       try { f.contentWindow?.postMessage({ type: "nt5-add-articles", articles: added }, "*"); } catch { /* ignore */ }
     });
@@ -289,37 +282,66 @@ export async function runRealWorldOnce(perFeed = 2): Promise<{ ok: boolean; adde
   return { ok: true, added };
 }
 
-// Take a real headline + snippet and rewrite it into a 2-sentence anchor
-// brief. Falls back to the original snippet if the model isn't available so
-// the item still lands as a real-world reference with its source link.
-async function fileRealItem(anchor: string, category: string, hit: RealHit): Promise<WireArticle | null> {
-  let body = (hit.description || "").slice(0, 320);
+// Pull a single topic on demand (the Topics manager "Pull now" button).
+export async function runTopicOnce(topic: Topic): Promise<{ ok: boolean; added: WireArticle[] }> {
+  const existing = readAll();
+  const existingTitles = new Set(existing.map((a) => a.title.toLowerCase()));
+  const added: WireArticle[] = [];
+  let hits: TopicHit[] = [];
+  try { hits = await fetchTopic(topic); } catch { return { ok: false, added: [] }; }
+  const fresh = hits.filter((h) => h.title && !existingTitles.has(h.title.toLowerCase())).slice(0, topic.perPull);
+  for (const h of fresh) {
+    const filed = await fileRealItem(topic, h);
+    if (filed) { added.push(filed); existingTitles.add(filed.title.toLowerCase()); }
+  }
+  if (added.length) {
+    const merged = [...added, ...existing].slice(0, 120);
+    writeAll(merged);
+    subs.forEach((fn) => fn(readAll()));
+  }
+  return { ok: true, added };
+}
+
+// Take a real headline + snippet and re-voice it into a tight 2-sentence
+// brief in the topic's anchor. Falls back to the cleaned snippet if the model
+// isn't ready so the item still lands as a real reference with its source.
+async function fileRealItem(topic: Topic, hit: TopicHit): Promise<WireArticle | null> {
+  const anchor = topic.anchor;
+  let body = (hit.description || "").slice(0, 360);
   try {
     const s = await window.hub.llm.status();
     if (s.ready) {
-      const sys = `You are NT5 anchor ${ANCHORS[anchor] || "Voss Calloway"}. Rewrite a real headline + snippet as a tight 2-sentence brief in your voice. No invented details — only what's in the snippet. End neutrally.`;
-      const u = `HEADLINE: ${hit.title}\nSNIPPET: ${hit.description || ""}\nWrite the brief now (2 sentences, no preamble, no markdown).`;
+      const a = LORE_ANCHORS[anchor] ?? LORE_ANCHORS.voss;
+      const sys =
+        `You are NT5 anchor ${a.name} (${a.role}). Voice: ${a.voice}\n` +
+        `Re-voice a REAL current headline + snippet into a tight 2-sentence brief ` +
+        `in your voice. Use ONLY facts present in the snippet — invent nothing. ` +
+        `Keep it accurate; this is real news. No preamble, no markdown.`;
+      const u = `TOPIC: ${topic.label}\nHEADLINE: ${hit.title}\nSNIPPET: ${hit.description || "(headline only)"}\nWrite the brief now.`;
       const r = await window.hub.llm.chat(sys, u);
       if (r.ok && r.text) body = r.text.trim().replace(/^["']|["']$/g, "");
     }
   } catch { /* keep snippet */ }
-  if (!body) return null;
+  if (!body) body = hit.title; // worst case, the headline itself
   const now = new Date(hit.pubDate ? Date.parse(hit.pubDate) : Date.now());
-  const id = `real-${now.getTime()}-${slugify(hit.title).slice(0, 12)}`;
+  const ts = isNaN(now.getTime()) ? Date.now() : now.getTime();
+  const id = `real-${ts}-${slugify(hit.title).slice(0, 12)}`;
   return {
     id,
     slug: slugify(hit.title) || id,
     title: hit.title,
     body,
-    category,
+    category: topic.category,
     anchor_id: anchor in ANCHORS ? anchor : "voss",
     author_display: ANCHORS[anchor] || ANCHORS.voss,
-    published_at: now.toISOString(),
-    created_at: now.toISOString(),
+    published_at: new Date(ts).toISOString(),
+    created_at: new Date().toISOString(),
     voice_audio_url: null,
     is_broadcast: false,
     broadcast_segment: null,
-    source_urls: [hit.link] as unknown as [],
-    topics: [],
+    source_urls: [hit.link],
+    source_name: hit.source,
+    topic_label: topic.label,
+    topics: [topic.label],
   };
 }

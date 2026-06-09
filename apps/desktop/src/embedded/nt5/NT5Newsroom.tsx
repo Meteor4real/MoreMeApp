@@ -15,6 +15,7 @@ const C = {
 
 const CAT_META: Record<string, { label: string; color: string }> = {
   breaking:        { label: "BREAKING",       color: "#ef4444" },
+  field:           { label: "FIELD",          color: "#f59e0b" },
   latest:          { label: "LATEST FILED",   color: "#d946ef" },
   space:           { label: "SPACE",          color: "#22d3ee" },
   gaming:          { label: "GAMING",         color: "#22c55e" },
@@ -25,11 +26,11 @@ const CAT_META: Record<string, { label: string; color: string }> = {
 };
 
 const ANCHORS = [
-  { id: "voss",  name: "Voss Calloway", beat: "Lead anchor / Breaking",            color: "#ef4444" },
-  { id: "lena",  name: "Lena Faust",    beat: "Field correspondent / Riftline",    color: "#f59e0b" },
-  { id: "orin",  name: "Orion Vale",    beat: "Space + Tech / Solaris",            color: "#22d3ee" },
-  { id: "dex",   name: "Dex Morrow",    beat: "Gaming + Origin Realms",            color: "#22c55e" },
-  { id: "zara",  name: "Zip Kindle",    beat: "Earth Trending / Culture",          color: "#ec4899" },
+  { id: "voss",  name: "Voss Calloway", beat: "Lead Anchor / Breaking",   color: "#FFB23E" },
+  { id: "lena",  name: "Lena Faust",    beat: "Field Reporter",           color: "#FF5C5F" },
+  { id: "orin",  name: "Orion Vale",    beat: "Tech & Space",             color: "#33B5FF" },
+  { id: "dex",   name: "Dex Morrow",    beat: "Gaming Desk",              color: "#3EDBB5" },
+  { id: "zara",  name: "Zip Kindle",    beat: "Culture / Earth Trending", color: "#FF7AA0" },
 ];
 
 const LAST_VISIT_KEY = "nchub.nt5.lastVisit.v1";
@@ -366,7 +367,10 @@ function RailCard({ article, color, onClick, bookmarked, onBookmark, reading, is
         </div>
       </div>
       <div style={{ fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" as const, overflow: "hidden" }}>{article.title}</div>
-      <div style={{ marginTop: 6, fontSize: 10, color: C.muted }}>{rel(Date.parse(article.published_at))}</div>
+      <div style={{ marginTop: 6, fontSize: 10, color: C.muted, display: "flex", gap: 6, alignItems: "center" }}>
+        <span>{rel(Date.parse(article.published_at))}</span>
+        {article.source_name && <><span style={{ opacity: 0.5 }}>·</span><span style={{ color: C.cyan, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{article.source_name}</span></>}
+      </div>
     </div>
   );
 }
@@ -434,8 +438,10 @@ function DetailModal({ article, onClose, bookmarked, onToggleBookmark, onReading
           <p style={{ marginTop: 14, color: C.ink, fontSize: 15, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{article.body}</p>
           {(article.source_urls || []).length > 0 && (
             <div style={{ marginTop: 18, padding: 12, background: "rgba(34,211,238,0.05)", border: `1px solid ${C.cyan}33`, borderRadius: 6 }}>
-              <div style={{ fontSize: 10, color: C.cyan, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 }}>Source</div>
-              {(article.source_urls as unknown as string[]).map((u, i) => (
+              <div style={{ fontSize: 10, color: C.cyan, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 }}>
+                Real source{article.source_name ? ` · ${article.source_name}` : ""}{article.topic_label ? ` · topic: ${article.topic_label}` : ""}
+              </div>
+              {(article.source_urls as string[]).map((u, i) => (
                 <a key={i} href={u} target="_blank" rel="noreferrer" style={{ display: "block", color: C.cyan, fontSize: 12, fontFamily: "ui-monospace,monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u}</a>
               ))}
             </div>
