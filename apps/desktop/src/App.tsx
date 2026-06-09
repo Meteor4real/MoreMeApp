@@ -6,6 +6,7 @@ import { NT5 } from "./embedded/NT5";
 import { applyAccent, loadAccent } from "./theme-accent";
 import { applyUiPrefs, loadPrefs } from "./uiPrefs";
 import { startWireScheduler } from "./services/nt5Wire";
+import { startDesk } from "./services/nt5Desk";
 import { startOriginPolling } from "./services/originRealms";
 import { startSync, stopSync } from "./moreme/sync";
 import { NT5AmbientTicker } from "./shell/NT5AmbientTicker";
@@ -22,8 +23,11 @@ export function App() {
   useEffect(() => {
     applyAccent(loadAccent());
     applyUiPrefs(loadPrefs());
-    // NT5 wire keeps generating fresh anchor articles while the app is open;
-    // Origin Realms pulse feeds the gaming desk. Both are self-contained.
+    // NT5: the per-anchor desk pulls real headlines for the user's topics on
+    // each anchor's own cadence, 24/7. The wire scheduler adds occasional
+    // in-universe Nova Terris flavor on top. Origin Realms pulse feeds the
+    // gaming desk's context.
+    startDesk();
     startWireScheduler();
     startOriginPolling();
     // The bundled local model powers the NT5 anchors — ensure it in the
