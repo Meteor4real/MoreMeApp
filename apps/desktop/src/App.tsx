@@ -8,6 +8,7 @@ import { applyUiPrefs, loadPrefs } from "./uiPrefs";
 import { startWireScheduler } from "./services/nt5Wire";
 import { startOriginPolling } from "./services/originRealms";
 import { startSync, stopSync } from "./moreme/sync";
+import { NT5AmbientTicker } from "./shell/NT5AmbientTicker";
 
 // The Hub is now exactly two things: MoreMe (the product) and NT5 News (the
 // bonus wire). No rail, no browser, no terminal, no AI crew — a focused
@@ -65,6 +66,10 @@ export function App() {
           Sign out
         </button>
       </header>
+
+      {/* Ambient layer: NT5 ticker visible across BOTH tabs so news lives at
+          the edge of attention. Click to jump to the Broadcast tab. */}
+      <NT5AmbientTicker onOpen={() => setTab("news")} />
 
       <main style={{ flex: 1, minHeight: 0, display: "flex" }}>
         {/* Both surfaces stay mounted so NT5's wire state and MoreMe's

@@ -9,6 +9,7 @@
 
 import { loadPrefs, subscribePrefs } from "../uiPrefs";
 import { getOriginPulse } from "./originRealms";
+import { ANCHORS as LORE_ANCHORS, loreContextBlock, STORYLINES } from "./nt5Lore";
 
 export type WireArticle = {
   id: string;
@@ -27,13 +28,16 @@ export type WireArticle = {
   topics: string[];
 };
 
-const ANCHORS: Record<string, string> = {
-  voss: "Voss Calloway", zara: "Zip Kindle", dex: "Dex Morrow", lena: "Lena Faust", orin: "Orion Vale",
-};
+// Display name lookup — kept thin; the full bible lives in nt5Lore.
+const ANCHORS: Record<string, string> = Object.fromEntries(
+  Object.values(LORE_ANCHORS).map((a) => [a.id, a.name]),
+);
 const slugify = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70);
 
 const KEY = "nt5wire.articles";
-const DEFAULT_TOPICS = ["Origin Realms", "Minecraft updates", "space + NASA", "AI", "viral creators", "gaming", "Antrosa Belt", "Azulbright telemetry"];
+// Topic seeds. Real-world threads + Nova Terris storylines mixed so every
+// batch has both an Earth hook and an in-universe through-line.
+const DEFAULT_TOPICS = ["Origin Realms", "Minecraft updates", "space + NASA", "AI", "viral creators", "gaming"];
 
 const subs = new Set<(arts: WireArticle[]) => void>();
 
@@ -59,16 +63,6 @@ export function subscribeWire(fn: (arts: WireArticle[]) => void): () => void {
   return () => subs.delete(fn);
 }
 
-// Per-anchor voice profiles — distinct cadence, vocabulary, and angle so the
-// wire stops reading same-y. The model gets these verbatim.
-const ANCHOR_VOICES =
-  "ANCHOR VOICES (match the assigned one precisely):\n" +
-  "- voss (lead/breaking): authoritative, declarative, short punchy sentences. Opens cold, no hedging. Gravitas.\n" +
-  "- zara (culture/earth_trending): warm, wry, conversational. Pop-culture literate, a light joke or aside. Human angle first.\n" +
-  "- dex (gaming): hype, fast, insider. Knows Minecraft/Origin Realms/Hypixel meta deeply. Numbers, patch notes, drama.\n" +
-  "- lena (field/breaking): on-the-ground urgency, present tense, sensory detail. 'Here at...', what she's seeing right now.\n" +
-  "- orin (space/tech): nerdy, precise, genuinely delighted by the science. Explains the why. One concrete spec or figure.";
-
 // Rotating story FORMATS so successive batches don't share one shape. A random
 // few are sampled into each prompt.
 const STORY_FORMATS = [
@@ -79,20 +73,32 @@ const STORY_FORMATS = [
   "a human-interest angle (one person/creator/player at the center)",
   "a 'what's next' forward-look (the implication or the next milestone)",
   "a contrast/then-vs-now framing",
+  "a field dispatch (Lena's beat — location + time + what she sees)",
   "a quick-hit brief (one tight sentence of fact + one of context)",
 ];
 
+// SYSTEM prompt is now grounded in the full lore bible — anchors with full
+// voice profiles + signatures + tells, places used as shared vocabulary,
+// corps + factions to reference, recurring storylines to advance. Coverage
+// reads like dispatches from one coherent world instead of generic copy.
 const SYSTEM =
-  "You are the NT5 (Nova Terris 5) wire desk for S.P.A.C.E. News — slick, " +
-  "professional sci-fi news, real (CNN in space). Write items about REAL " +
-  "current-world topics in the assigned anchor's voice.\n" +
-  ANCHOR_VOICES + "\n" +
-  "Categories: breaking, latest, earth_trending, gaming, space, tech, culture, cc_lore. " +
-  "Vary your headlines: NO two should share an opening word or sentence shape. Avoid the words " +
-  "'unveils', 'revolutionizes', 'game-changer'. Headlines are specific, not generic. " +
+  "You are the wire desk for NT5 (Nova Terris 5), the 5th channel of S.P.A.C.E. " +
+  "News. Slick, professional sci-fi cable news — play it straight, real-feeling. " +
+  "Pieces are 2-3 tight sentences each. Every piece MUST be in the assigned " +
+  "anchor's voice — match their cadence, tells, and signatures.\n\n" +
+  loreContextBlock() + "\n\n" +
+  "RULES:\n" +
+  "- The headline must be SPECIFIC. No 'unveils', 'revolutionizes', 'game-changer'.\n" +
+  "- No two headlines in a batch share an opening word or sentence shape.\n" +
+  "- Reference places/corps/factions/storylines from the bible above WITHOUT " +
+  "explaining them — this is the network's shared vocabulary.\n" +
+  "- Voss / Lena pieces lean into the bible's anchor signatures (opener phrasing, " +
+  "closing tag); Zip / Dex / Orin keep their tells.\n" +
+  "- Don't invent specific unverifiable Earth events. In-universe Nova Terris " +
+  "storylines can advance freely.\n" +
+  "- Categories: breaking, field, earth_trending, gaming, space, tech, culture, cc_lore.\n" +
   "Return ONLY a JSON array, no prose: " +
-  '[{"category","anchor_id","title","body"}]. Body = 2-3 tight sentences. ' +
-  "Do not invent specific unverifiable breaking claims; keep it plausible.";
+  '[{"category","anchor_id","title","body"}].';
 
 function parseItems(text: string): { category: string; anchor_id: string; title: string; body: string }[] {
   let t = text.trim().replace(/^```(json)?/i, "").replace(/```$/, "").trim();
@@ -130,9 +136,13 @@ export async function runWireOnce(count = 3): Promise<{ ok: boolean; added: Wire
   const avoidBlock = recentTitles.length
     ? `\nDo NOT repeat or lightly reword any of these recently-filed headlines:\n- ${recentTitles.join("\n- ")}`
     : "";
+  // Pick one or two recurring storylines to advance this batch — so coverage
+  // feels continuous, not memoryless.
+  const pickedStorylines = [...STORYLINES].sort(() => Math.random() - 0.5).slice(0, 2);
   const res = await window.hub.llm.chat(
     SYSTEM,
-    `Topics to weight, most important first: ${weighted.join(", ")}.${liveCtx}` +
+    `Earth topics to weight (real, current-world), most important first: ${weighted.join(", ")}.${liveCtx}` +
+    `\nNova Terris storylines to ADVANCE or REFERENCE in at least one item: ${pickedStorylines.map((s) => `\n- ${s}`).join("")}` +
     `\nUse a DIFFERENT story format for each item, drawn from: ${formats.join("; ")}.` +
     avoidBlock +
     `\nWrite ${count} fresh NT5 wire items now as JSON only.`,
