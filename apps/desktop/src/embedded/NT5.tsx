@@ -2,19 +2,19 @@ import { useState } from "react";
 import { NT5Studio } from "./NT5Studio";
 import { NT5Newsroom } from "./nt5/NT5Newsroom";
 import { NT5Broadcast } from "./nt5/NT5Broadcast";
+import { NT5TopicsManager } from "./nt5/NT5TopicsManager";
 import { NT5_TAGLINE } from "../services/nt5Lore";
 
 // NT5 / S.P.A.C.E. News — modes the user picks per moment:
 //   Broadcast — turn-on-the-TV mode. Anchor card, lower-third, body
-//     highlighted along with the read-aloud, auto-advances to the next
-//     story. The default surface.
-//   Newsroom — read mode. Slick wire reader: hero, category rails, ticker
-//     crawl, anchor roster, search, native article detail.
-//   Backstage — broadcast authoring tool (Pexels clips / saved scenes / title
-//     cards on a timeline). Kept behind a small link — it's a power tool, not
-//     the main experience.
+//     highlighted along with the read-aloud, auto-advances to the next story.
+//   Newsroom — read mode. Slick wire reader: hero, rails, ticker, search,
+//     native article detail with the real source link.
+//   Topics — the news desk: the user's configurable topics. NT5 pulls real
+//     current headlines for each and re-voices them. The control room.
+//   Backstage — broadcast authoring tool. A power tool, tucked away.
 
-type Tab = "broadcast" | "newsroom" | "backstage";
+type Tab = "broadcast" | "newsroom" | "topics" | "backstage";
 
 export function NT5() {
   const [tab, setTab] = useState<Tab>("broadcast");
@@ -23,6 +23,7 @@ export function NT5() {
       <NT5Header tab={tab} onTab={setTab} />
       {tab === "broadcast" && <NT5Broadcast />}
       {tab === "newsroom" && <NT5Newsroom />}
+      {tab === "topics" && <NT5TopicsManager />}
       {tab === "backstage" && <NT5Studio />}
     </div>
   );
@@ -77,7 +78,7 @@ function NT5Header({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
       </div>
       <div style={{ flex: 1 }} />
       <div style={{ display: "flex", gap: 6, marginRight: 10 }}>
-        {(["broadcast", "newsroom", "backstage"] as const).map((t) => (
+        {(["broadcast", "newsroom", "topics", "backstage"] as const).map((t) => (
           <button
             key={t}
             onClick={() => onTab(t)}
