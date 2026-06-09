@@ -1,36 +1,29 @@
 import { useState } from "react";
-import { NT5Broadcast } from "../shell/NT5Broadcast";
 import { NT5Studio } from "./NT5Studio";
 import { NT5Newsroom } from "./nt5/NT5Newsroom";
+import { NT5Broadcast } from "./nt5/NT5Broadcast";
+import { NT5_TAGLINE } from "../services/nt5Lore";
 
-// Embedded NT5. Three native tabs:
-//   Newsroom — the live wire as a slick control surface (hero, category rails,
-//     ticker crawl, anchor roster, search/filter, native article detail with
-//     read-aloud via the bundled voice service, and a teleprompter "go live").
-//   Wire — the bundled NT5 static site in an iframe, with the broadcast bar.
-//     (Kept as a true carbon-copy view of the offline site.)
-//   Studio — the broadcast authoring tool. Composes from Pexels clips, local
-//     files, saved DigitalBlueprint scenes, and title cards onto a timeline.
+// NT5 / S.P.A.C.E. News — modes the user picks per moment:
+//   Broadcast — turn-on-the-TV mode. Anchor card, lower-third, body
+//     highlighted along with the read-aloud, auto-advances to the next
+//     story. The default surface.
+//   Newsroom — read mode. Slick wire reader: hero, category rails, ticker
+//     crawl, anchor roster, search, native article detail.
+//   Backstage — broadcast authoring tool (Pexels clips / saved scenes / title
+//     cards on a timeline). Kept behind a small link — it's a power tool, not
+//     the main experience.
 
-type Tab = "newsroom" | "wire" | "studio";
+type Tab = "broadcast" | "newsroom" | "backstage";
 
 export function NT5() {
-  const [tab, setTab] = useState<Tab>("newsroom");
+  const [tab, setTab] = useState<Tab>("broadcast");
   return (
     <div className="stage" style={{ background: "#05050d", padding: 0, display: "flex", flexDirection: "column" }}>
       <NT5Header tab={tab} onTab={setTab} />
+      {tab === "broadcast" && <NT5Broadcast />}
       {tab === "newsroom" && <NT5Newsroom />}
-      {tab === "wire" && (
-        <>
-          <NT5Broadcast />
-          <iframe
-            title="NT5 — S.P.A.C.E. News"
-            src="embedded/nt5/index.html"
-            style={{ flex: 1, width: "100%", border: "none", display: "block" }}
-          />
-        </>
-      )}
-      {tab === "studio" && <NT5Studio />}
+      {tab === "backstage" && <NT5Studio />}
     </div>
   );
 }
@@ -79,12 +72,12 @@ function NT5Header({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
           S.P.A.C.E. NEWS
         </div>
         <div style={{ fontFamily: "'JetBrains Mono','Chakra Petch',monospace", fontSize: 10, letterSpacing: 3, textTransform: "uppercase", color: "#22d3ee", marginTop: 2 }}>
-          NT5 · NOVA TERRIS 5 · UNIFIED WIRE · 24/7
+          {NT5_TAGLINE} · 24/7
         </div>
       </div>
       <div style={{ flex: 1 }} />
       <div style={{ display: "flex", gap: 6, marginRight: 10 }}>
-        {(["newsroom", "wire", "studio"] as const).map((t) => (
+        {(["broadcast", "newsroom", "backstage"] as const).map((t) => (
           <button
             key={t}
             onClick={() => onTab(t)}
