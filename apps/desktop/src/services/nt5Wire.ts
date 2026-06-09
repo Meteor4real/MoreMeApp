@@ -213,11 +213,10 @@ function schedule(minutes: number) {
 }
 
 async function tryRun() {
-  // Real, realtime news on the user's topics is the MAIN event — pull it
-  // every tick regardless of whether the house model is ready (the snippet
-  // itself is real; the model only re-voices it when available).
-  await runRealWorldOnce(3).catch(() => undefined);
-  // A little in-universe Nova Terris flavor on top, only when the model's up.
+  // Real, realtime news is handled per-anchor by the autonomous desk
+  // (services/nt5Desk). This timer just adds one in-universe Nova Terris
+  // flavor item when the local model is ready, so the wire has some setting
+  // colour on top of the real news the desk files.
   try {
     const s = await window.hub.llm.status();
     if (s.ready) await runWireOnce(1).catch(() => undefined);
