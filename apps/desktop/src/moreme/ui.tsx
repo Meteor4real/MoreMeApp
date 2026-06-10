@@ -5,10 +5,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { T } from "./styles";
 import {
-  CATEGORY_META, CATEGORY_ORDER, MAX_LEVEL, RANK_NAMES, cumulativeXp, levelStep,
+  CATEGORY_META, CATEGORY_ORDER, HELP_KINDS, HELP_KIND_LABEL, MAX_LEVEL, RANK_NAMES, cumulativeXp, levelStep,
 } from "./types";
 import type {
-  CalEvent, Category, ChecklistItem, Class, Goal, InboxItem, Person, Priority,
+  CalEvent, Category, ChecklistItem, Class, Goal, HelpKind, InboxItem, Person, Priority,
   Project, ProjectKind, Recurrence, SchoolPath, State, Visibility,
 } from "./types";
 import {
@@ -27,13 +27,14 @@ import { EmpireView } from "./empire";
 import { InsightsView } from "./insights";
 import { WeeklyReview } from "./review";
 import { PlansView } from "./plans";
+import { ScreensView, ScreenCardToday, LogSessionModal, UrgeModal } from "./screens";
 import { generateClassPeriods, clearClassPeriods, setClassPeriod } from "./store";
 import { pullOnce, pushOnce, subscribeSync, type SyncStatus } from "./sync";
 
-type Tab = "today" | "ahead" | "calendar" | "empire" | "projects" | "plans" | "goals" | "achievements" | "insights" | "levels";
+type Tab = "today" | "ahead" | "calendar" | "screens" | "empire" | "projects" | "plans" | "goals" | "achievements" | "insights" | "levels";
 type CalMode = "month" | "week" | "day";
 const TAB_LABELS: Record<Tab, string> = {
-  today: "today", ahead: "get ahead", calendar: "calendar", empire: "empire",
+  today: "today", ahead: "get ahead", calendar: "calendar", screens: "screens", empire: "empire",
   projects: "projects", plans: "plans", goals: "goals", achievements: "achievements",
   insights: "insights", levels: "levels",
 };
@@ -50,7 +51,7 @@ export function MoreMeUI() {
   const [editing, setEditing] = useState<CalEvent | null>(null);
   const [review, setReview] = useState(false);
 
-  const tabs: Tab[] = ["today", "ahead", "calendar", "empire", "projects", "plans", "goals", "achievements", "insights", "levels"];
+  const tabs: Tab[] = ["today", "ahead", "calendar", "screens", "empire", "projects", "plans", "goals", "achievements", "insights", "levels"];
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", position: "relative" }}>
@@ -65,6 +66,7 @@ export function MoreMeUI() {
         {tab === "today" && <TodayView s={s} onEdit={setEditing} />}
         {tab === "ahead" && <GetAheadView s={s} onEdit={setEditing} />}
         {tab === "calendar" && <CalendarView s={s} onEdit={setEditing} />}
+        {tab === "screens" && <ScreensView s={s} />}
         {tab === "empire" && <EmpireView s={s} />}
         {tab === "projects" && <ProjectsView s={s} />}
         {tab === "plans" && <PlansView s={s} />}
@@ -276,6 +278,7 @@ function TodayView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }) {
   const dists = distractionsOn(date, s);
   const conflicts = conflictIds(date, s);
   const upcoming = upcomingWithReminders(s);
+  const [screenModal, setScreenModal] = useState<"log" | "urge" | null>(null);
 
   return (
     <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr", maxWidth: 760, margin: "0 auto" }}>
@@ -310,6 +313,8 @@ function TodayView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }) {
         </div>
       )}
 
+      <ScreenCardToday s={s} onOpenLog={() => setScreenModal("log")} onOpenUrge={() => setScreenModal("urge")} />
+
       {s.inbox.length > 0 && (
         <Section title={`Inbox · ${s.inbox.length} to triage`}>
           {s.inbox.map((it) => <InboxRow key={it.id} item={it} onEdit={onEdit} />)}
@@ -340,6 +345,9 @@ function TodayView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }) {
         )}
         <DistractionAdder />
       </Section>
+
+      {screenModal === "log" && <LogSessionModal onClose={() => setScreenModal(null)} />}
+      {screenModal === "urge" && <UrgeModal s={s} onClose={() => setScreenModal(null)} />}
     </div>
   );
 }
@@ -600,6 +608,35 @@ function EventEditor({ s, draft, onClose }: { s: State; draft: CalEvent; onClose
           <Field label="Sub-tasks">
             <ChecklistEditor items={e.checklist} onChange={(items) => set("checklist", items)} />
           </Field>
+
+          {e.category === "school" && (
+            <div style={{ padding: 12, background: T.sunk, border: `1px dashed ${T.mint}55`, borderRadius: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: T.mint }}>
+                Honesty log
+              </div>
+              <div style={{ fontSize: 11, color: T.inkSoft, lineHeight: 1.5 }}>
+                Just for you. No judgment, no nags — just the mirror.
+              </div>
+              <div className="mm-row" style={{ alignItems: "flex-end", flexWrap: "wrap" }}>
+                <Field label="Prepared">
+                  <div className="mm-seg">
+                    <button className={e.prepared ? "on" : ""} onClick={() => set("prepared", true)}>I read first</button>
+                    <button className={e.prepared === false ? "on" : ""} onClick={() => set("prepared", false)}>Dove in</button>
+                    <button className={e.prepared == null ? "on" : ""} onClick={() => set("prepared", undefined)}>—</button>
+                  </div>
+                </Field>
+                <Field label="Help used">
+                  <select value={e.helpUsed ?? ""} onChange={(ev) => set("helpUsed", (ev.target.value || undefined) as HelpKind | undefined)}>
+                    <option value="">—</option>
+                    {HELP_KINDS.map((k) => <option key={k} value={k}>{HELP_KIND_LABEL[k]}</option>)}
+                  </select>
+                </Field>
+              </div>
+              <Field label="One thing you learned (optional)">
+                <input value={e.learned ?? ""} placeholder="What stuck?" onChange={(ev) => set("learned", ev.target.value || undefined)} />
+              </Field>
+            </div>
+          )}
 
           <Field label="Notes"><textarea rows={2} value={e.notes ?? ""} onChange={(ev) => set("notes", ev.target.value)} /></Field>
 
