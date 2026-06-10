@@ -4,12 +4,13 @@
 
 import type {
   CalEvent, Category, Class, ClassPeriod, DistractionLog, Goal, Goals, InboxItem,
-  LevelReward, Note, Person, Project, ProjectKind, School, SchoolPath, State,
+  LevelReward, Note, Person, Project, ProjectKind, Replacement, School, SchoolPath,
+  ScreenCategory, ScreenSession, ScreenSettings, State, UrgeLog, UrgeResolution,
   Venture, VentureStatus,
 } from "./types";
 import { MAX_LEVEL, cumulativeXp } from "./types";
 
-const KEY = "nchub.moreme.v9";
+const KEY = "nchub.moreme.v10";
 
 // Current YYYY-MM month key (for venture revenue).
 export const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -189,7 +190,39 @@ function seedGoals(): Goals {
       g("I take responsibility."),
       g("I don't distract myself or others."),
       g("My work is done before it's due."),
+      g("I earn my screen time."),
+      g("The phone goes away first."),
+      g("I do my own work."),
+      g("I read first, then I do."),
     ],
+  };
+}
+
+// Default replacement drawer — the alternatives shown when an urge hits.
+// Short and physical on purpose: the urge dies fastest if you do something
+// with your body for two minutes. Edit / add your own in Screens → Settings.
+function seedReplacements(): Replacement[] {
+  return [
+    { id: uid(), label: "20 push-ups",               minutes: 2 },
+    { id: uid(), label: "Walk around the block",     minutes: 10 },
+    { id: uid(), label: "Water + snack",             minutes: 5 },
+    { id: uid(), label: "Four deep breaths",         minutes: 1 },
+    { id: uid(), label: "Read 5 pages",              minutes: 10 },
+    { id: uid(), label: "Stretch for 5 minutes",     minutes: 5 },
+    { id: uid(), label: "Sketch one thing",          minutes: 10 },
+    { id: uid(), label: "Write what's on your mind", minutes: 5 },
+  ];
+}
+
+function seedScreenSettings(): ScreenSettings {
+  return {
+    // Generous on purpose. Lower it once you trust the system; nothing
+    // about a punitive starting cap helps when you're trying to befriend it.
+    baseBudgetMinutes: 240,        // 4h base
+    bonusPerRoutineMinutes: 20,    // +20 per routine you complete today
+    capBudgetMinutes: 360,         // 6h ceiling, even with every routine done
+    awardXpPerUrgeResisted: 25,    // resisting is real work; XP it
+    // No default window — pre-commit one when you're ready.
   };
 }
 
@@ -205,7 +238,7 @@ function seedVentures(): Venture[] {
 function seedState(): State {
   const start = today();
   return {
-    schemaVersion: 9,
+    schemaVersion: 10,
     notes: [],
     school: seedSchool(),
     events: seedRoutines(start),
@@ -227,6 +260,10 @@ function seedState(): State {
     classes: seedClasses(),
     goals: seedGoals(),
     distractions: [],
+    screenSessions: [],
+    urges: [],
+    replacements: seedReplacements(),
+    screen: seedScreenSettings(),
     rewards: Array.from({ length: MAX_LEVEL }, (_, i) => ({ level: i + 1, reward: "" })),
     unlockedAchievements: {},
     startedAt: Date.now(),
@@ -245,7 +282,7 @@ export function loadState(): State {
       const p = JSON.parse(raw) as Partial<State>;
       const d = seedState();
       cache = {
-        schemaVersion: 9,
+        schemaVersion: 10,
         school: p.school ?? d.school,
         events: p.events ?? d.events,
         completions: p.completions ?? {},
@@ -257,6 +294,12 @@ export function loadState(): State {
         classes: p.classes ?? d.classes,
         goals: { ...d.goals, ...(p.goals ?? {}) },
         distractions: p.distractions ?? [],
+        screenSessions: p.screenSessions ?? [],
+        urges: p.urges ?? [],
+        // Existing installs without a replacement drawer get the default
+        // seeded list so the urge button has somewhere to send them.
+        replacements: p.replacements && p.replacements.length > 0 ? p.replacements : d.replacements,
+        screen: { ...d.screen, ...(p.screen ?? {}) },
         rewards: p.rewards && p.rewards.length === MAX_LEVEL ? p.rewards : d.rewards,
         unlockedAchievements: p.unlockedAchievements ?? {},
         startedAt: p.startedAt ?? Date.now(),
@@ -346,6 +389,9 @@ export function totalXp(s: State = loadState()): number {
     total += p.milestones.filter((m) => m.done).length * 30;
     if (p.status === "done") total += 100;
   }
+  // Resisting an urge is real, hard work — credit it. Configurable per user.
+  const resisted = s.urges.filter((u) => u.resolution === "resisted").length;
+  total += resisted * Math.max(0, s.screen.awardXpPerUrgeResisted);
   return Math.max(0, total);
 }
 
@@ -740,6 +786,159 @@ export function dueReminders(s: State = loadState(), at = new Date()): DueRemind
   return out;
 }
 
+// ── screens (training, never nagging) ──────────────────────────────────────
+// Honest mirror. The system reflects, doesn't lecture. The user is the only
+// enforcer of any of this; achievements celebrate resistance and routines-
+// first, never punish over-budget days.
+
+export function setScreenSettings(patch: Partial<ScreenSettings>) {
+  updateState((s) => ({ ...s, screen: { ...s.screen, ...patch } }));
+}
+
+// Minutes for a single session — explicit > computed-from-times > running.
+export function computeSessionMinutes(x: ScreenSession, now: number = Date.now()): number {
+  if (x.minutes != null) return Math.max(0, Math.round(x.minutes));
+  if (x.endedAt != null) return Math.max(0, Math.round((x.endedAt - x.startedAt) / 60_000));
+  return Math.max(0, Math.round((now - x.startedAt) / 60_000));
+}
+
+export function screenSessionsOn(date: string, s: State = loadState()): ScreenSession[] {
+  return s.screenSessions
+    .filter((x) => x.date === date)
+    .slice()
+    .sort((a, b) => b.startedAt - a.startedAt);
+}
+
+export function screenMinutesOn(date: string, s: State = loadState(), now: number = Date.now()): number {
+  return s.screenSessions
+    .filter((x) => x.date === date)
+    .reduce((n, x) => n + computeSessionMinutes(x, now), 0);
+}
+
+export function activeScreenSession(s: State = loadState()): ScreenSession | undefined {
+  return s.screenSessions.find((x) => x.endedAt == null && x.minutes == null);
+}
+
+// Earned budget for a date: base + bonus×(routines completed that day),
+// capped. The "I earned this" framing — you do the things you'd skip, you
+// expand your screen window. Skip them, you have the base only.
+export type Budget = { base: number; bonus: number; total: number; routinesDone: number; routinesPossible: number };
+export function earnedBudgetOn(date: string, s: State = loadState()): Budget {
+  const base = s.screen.baseBudgetMinutes;
+  const routines = eventsOnDate(date, s).filter((e) => e.category === "routine");
+  const possible = routines.length;
+  const done = routines.filter((e) => isDone(e, date, s)).length;
+  const bonus = done * s.screen.bonusPerRoutineMinutes;
+  const total = Math.min(s.screen.capBudgetMinutes, base + bonus);
+  return { base, bonus, total, routinesDone: done, routinesPossible: possible };
+}
+
+// Pre-committed screens window — handles overnight ranges (e.g. 22:00→02:00).
+export function isInWindow(s: State = loadState(), at: Date = new Date()): boolean | null {
+  const { windowStart, windowEnd } = s.screen;
+  if (!windowStart || !windowEnd) return null;
+  const m = at.getHours() * 60 + at.getMinutes();
+  const a = toMin(windowStart), b = toMin(windowEnd);
+  return a <= b ? m >= a && m <= b : m >= a || m <= b;
+}
+
+export function startScreenSession(category: ScreenCategory, what: string, note?: string): ScreenSession {
+  // Stop any currently-running session before starting a new one — only one
+  // can be live at a time, otherwise minute math gets weird.
+  const live = activeScreenSession();
+  if (live) stopScreenSession(live.id);
+  const now = Date.now();
+  const x: ScreenSession = {
+    id: uid(), date: today(), startedAt: now,
+    category, what: what.trim() || "screens", note: note?.trim() || undefined,
+  };
+  updateState((s) => ({ ...s, screenSessions: [...s.screenSessions, x] }));
+  refreshAchievements();
+  return x;
+}
+
+export function stopScreenSession(id: string) {
+  updateState((s) => ({
+    ...s,
+    screenSessions: s.screenSessions.map((x) =>
+      x.id === id && x.endedAt == null ? { ...x, endedAt: Date.now() } : x
+    ),
+  }));
+  refreshAchievements();
+}
+
+// Quick after-the-fact log — pick category, name it, how long. The act of
+// logging IS the awareness.
+export function logScreenSession(category: ScreenCategory, what: string, minutes: number, note?: string, onDate?: string): ScreenSession {
+  const date = onDate ?? today();
+  const startedAt = Date.parse(date + "T12:00:00") || Date.now();
+  const x: ScreenSession = {
+    id: uid(), date, startedAt,
+    endedAt: startedAt + minutes * 60_000,
+    minutes: Math.max(0, Math.round(minutes)),
+    category, what: what.trim() || "screens", note: note?.trim() || undefined,
+  };
+  updateState((s) => ({ ...s, screenSessions: [...s.screenSessions, x] }));
+  refreshAchievements();
+  return x;
+}
+
+export function updateScreenSession(id: string, patch: Partial<ScreenSession>) {
+  updateState((s) => ({
+    ...s,
+    screenSessions: s.screenSessions.map((x) => (x.id === id ? { ...x, ...patch } : x)),
+  }));
+  refreshAchievements();
+}
+
+export function removeScreenSession(id: string) {
+  updateState((s) => ({ ...s, screenSessions: s.screenSessions.filter((x) => x.id !== id) }));
+  refreshAchievements();
+}
+
+// First screen session time of a date (minutes since midnight) — drives the
+// "routine before phone" achievement.
+function firstSessionMinuteOn(date: string, s: State): number | null {
+  const sess = s.screenSessions.filter((x) => x.date === date);
+  if (!sess.length) return null;
+  const first = sess.reduce((a, b) => (a.startedAt < b.startedAt ? a : b));
+  const d = new Date(first.startedAt);
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+// ── urges (felt-it, beat-it) ──────────────────────────────────────────────
+export function logUrge(args: { what?: string; resolution: UrgeResolution; replacement?: string; note?: string }): UrgeLog {
+  const u: UrgeLog = {
+    id: uid(), date: today(), ts: Date.now(),
+    what: args.what?.trim() || undefined,
+    resolution: args.resolution,
+    replacement: args.replacement?.trim() || undefined,
+    note: args.note?.trim() || undefined,
+  };
+  updateState((s) => ({ ...s, urges: [...s.urges, u] }));
+  refreshAchievements();
+  return u;
+}
+export function removeUrge(id: string) {
+  updateState((s) => ({ ...s, urges: s.urges.filter((u) => u.id !== id) }));
+  refreshAchievements();
+}
+export function urgesOn(date: string, s: State = loadState()): UrgeLog[] {
+  return s.urges.filter((u) => u.date === date);
+}
+
+// ── replacement drawer ────────────────────────────────────────────────────
+export function addReplacement(label: string, minutes: number) {
+  const r: Replacement = { id: uid(), label: label.trim() || "Do something else", minutes: Math.max(1, Math.round(minutes)) };
+  updateState((s) => ({ ...s, replacements: [...s.replacements, r] }));
+}
+export function updateReplacement(id: string, patch: Partial<Replacement>) {
+  updateState((s) => ({ ...s, replacements: s.replacements.map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
+}
+export function removeReplacement(id: string) {
+  updateState((s) => ({ ...s, replacements: s.replacements.filter((r) => r.id !== id) }));
+}
+
 // ── people ──────────────────────────────────────────────────────────────
 export function upsertPerson(p: Person) {
   updateState((s) => ({
@@ -806,6 +1005,19 @@ type Aggregates = {
   empireMRR: number;
   empireLifetime: number;
   liveVentures: number;
+  // ── screens ───────────────────────────────────────────────────────────
+  screenSessionsLogged: number;
+  daysUnderBudget: number;         // days with sessions, all-day total ≤ earned budget
+  underBudgetStreak: number;       // longest run of consecutive under-budget days
+  urgesLogged: number;
+  urgesResisted: number;
+  daysAllSessionsInWindow: number; // days with ≥1 session, ALL inside pre-committed window
+  routineFirstDays: number;        // days morning routine completed before first session
+  earnedItDays: number;            // days with ≥1 routine done AND under budget
+  // ── school integrity ──────────────────────────────────────────────────
+  schoolPrepared: number;          // completed school items with prepared=true
+  schoolAllYours: number;          // completed school items with helpUsed === "none"
+  schoolHonestlyLogged: number;    // completed school items with helpUsed set (any value)
 };
 
 function aggregate(s: State): Aggregates {
@@ -870,6 +1082,58 @@ function aggregate(s: State): Aggregates {
   const projectsDone = s.projects.filter((p) => p.status === "done").length;
   const { current, best } = streakInfo(s);
 
+  // ── screen aggregations ─────────────────────────────────────────────
+  // Collect every date that has at least one session or one urge — the
+  // achievement math considers a day only when there was activity to judge.
+  const screenDates = new Set<string>();
+  for (const x of s.screenSessions) screenDates.add(x.date);
+  const sortedScreenDates = [...screenDates].sort();
+  let daysUnderBudget = 0, daysAllSessionsInWindow = 0, routineFirstDays = 0, earnedItDays = 0;
+  for (const d of sortedScreenDates) {
+    const used = screenMinutesOn(d, s);
+    const budget = earnedBudgetOn(d, s);
+    if (used <= budget.total) daysUnderBudget++;
+    if (budget.routinesDone > 0 && used <= budget.total) earnedItDays++;
+    // window: must have a configured window AND every session of that day must
+    // have started within it
+    if (s.screen.windowStart && s.screen.windowEnd) {
+      const sess = s.screenSessions.filter((x) => x.date === d);
+      const allIn = sess.length > 0 && sess.every((x) => isInWindow(s, new Date(x.startedAt)) === true);
+      if (allIn) daysAllSessionsInWindow++;
+    }
+    // routine before phone: morning routine done that day, and its completion
+    // ts is before the first screen-session minute of the day
+    const morningCompletedTs = s.completions[`rt-morning::${d}`];
+    if (morningCompletedTs) {
+      const mDate = new Date(morningCompletedTs);
+      const m = mDate.getHours() * 60 + mDate.getMinutes();
+      const first = firstSessionMinuteOn(d, s);
+      if (first == null || m < first) routineFirstDays++;
+    }
+  }
+  // Under-budget streak — consecutive days with sessions where total ≤ budget.
+  let underBudgetStreak = 0, runUb = 0, prevUb = "";
+  for (const d of sortedScreenDates) {
+    const used = screenMinutesOn(d, s);
+    const budget = earnedBudgetOn(d, s);
+    if (used <= budget.total) {
+      runUb = prevUb && addDays(prevUb, 1) === d ? runUb + 1 : 1;
+      underBudgetStreak = Math.max(underBudgetStreak, runUb);
+    } else { runUb = 0; }
+    prevUb = d;
+  }
+  const urgesResisted = s.urges.filter((u) => u.resolution === "resisted").length;
+
+  // ── school integrity aggregations ───────────────────────────────────
+  let schoolPrepared = 0, schoolAllYours = 0, schoolHonestlyLogged = 0;
+  for (const e of s.events) {
+    if (e.category !== "school") continue;
+    if (!isDone(e, e.date, s)) continue;
+    if (e.prepared) schoolPrepared++;
+    if (e.helpUsed) schoolHonestlyLogged++;
+    if (e.helpUsed === "none") schoolAllYours++;
+  }
+
   return {
     completionCount, byCategory, routineCounts, aheadCompletions,
     futureSchoolDone7, futureSchoolDone30, longIProjectDone, helipad, argDone,
@@ -879,6 +1143,11 @@ function aggregate(s: State): Aggregates {
     streakCurrent: current, streakBest: best, level: levelInfo(s).level,
     empireMRR: empireMRR(s), empireLifetime: empireLifetime(s),
     liveVentures: s.ventures.filter((v) => v.status === "live" || v.status === "scaling").length,
+    screenSessionsLogged: s.screenSessions.length,
+    daysUnderBudget, underBudgetStreak,
+    urgesLogged: s.urges.length, urgesResisted,
+    daysAllSessionsInWindow, routineFirstDays, earnedItDays,
+    schoolPrepared, schoolAllYours, schoolHonestlyLogged,
   };
 }
 
@@ -921,6 +1190,24 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: "level-10", title: "Halfway", desc: "Reach level 10 — Tycoon.", category: "level", progress: (a) => [a.level, 10] },
   { id: "level-15", title: "Top Floor", desc: "Reach level 15 — Titan.", category: "level", progress: (a) => [a.level, 15] },
   { id: "level-20", title: "It's You", desc: "Reach level 20 — Davis.", category: "level", progress: (a) => [a.level, 20] },
+
+  // Screens — training honestly. Celebrates noticing + resisting; never
+  // punishes over-budget days.
+  { id: "honest-screen", title: "Honest Log", desc: "Log your first screen session. Noticing is half of it.", category: "discipline", progress: (a) => [Math.min(a.screenSessionsLogged, 1), 1] },
+  { id: "under-budget-1", title: "Under the Line", desc: "End a day under your earned screen budget.", category: "discipline", progress: (a) => [Math.min(a.daysUnderBudget, 1), 1] },
+  { id: "earned-it", title: "Earned It", desc: "Stay under budget on a day where routines added bonus minutes.", category: "discipline", progress: (a) => [Math.min(a.earnedItDays, 1), 1] },
+  { id: "below-the-line-7", title: "Below the Line · 7d", desc: "Seven days in a row under budget.", category: "discipline", progress: (a) => [a.underBudgetStreak, 7] },
+  { id: "screen-discipline-30", title: "Screen Discipline · 30d", desc: "Thirty days under budget, total.", category: "discipline", progress: (a) => [a.daysUnderBudget, 30] },
+  { id: "felt-it", title: "Felt It", desc: "Log your first urge. Catching the urge IS the win.", category: "discipline", progress: (a) => [Math.min(a.urgesLogged, 1), 1] },
+  { id: "ten-resisted", title: "Ten Down", desc: "Resist ten urges (pick a replacement instead).", category: "discipline", progress: (a) => [a.urgesResisted, 10] },
+  { id: "kept-window", title: "Window Keeper", desc: "Seven days where every screen session started inside your pre-committed window.", category: "discipline", progress: (a) => [a.daysAllSessionsInWindow, 7] },
+  { id: "routine-first-5", title: "Routine Before Phone", desc: "Five days where the morning routine was done before any screens.", category: "discipline", progress: (a) => [a.routineFirstDays, 5] },
+
+  // School integrity — honest self-mirror
+  { id: "learn-first-1", title: "Learn First", desc: "Complete a school item with the prep box honestly checked.", category: "school", progress: (a) => [Math.min(a.schoolPrepared, 1), 1] },
+  { id: "learn-first-10", title: "Read, Then Did · 10", desc: "Ten school items completed prepared.", category: "school", progress: (a) => [a.schoolPrepared, 10] },
+  { id: "honest-school", title: "Honest Effort", desc: "Mark a school item's help honestly (any value).", category: "school", progress: (a) => [Math.min(a.schoolHonestlyLogged, 1), 1] },
+  { id: "all-yours-5", title: "All Yours", desc: "Five school items completed with help = 'none'.", category: "school", progress: (a) => [a.schoolAllYours, 5] },
 
   // Special — story-easter-egg territory
   { id: "helipad", title: "Helipad", desc: "Complete a travel item that lands on the helipad.", category: "special", progress: (a) => [a.helipad ? 1 : 0, 1] },

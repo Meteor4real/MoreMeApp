@@ -58,6 +58,18 @@ export type CalEvent = {
   // use the completions map keyed by occurrence date instead.
   status: EventStatus;
   createdAt: number;
+  // ── School honesty log (only meaningful when category === "school") ──
+  // The neutral mirror: did you actually read the material before starting?
+  // What help did you use? What stuck? No nags — just self-reflection.
+  prepared?: boolean;           // "I read what I needed before I dove in"
+  helpUsed?: HelpKind;          // "none" | "search" | "ai" | "friend" | "mixed"
+  learned?: string;             // one-line takeaway, your own words
+};
+
+export type HelpKind = "none" | "search" | "ai" | "friend" | "mixed";
+export const HELP_KINDS: HelpKind[] = ["none", "search", "ai", "friend", "mixed"];
+export const HELP_KIND_LABEL: Record<HelpKind, string> = {
+  none: "None — all me", search: "Search / docs", ai: "AI", friend: "A friend", mixed: "A mix",
 };
 
 // A Mount Vernon class (or any course). School-work events link to a class
@@ -139,6 +151,54 @@ export type Goals = {
 
 export type DistractionLog = { id: string; date: string; note: string; ts: number };
 
+// ── Screen training ────────────────────────────────────────────────────────
+// Built for honest awareness, not nags. The system reflects, never lectures.
+// Sessions are logged (quick-add or live timer). Daily budget = base +
+// bonus×routines-done-today (you EARN screens by doing the routines you'd
+// otherwise skip). Optional pre-committed window for "I only play 4–9pm."
+// Urges are tracked because resisting them IS the win — not zero screentime.
+
+export type ScreenCategory = "gaming" | "social" | "video" | "browsing" | "creative" | "other";
+export const SCREEN_CATEGORIES: ScreenCategory[] = ["gaming", "social", "video", "browsing", "creative", "other"];
+export const SCREEN_CATEGORY_LABEL: Record<ScreenCategory, string> = {
+  gaming: "Gaming", social: "Social", video: "Video", browsing: "Browsing",
+  creative: "Creative", other: "Other",
+};
+
+export type ScreenSession = {
+  id: string;
+  date: string;          // YYYY-MM-DD (the day the session started; sessions don't cross-pollinate days)
+  startedAt: number;     // ms
+  endedAt?: number;      // ms — undefined while in-progress
+  minutes?: number;      // explicit minutes; used when set, otherwise computed from times
+  category: ScreenCategory;
+  what: string;          // free-text: "Minecraft", "YouTube", "Hypixel Bedwars"
+  note?: string;
+};
+
+export type UrgeResolution = "resisted" | "later" | "did-it";  // honest
+export type UrgeLog = {
+  id: string;
+  date: string;          // YYYY-MM-DD
+  ts: number;
+  what?: string;         // what was tempting
+  resolution: UrgeResolution;
+  replacement?: string;  // what you did instead (if resisted)
+  note?: string;
+};
+
+// A 1- to 10-minute alternative you can pick when the urge hits. Editable.
+export type Replacement = { id: string; label: string; minutes: number };
+
+export type ScreenSettings = {
+  baseBudgetMinutes: number;      // base daily budget
+  bonusPerRoutineMinutes: number; // unlocked per routine you complete that day
+  capBudgetMinutes: number;       // ceiling even with bonuses (so it doesn't run away)
+  windowStart?: string;           // HH:MM — pre-committed "screens only after this"
+  windowEnd?: string;             // HH:MM — pre-committed "screens off by this"
+  awardXpPerUrgeResisted: number; // XP credit for an urge you logged + resisted
+};
+
 export type LevelReward = { level: number; reward: string };
 
 // Mount Vernon Upper School context. `grade9Year` is the calendar year you
@@ -152,7 +212,7 @@ export type School = {
 };
 
 export type State = {
-  schemaVersion: 9;
+  schemaVersion: 10;
   school: School;
   events: CalEvent[];
   // completions keyed by `${eventId}::${YYYY-MM-DD}` -> unlock timestamp.
@@ -165,6 +225,11 @@ export type State = {
   classes: Class[];
   goals: Goals;
   distractions: DistractionLog[];
+  // Screen training surface — see the screen* types above.
+  screenSessions: ScreenSession[];
+  urges: UrgeLog[];
+  replacements: Replacement[];
+  screen: ScreenSettings;
   rewards: LevelReward[];                        // user-set reward text per level
   unlockedAchievements: Record<string, number>;  // id -> unlocked ts
   startedAt: number;
