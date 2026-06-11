@@ -717,6 +717,20 @@ export type Insights = {
   bestStreak: number;
   achievementsEarned: number;
   distractions30: number;
+  // ── screen correlations (the data mirror that proves the trade) ──────
+  screenMinutesByDay: { date: string; minutes: number; budget: number }[]; // last 30
+  screenLast7: number;
+  screenLast30: number;
+  screenAvgDaily: number;                       // average minutes/day where logged
+  routineDayAvgMin: number;                     // avg screentime on days morning routine done
+  noRoutineDayAvgMin: number;                   // avg screentime on days it wasn't
+  routineDays: number;                          // count of days morning routine completed (last 30)
+  noRoutineDays: number;                        // count of days it wasn't (last 30)
+  urgesLast30: number;
+  urgesResistedLast30: number;
+  bestUnderBudgetStreak: number;                // longest run of under-budget days, all time
+  worstHour: { hour: number; minutes: number } | null; // hour-of-day with most logged screen time
+  byScreenCategory: { category: import("./types").ScreenCategory; minutes: number }[]; // last 30
 };
 export function insights(s: State = loadState()): Insights {
   const now = new Date();
@@ -752,7 +766,76 @@ export function insights(s: State = loadState()): Insights {
     .map(([category, count]) => ({ category: category as Category, count }))
     .sort((a, b) => b.count - a.count);
 
-  void now; void start30;
+  // ── screen analytics (30-day window) ──────────────────────────────────
+  // Daily totals for the last 30 days. Day-level math from screenMinutesOn
+  // matches what the Today card and Screens tab show.
+  const screenMinutesByDay: { date: string; minutes: number; budget: number }[] = [];
+  for (let i = 29; i >= 0; i--) {
+    const day = addDays(today(), -i);
+    screenMinutesByDay.push({ date: day, minutes: screenMinutesOn(day, s), budget: earnedBudgetOn(day, s).total });
+  }
+  const screenLast7 = screenMinutesByDay.slice(-7).reduce((n, d) => n + d.minutes, 0);
+  const screenLast30 = screenMinutesByDay.reduce((n, d) => n + d.minutes, 0);
+  const loggedScreenDays = screenMinutesByDay.filter((d) => d.minutes > 0).length;
+  const screenAvgDaily = loggedScreenDays ? Math.round(screenLast30 / loggedScreenDays) : 0;
+
+  // The killer correlation: morning routine done vs not done. Look at
+  // screentime over the last 30 days bucketed by whether `rt-morning` was
+  // completed that date. Only counts days that have a session, so you're
+  // not comparing zeros.
+  let routineDays = 0, noRoutineDays = 0;
+  let routineMinSum = 0, noRoutineMinSum = 0;
+  for (const d of screenMinutesByDay) {
+    if (d.minutes === 0) continue;
+    if (s.completions[`rt-morning::${d.date}`]) { routineDays++; routineMinSum += d.minutes; }
+    else { noRoutineDays++; noRoutineMinSum += d.minutes; }
+  }
+  const routineDayAvgMin = routineDays ? Math.round(routineMinSum / routineDays) : 0;
+  const noRoutineDayAvgMin = noRoutineDays ? Math.round(noRoutineMinSum / noRoutineDays) : 0;
+
+  // Urges over the window.
+  const urgesLast30 = s.urges.filter((u) => u.date >= start30).length;
+  const urgesResistedLast30 = s.urges.filter((u) => u.date >= start30 && u.resolution === "resisted").length;
+
+  // Longest under-budget streak, all time, restricted to days with sessions.
+  let bestUnderBudgetStreak = 0, runUbAll = 0, prevUbAll = "";
+  const allScreenDates = [...new Set(s.screenSessions.map((x) => x.date))].sort();
+  for (const d of allScreenDates) {
+    const used = screenMinutesOn(d, s);
+    const budget = earnedBudgetOn(d, s).total;
+    if (used <= budget) {
+      runUbAll = prevUbAll && addDays(prevUbAll, 1) === d ? runUbAll + 1 : 1;
+      bestUnderBudgetStreak = Math.max(bestUnderBudgetStreak, runUbAll);
+    } else { runUbAll = 0; }
+    prevUbAll = d;
+  }
+
+  // Worst hour of day — when do most of your minutes happen? Bucket by the
+  // hour the session was active (use start hour as a simple proxy).
+  const minutesByHour: number[] = new Array(24).fill(0);
+  for (const x of s.screenSessions) {
+    if (x.date < start30) continue;
+    const startHour = new Date(x.startedAt).getHours();
+    minutesByHour[startHour] += computeSessionMinutes(x);
+  }
+  let worstHour: { hour: number; minutes: number } | null = null;
+  for (let h = 0; h < 24; h++) {
+    if (minutesByHour[h] > 0 && (worstHour == null || minutesByHour[h] > worstHour.minutes)) {
+      worstHour = { hour: h, minutes: minutesByHour[h] };
+    }
+  }
+
+  // Screen time per category, last 30 days.
+  const screenCatMap: Record<string, number> = {};
+  for (const x of s.screenSessions) {
+    if (x.date < start30) continue;
+    screenCatMap[x.category] = (screenCatMap[x.category] ?? 0) + computeSessionMinutes(x);
+  }
+  const byScreenCategory = Object.entries(screenCatMap)
+    .map(([category, minutes]) => ({ category: category as import("./types").ScreenCategory, minutes }))
+    .sort((a, b) => b.minutes - a.minutes);
+
+  void now;
   return {
     xpByDay, xpLast7, xpLast30,
     completionRate30: possible ? Math.round((done / possible) * 100) : 0,
@@ -760,6 +843,10 @@ export function insights(s: State = loadState()): Insights {
     bestStreak: streakInfo(s).best,
     achievementsEarned: Object.keys(s.unlockedAchievements).length,
     distractions30: s.distractions.filter((d) => d.date >= start30).length,
+    screenMinutesByDay, screenLast7, screenLast30, screenAvgDaily,
+    routineDayAvgMin, noRoutineDayAvgMin, routineDays, noRoutineDays,
+    urgesLast30, urgesResistedLast30, bestUnderBudgetStreak,
+    worstHour, byScreenCategory,
   };
 }
 
