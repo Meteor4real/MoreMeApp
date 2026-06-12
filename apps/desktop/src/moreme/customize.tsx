@@ -1,0 +1,227 @@
+// MoreMe — Customize. Rename tabs, hide tabs, override the 20 rank names,
+// add your own achievements (claim them manually for XP), and define a
+// custom theme palette. Everything persists with the rest of state.
+
+import { useState } from "react";
+import { T, setTheme, refreshTheme, currentThemeName, PALETTES, THEME_META, type ThemeName, type Palette } from "./styles";
+import { MAX_LEVEL, RANK_NAMES } from "./types";
+import type { CustomAchievement, State } from "./types";
+import {
+  addCustomAchievement, blankCustomAchievement, claimCustomAchievement,
+  clearCustomTheme, isTabHidden, rankFor, removeCustomAchievement, resetAllRanks,
+  resetTabLabel, setCustomTheme, setRank, setTabLabel, setUseCustomTheme,
+  toggleTabHidden, unclaimCustomAchievement, updateCustomAchievement, levelInfo,
+} from "./store";
+
+const TAB_DEFAULTS: { id: string; label: string }[] = [
+  { id: "today", label: "Today" },
+  { id: "ahead", label: "Get Ahead" },
+  { id: "calendar", label: "Calendar" },
+  { id: "screens", label: "Screens" },
+  { id: "empire", label: "Empire" },
+  { id: "projects", label: "Projects" },
+  { id: "plans", label: "Plans" },
+  { id: "goals", label: "Goals" },
+  { id: "achievements", label: "Achievements" },
+  { id: "insights", label: "Insights" },
+  { id: "levels", label: "Levels" },
+];
+
+export function CustomizeView({ s }: { s: State }) {
+  return (
+    <div style={{ maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div>
+        <div className="serif" style={{ fontSize: 22, lineHeight: 1 }}>Customize</div>
+        <div style={{ fontSize: 11, color: T.inkTiny, letterSpacing: ".08em", textTransform: "uppercase", marginTop: 4 }}>
+          Make MoreMe yours
+        </div>
+      </div>
+      <TabsCard s={s} />
+      <RanksCard s={s} />
+      <CustomAchievementsCard s={s} />
+      <CustomThemeCard s={s} />
+      <div style={{ fontSize: 11, color: T.inkTiny, fontStyle: "italic", padding: "6px 0 20px" }}>
+        Every override is saved instantly. Reset any field to put the default back.
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
+  return (
+    <div className="mm-card" style={{ padding: 16 }}>
+      <div style={{ fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: T.inkTiny, marginBottom: 4 }}>{title}</div>
+      {sub && <div style={{ fontSize: 11, color: T.inkSoft, lineHeight: 1.5, marginBottom: 10 }}>{sub}</div>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{children}</div>
+    </div>
+  );
+}
+
+function TabsCard({ s }: { s: State }) {
+  return (
+    <Section title="Tabs" sub="Rename or hide any tab. Reset puts the default back.">
+      {TAB_DEFAULTS.map((t) => {
+        const cur = s.customization.tabLabels[t.id] ?? "";
+        const hidden = isTabHidden(t.id, s);
+        return (
+          <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ width: 100, fontSize: 12, color: T.inkSoft }}>{t.label}</span>
+            <input
+              value={cur}
+              placeholder={`Override (default: ${t.label})`}
+              onChange={(e) => setTabLabel(t.id, e.target.value)}
+              style={{ flex: 1 }}
+            />
+            <button className="mm-btn" style={{ padding: "4px 8px" }} onClick={() => resetTabLabel(t.id)} title="Reset to default">↺</button>
+            <button
+              className="mm-btn"
+              style={{ padding: "4px 10px", color: hidden ? T.warn : undefined, borderColor: hidden ? T.warn + "55" : undefined }}
+              onClick={() => toggleTabHidden(t.id)}
+            >
+              {hidden ? "Hidden" : "Visible"}
+            </button>
+          </div>
+        );
+      })}
+    </Section>
+  );
+}
+
+function RanksCard({ s }: { s: State }) {
+  const lv = levelInfo(s).level;
+  return (
+    <Section title="Rank names" sub={`Override any of the 20 rank names. Yours appear in the header at the matching level.`}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+        {Array.from({ length: MAX_LEVEL }, (_, i) => i + 1).map((level) => {
+          const def = RANK_NAMES[level - 1] ?? "";
+          const cur = s.customization.customRanks[level - 1] ?? "";
+          const reached = lv >= level;
+          return (
+            <div key={level} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 28, fontSize: 11, color: reached ? T.mint : T.inkTiny, textAlign: "right" }}>L{level}</span>
+              <input
+                value={cur}
+                placeholder={def}
+                onChange={(e) => setRank(level, e.target.value)}
+                style={{ flex: 1 }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
+        <button className="mm-btn" onClick={() => { if (confirm("Clear every rank override?")) resetAllRanks(); }}>Reset all to defaults</button>
+      </div>
+      <div style={{ fontSize: 11, color: T.inkTiny, marginTop: 4 }}>
+        Current rank: <b style={{ color: T.mint }}>{rankFor(lv, s)}</b> (level {lv}).
+      </div>
+    </Section>
+  );
+}
+
+function CustomAchievementsCard({ s }: { s: State }) {
+  const [title, setTitle] = useState("");
+  const [desc, setDesc] = useState("");
+  const [xp, setXp] = useState("100");
+  function add() {
+    if (!title.trim()) return;
+    addCustomAchievement({ ...blankCustomAchievement(), title: title.trim(), desc: desc.trim(), xp: Math.max(0, parseInt(xp, 10) || 0) });
+    setTitle(""); setDesc(""); setXp("100");
+  }
+  return (
+    <Section title={`Your achievements · ${s.customization.customAchievements.length}`} sub="Set your own goals. Claim them when you've actually earned them — claim awards XP once and sticks.">
+      {s.customization.customAchievements.length === 0 && (
+        <div style={{ fontSize: 12, color: T.inkTiny, fontStyle: "italic" }}>None yet. Define your own below.</div>
+      )}
+      {s.customization.customAchievements.map((a) => <CustomAchievementRow key={a.id} a={a} />)}
+      <div style={{ marginTop: 6, padding: 10, background: T.sunk, borderRadius: 10, border: `1px dashed ${T.mint}55`, display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ fontSize: 11, color: T.mint, letterSpacing: ".06em", textTransform: "uppercase" }}>Add a goal</div>
+        <input value={title} placeholder="Title — e.g. 'Run a 7-min mile'" onChange={(e) => setTitle(e.target.value)} />
+        <input value={desc} placeholder="Description (optional)" onChange={(e) => setDesc(e.target.value)} />
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <label style={{ fontSize: 11, color: T.inkTiny }}>XP reward</label>
+          <input type="number" min={0} value={xp} onChange={(e) => setXp(e.target.value)} style={{ width: 90 }} />
+          <div style={{ flex: 1 }} />
+          <button className="mm-btn mm-btn-primary" onClick={add}>+ Add</button>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function CustomAchievementRow({ a }: { a: CustomAchievement }) {
+  return (
+    <div className={"mm-ach" + (a.claimedAt ? " unlocked" : "")} style={{ alignItems: "center" }}>
+      <div className="mm-medal">{a.claimedAt ? "★" : "◇"}</div>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+        <input value={a.title} onChange={(e) => updateCustomAchievement(a.id, { title: e.target.value })} style={{ fontWeight: 700 }} />
+        <input value={a.desc} placeholder="Description" onChange={(e) => updateCustomAchievement(a.id, { desc: e.target.value })} />
+        <div style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11, color: T.inkTiny }}>
+          <label>XP</label>
+          <input type="number" min={0} value={a.xp} onChange={(e) => updateCustomAchievement(a.id, { xp: Math.max(0, parseInt(e.target.value, 10) || 0) })} style={{ width: 80 }} />
+          {a.claimedAt && <span style={{ marginLeft: 8 }}>· claimed {new Date(a.claimedAt).toLocaleDateString()}</span>}
+        </div>
+      </div>
+      {!a.claimedAt ? (
+        <button className="mm-btn mm-btn-primary" onClick={() => claimCustomAchievement(a.id)}>Claim · +{a.xp} XP</button>
+      ) : (
+        <button className="mm-btn" onClick={() => unclaimCustomAchievement(a.id)} title="Undo claim (refund XP)">Unclaim</button>
+      )}
+      <button className="mm-btn mm-btn-danger" style={{ padding: "4px 8px" }} onClick={() => removeCustomAchievement(a.id)}>×</button>
+    </div>
+  );
+}
+
+const FIELDS: { key: keyof Palette; label: string }[] = [
+  { key: "bg",       label: "Background" },
+  { key: "elev",     label: "Cards" },
+  { key: "sunk",     label: "Inputs" },
+  { key: "ink",      label: "Text" },
+  { key: "inkSoft",  label: "Text (soft)" },
+  { key: "inkTiny",  label: "Text (mute)" },
+  { key: "line",     label: "Lines" },
+  { key: "mint",     label: "Accent" },
+  { key: "mintDeep", label: "Accent deep" },
+  { key: "mintHi",   label: "Accent hi" },
+  { key: "warn",     label: "Warning" },
+  { key: "cool",     label: "Cool / link" },
+];
+
+function CustomThemeCard({ s }: { s: State }) {
+  const seedPalette: Palette = s.customization.customTheme ?? PALETTES.dp;
+  const [draft, setDraft] = useState<Palette>(seedPalette);
+  const set = (k: keyof Palette, v: string) => setDraft((d) => ({ ...d, [k]: v }));
+  const apply = () => { setCustomTheme(draft); refreshTheme(); };
+  const isActive = currentThemeName() === "custom" && s.customization.useCustomTheme;
+  return (
+    <Section title="Custom theme" sub="Paint your own palette. Apply to switch the whole app to it.">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 8 }}>
+        {FIELDS.map((f) => (
+          <div key={f.key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input type="color" value={draft[f.key]} onChange={(e) => set(f.key, e.target.value)} style={{ width: 32, height: 32, padding: 0, border: "none", background: "transparent" }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 10, color: T.inkTiny, letterSpacing: ".06em", textTransform: "uppercase" }}>{f.label}</div>
+              <input value={draft[f.key]} onChange={(e) => set(f.key, e.target.value)} style={{ fontSize: 11, fontFamily: "ui-monospace, monospace" }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+        <button className="mm-btn mm-btn-primary" onClick={apply}>Apply as theme</button>
+        <button className="mm-btn" onClick={() => setDraft({ ...PALETTES.dp })}>Reset to DP</button>
+        <button className="mm-btn" onClick={() => setDraft({ ...PALETTES.papatui })}>Reset to Papatui</button>
+        {s.customization.customTheme && (
+          <button className="mm-btn mm-btn-danger" onClick={() => { clearCustomTheme(); refreshTheme(); }}>Clear saved custom</button>
+        )}
+        <div style={{ flex: 1 }} />
+        {isActive && <span className="mm-pill" style={{ background: T.mint, color: T.bg }}>Active</span>}
+      </div>
+      <div style={{ fontSize: 11, color: T.inkTiny, marginTop: 4 }}>
+        Pick from {(Object.keys(THEME_META) as ThemeName[]).filter((n) => n !== "custom").length + 1} themes in <b>Projects → Theme</b>; Custom unlocks once you Apply one here.
+      </div>
+      <button className="mm-btn" style={{ marginTop: 4, alignSelf: "flex-start" }} onClick={() => { setTheme("dp"); }}>Try DP</button>
+      <button className="mm-btn" style={{ alignSelf: "flex-start" }} onClick={() => { setTheme("papatui"); }}>Try Papatui</button>
+      <button className="mm-btn" style={{ alignSelf: "flex-start" }} onClick={() => { setUseCustomTheme(true); setTheme("custom"); }}>Try Custom</button>
+    </Section>
+  );
+}

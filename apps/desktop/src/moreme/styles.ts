@@ -9,7 +9,7 @@
 // the new palette on the next render. The class-based CSS is rebuilt from
 // `T` via buildMMStyle(); the desktop chrome follows via root CSS vars.
 
-export type ThemeName = "dp" | "papatui";
+export type ThemeName = "dp" | "papatui" | "custom";
 
 export type Palette = {
   bg: string; elev: string; sunk: string;
@@ -18,24 +18,32 @@ export type Palette = {
   warn: string; cool: string;
 };
 
+const DP_PALETTE: Palette = {
+  bg: "#0C1422", elev: "#16223A", sunk: "#080E1A",
+  ink: "#FFFFFF", inkSoft: "#A6B6CC", inkTiny: "#5E6E86", line: "#233247",
+  mint: "#3EFBB7", mintDeep: "#15D6A0", mintHi: "#8BFFDD",
+  warn: "#FF5C5F", cool: "#1E90FF",
+};
+const PAPATUI_PALETTE: Palette = {
+  bg: "#19140F", elev: "#241C15", sunk: "#0F0B08",
+  ink: "#F4EAD9", inkSoft: "#C8B59B", inkTiny: "#8A7355", line: "#3A2E22",
+  mint: "#2FA98A", mintDeep: "#1E7D66", mintHi: "#5CCBB0",
+  warn: "#D9603B", cool: "#C9A24B",
+};
 export const PALETTES: Record<ThemeName, Palette> = {
-  dp: {
-    bg: "#0C1422", elev: "#16223A", sunk: "#080E1A",
-    ink: "#FFFFFF", inkSoft: "#A6B6CC", inkTiny: "#5E6E86", line: "#233247",
-    mint: "#3EFBB7", mintDeep: "#15D6A0", mintHi: "#8BFFDD",
-    warn: "#FF5C5F", cool: "#1E90FF",
-  },
-  papatui: {
-    bg: "#19140F", elev: "#241C15", sunk: "#0F0B08",
-    ink: "#F4EAD9", inkSoft: "#C8B59B", inkTiny: "#8A7355", line: "#3A2E22",
-    mint: "#2FA98A", mintDeep: "#1E7D66", mintHi: "#5CCBB0",
-    warn: "#D9603B", cool: "#C9A24B",
-  },
+  dp: DP_PALETTE,
+  papatui: PAPATUI_PALETTE,
+  // "custom" never reads from PALETTES — the resolver fetches the user's
+  // palette from state — but the type contract needs a value here. We
+  // mirror DP as a fallback for safety (if the resolver is somehow
+  // unregistered, this keeps the UI usable instead of crashing).
+  custom: DP_PALETTE,
 };
 
 export const THEME_META: Record<ThemeName, { label: string; note: string; swatch: string[] }> = {
   dp:      { label: "Dude Perfect", note: "Turquoise on navy. Panda energy.", swatch: ["#3EFBB7", "#0C1422", "#1E90FF"] },
   papatui: { label: "Papatui",      note: "Warm Polynesian earth. The Rock.",  swatch: ["#2FA98A", "#19140F", "#C9A24B"] },
+  custom:  { label: "Custom",       note: "Your palette. Set the colors yourself.", swatch: ["#888888", "#000000", "#CCCCCC"] },
 };
 
 // The live token object every component imports.
@@ -44,8 +52,15 @@ export const T: Palette = { ...PALETTES.dp };
 const KEY = "nchub.moreme.theme.v1";
 const subs = new Set<() => void>();
 
+// A pluggable hook so the store can supply the user's custom palette
+// without styles.ts having to import the store (which would cycle).
+let customResolver: (() => Palette | null) = () => null;
+export function setCustomThemeResolver(fn: () => Palette | null) {
+  customResolver = fn;
+}
+
 export function currentThemeName(): ThemeName {
-  try { const n = localStorage.getItem(KEY); if (n === "dp" || n === "papatui") return n; } catch { /* ignore */ }
+  try { const n = localStorage.getItem(KEY); if (n === "dp" || n === "papatui" || n === "custom") return n; } catch { /* ignore */ }
   return "dp";
 }
 
@@ -66,17 +81,27 @@ function applyRootVars(p: Palette) {
 }
 
 export function setTheme(name: ThemeName) {
-  Object.assign(T, PALETTES[name]);
+  // "custom" pulls from the store via the resolver; falls back to dp if
+  // the user has the toggle on but hasn't actually defined one yet.
+  const next = name === "custom" ? (customResolver() ?? PALETTES.dp) : PALETTES[name];
+  Object.assign(T, next);
   try { localStorage.setItem(KEY, name); } catch { /* ignore */ }
   applyRootVars(T);
   subs.forEach((fn) => fn());
+}
+export function refreshTheme() {
+  // Re-apply the active theme — for when the user edits their custom palette
+  // and we need a live update without changing the name.
+  setTheme(currentThemeName());
 }
 export function subscribeTheme(fn: () => void): () => void {
   subs.add(fn); return () => subs.delete(fn);
 }
 // Call once on boot so the persisted choice is live before first paint.
 export function initTheme() {
-  Object.assign(T, PALETTES[currentThemeName()]);
+  const name = currentThemeName();
+  const pal = name === "custom" ? (customResolver() ?? PALETTES.dp) : PALETTES[name];
+  Object.assign(T, pal);
   applyRootVars(T);
 }
 
