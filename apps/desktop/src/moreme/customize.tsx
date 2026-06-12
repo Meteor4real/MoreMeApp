@@ -206,10 +206,30 @@ function CustomThemeCard({ s }: { s: State }) {
           </div>
         ))}
       </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+      <div style={{ marginTop: 8 }}>
+        <div style={{ fontSize: 10, color: T.inkTiny, letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 4 }}>Hero image URL (optional)</div>
+        <input value={draft.heroImage ?? ""} placeholder="https://… — paste an image URL; leave blank for none"
+          onChange={(e) => setDraft((d) => ({ ...d, heroImage: e.target.value || undefined }))}
+          style={{ fontFamily: "ui-monospace, monospace", fontSize: 11 }} />
+        <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 10, color: T.inkTiny }}>Quick picks (Unsplash):</span>
+          {[
+            { label: "Court", url: "https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&w=1600&q=70" },
+            { label: "Track", url: "https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&w=1600&q=70" },
+            { label: "Ocean", url: "https://images.unsplash.com/photo-1505228395891-9a51e7e86bf6?auto=format&w=1600&q=70" },
+            { label: "Peaks", url: "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&w=1600&q=70" },
+            { label: "Coffee", url: "https://images.unsplash.com/photo-1453928582365-b6ad33cbcf64?auto=format&w=1600&q=70" },
+          ].map((p) => (
+            <button key={p.label} className="mm-tab" onClick={() => setDraft((d) => ({ ...d, heroImage: p.url }))}>{p.label}</button>
+          ))}
+          {draft.heroImage && <button className="mm-tab" onClick={() => setDraft((d) => ({ ...d, heroImage: undefined }))}>Clear</button>}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
         <button className="mm-btn mm-btn-primary" onClick={apply}>Apply as theme</button>
         <button className="mm-btn" onClick={() => setDraft({ ...PALETTES.dp })}>Reset to DP</button>
         <button className="mm-btn" onClick={() => setDraft({ ...PALETTES.papatui })}>Reset to Papatui</button>
+        <button className="mm-btn" onClick={() => setDraft({ ...PALETTES.sports })}>Reset to Sports</button>
         {s.customization.customTheme && (
           <button className="mm-btn mm-btn-danger" onClick={() => { clearCustomTheme(); refreshTheme(); }}>Clear saved custom</button>
         )}
@@ -219,9 +239,16 @@ function CustomThemeCard({ s }: { s: State }) {
       <div style={{ fontSize: 11, color: T.inkTiny, marginTop: 4 }}>
         Pick from {(Object.keys(THEME_META) as ThemeName[]).filter((n) => n !== "custom").length + 1} themes in <b>Projects → Theme</b>; Custom unlocks once you Apply one here.
       </div>
-      <button className="mm-btn" style={{ marginTop: 4, alignSelf: "flex-start" }} onClick={() => { setTheme("dp"); }}>Try DP</button>
-      <button className="mm-btn" style={{ alignSelf: "flex-start" }} onClick={() => { setTheme("papatui"); }}>Try Papatui</button>
-      <button className="mm-btn" style={{ alignSelf: "flex-start" }} onClick={() => { setUseCustomTheme(true); setTheme("custom"); }}>Try Custom</button>
+      <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+        <button className="mm-btn" onClick={() => { setTheme("dp"); }}>Try DP</button>
+        <button className="mm-btn" onClick={() => { setTheme("papatui"); }}>Try Papatui</button>
+        <button className="mm-btn" onClick={() => { setTheme("sports"); }}>Try Sports</button>
+        <button className="mm-btn" onClick={() => { setUseCustomTheme(true); setTheme("custom"); }}>Try Custom</button>
+      </div>
+      <div style={{ fontSize: 10, color: T.inkTiny, fontStyle: "italic", marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${T.line}`, display: "flex", alignItems: "center", gap: 6 }}>
+        <span aria-hidden="true">☕</span>
+        Built fellow-learner style — NetworkChuck energy, none of the dead Hub.
+      </div>
     </Section>
   );
 }

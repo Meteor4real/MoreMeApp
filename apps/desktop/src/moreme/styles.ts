@@ -9,13 +9,17 @@
 // the new palette on the next render. The class-based CSS is rebuilt from
 // `T` via buildMMStyle(); the desktop chrome follows via root CSS vars.
 
-export type ThemeName = "dp" | "papatui" | "custom";
+export type ThemeName = "dp" | "papatui" | "sports" | "custom";
 
 export type Palette = {
   bg: string; elev: string; sunk: string;
   ink: string; inkSoft: string; inkTiny: string; line: string;
   mint: string; mintDeep: string; mintHi: string;  // primary accent family
   warn: string; cool: string;
+  // Optional decorative hero image — shown as a faint backdrop on Today.
+  // External URL by design (so we don't ship copyrighted photos); set "" or
+  // omit to render no backdrop. CustomTheme exposes this as a user field.
+  heroImage?: string;
 };
 
 const DP_PALETTE: Palette = {
@@ -23,16 +27,32 @@ const DP_PALETTE: Palette = {
   ink: "#FFFFFF", inkSoft: "#A6B6CC", inkTiny: "#5E6E86", line: "#233247",
   mint: "#3EFBB7", mintDeep: "#15D6A0", mintHi: "#8BFFDD",
   warn: "#FF5C5F", cool: "#1E90FF",
+  // A basketball court — Dude Perfect trick-shot energy. Free, Unsplash.
+  heroImage: "https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&w=1600&q=70",
 };
 const PAPATUI_PALETTE: Palette = {
   bg: "#19140F", elev: "#241C15", sunk: "#0F0B08",
   ink: "#F4EAD9", inkSoft: "#C8B59B", inkTiny: "#8A7355", line: "#3A2E22",
   mint: "#2FA98A", mintDeep: "#1E7D66", mintHi: "#5CCBB0",
   warn: "#D9603B", cool: "#C9A24B",
+  // Polynesian ocean — Papatui's earthy heritage cue.
+  heroImage: "https://images.unsplash.com/photo-1505228395891-9a51e7e86bf6?auto=format&w=1600&q=70",
+};
+// Sports — high-contrast scoreboard / SportsCenter look. Carbon black, ESPN
+// red, athletic gold. Designed for clean number displays.
+const SPORTS_PALETTE: Palette = {
+  bg: "#06080B", elev: "#101317", sunk: "#02040A",
+  ink: "#FFFFFF", inkSoft: "#B5BFCC", inkTiny: "#5E6675", line: "#1F252D",
+  mint: "#FFB400", mintDeep: "#D99100", mintHi: "#FFCD3C",  // gold accent
+  warn: "#E1153B",                                         // ESPN red
+  cool: "#1FA9FF",
+  // Track stadium under lights — sports/training mood.
+  heroImage: "https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&w=1600&q=70",
 };
 export const PALETTES: Record<ThemeName, Palette> = {
   dp: DP_PALETTE,
   papatui: PAPATUI_PALETTE,
+  sports: SPORTS_PALETTE,
   // "custom" never reads from PALETTES — the resolver fetches the user's
   // palette from state — but the type contract needs a value here. We
   // mirror DP as a fallback for safety (if the resolver is somehow
@@ -41,13 +61,20 @@ export const PALETTES: Record<ThemeName, Palette> = {
 };
 
 export const THEME_META: Record<ThemeName, { label: string; note: string; swatch: string[] }> = {
-  dp:      { label: "Dude Perfect", note: "Turquoise on navy. Panda energy.", swatch: ["#3EFBB7", "#0C1422", "#1E90FF"] },
-  papatui: { label: "Papatui",      note: "Warm Polynesian earth. The Rock.",  swatch: ["#2FA98A", "#19140F", "#C9A24B"] },
-  custom:  { label: "Custom",       note: "Your palette. Set the colors yourself.", swatch: ["#888888", "#000000", "#CCCCCC"] },
+  dp:      { label: "Dude Perfect", note: "Turquoise on navy. Panda energy.",         swatch: ["#3EFBB7", "#0C1422", "#1E90FF"] },
+  papatui: { label: "Papatui",      note: "Warm Polynesian earth. The Rock.",         swatch: ["#2FA98A", "#19140F", "#C9A24B"] },
+  sports:  { label: "Sports",       note: "Scoreboard high-contrast. Gold + ESPN red.", swatch: ["#FFB400", "#06080B", "#E1153B"] },
+  custom:  { label: "Custom",       note: "Your palette. Set the colors yourself.",    swatch: ["#888888", "#000000", "#CCCCCC"] },
 };
 
 // The live token object every component imports.
 export const T: Palette = { ...PALETTES.dp };
+
+// Active hero image (decorative backdrop). Reads T.heroImage so components
+// don't need to know about palette internals.
+export function heroImageUrl(): string {
+  return T.heroImage && T.heroImage.trim() ? T.heroImage.trim() : "";
+}
 
 const KEY = "nchub.moreme.theme.v1";
 const subs = new Set<() => void>();

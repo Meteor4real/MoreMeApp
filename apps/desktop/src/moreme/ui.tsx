@@ -32,7 +32,7 @@ import { ScreensView, ScreenCardToday, LogSessionModal, UrgeModal } from "./scre
 import { isTabHidden, rankFor, tabLabel } from "./store";
 import { generateClassPeriods, clearClassPeriods, setClassPeriod } from "./store";
 import { pullOnce, pushOnce, subscribeSync, type SyncStatus } from "./sync";
-import { THEME_META, currentThemeName, setTheme, subscribeTheme, type ThemeName } from "./styles";
+import { THEME_META, currentThemeName, heroImageUrl, setTheme, subscribeTheme, type ThemeName } from "./styles";
 import { quoteOfDay } from "./quotes";
 import { makePrintHandler } from "./print";
 
@@ -295,9 +295,24 @@ function TodayView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }) {
   const print = makePrintHandler(() => printRef.current);
   const quote = quoteOfDay(date);
 
+  const hero = heroImageUrl();
+
   return (
-    <div ref={printRef} style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr", maxWidth: 760, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+    <div ref={printRef} style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr", maxWidth: 760, margin: "0 auto", position: "relative" }}>
+      {/* Decorative backdrop — theme's hero image, very faint. Fixed
+          position absolutely behind the content; img.onerror hides it so
+          a broken URL doesn't leave a placeholder. */}
+      {hero && (
+        <img
+          src={hero}
+          alt=""
+          aria-hidden="true"
+          className="mm-no-print"
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.07, zIndex: 0, pointerEvents: "none", borderRadius: 14 }}
+        />
+      )}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, position: "relative", zIndex: 1 }}>
         <div className="serif" style={{ fontSize: 20 }}>{new Date(date + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</div>
         <div className="mm-no-print" style={{ display: "flex", gap: 6 }}>
           <button className="mm-btn" onClick={print} title="Print today">⎙ Print</button>
