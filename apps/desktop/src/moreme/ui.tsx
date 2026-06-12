@@ -27,19 +27,21 @@ import { EmpireView } from "./empire";
 import { InsightsView } from "./insights";
 import { WeeklyReview } from "./review";
 import { PlansView } from "./plans";
+import { CustomizeView } from "./customize";
 import { ScreensView, ScreenCardToday, LogSessionModal, UrgeModal } from "./screens";
+import { isTabHidden, rankFor, tabLabel } from "./store";
 import { generateClassPeriods, clearClassPeriods, setClassPeriod } from "./store";
 import { pullOnce, pushOnce, subscribeSync, type SyncStatus } from "./sync";
 import { THEME_META, currentThemeName, setTheme, subscribeTheme, type ThemeName } from "./styles";
 import { quoteOfDay } from "./quotes";
 import { makePrintHandler } from "./print";
 
-type Tab = "today" | "ahead" | "calendar" | "screens" | "empire" | "projects" | "plans" | "goals" | "achievements" | "insights" | "levels";
+type Tab = "today" | "ahead" | "calendar" | "screens" | "empire" | "projects" | "plans" | "goals" | "achievements" | "insights" | "levels" | "customize";
 type CalMode = "month" | "week" | "day";
 const TAB_LABELS: Record<Tab, string> = {
   today: "today", ahead: "get ahead", calendar: "calendar", screens: "screens", empire: "empire",
   projects: "projects", plans: "plans", goals: "goals", achievements: "achievements",
-  insights: "insights", levels: "levels",
+  insights: "insights", levels: "levels", customize: "customize",
 };
 
 function useStore(): State {
@@ -57,7 +59,10 @@ export function MoreMeUI() {
   const [, bumpTheme] = useState(0);
   useEffect(() => subscribeTheme(() => bumpTheme((n) => n + 1)), []);
 
-  const tabs: Tab[] = ["today", "ahead", "calendar", "screens", "empire", "projects", "plans", "goals", "achievements", "insights", "levels"];
+  const ALL_TABS: Tab[] = ["today", "ahead", "calendar", "screens", "empire", "projects", "plans", "goals", "achievements", "insights", "levels", "customize"];
+  // Customize is always available — otherwise you could hide it and lose the
+  // way back. Everything else respects the user's `hiddenTabs` choice.
+  const tabs = ALL_TABS.filter((t) => t === "customize" || !isTabHidden(t, s));
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", position: "relative" }}>
@@ -65,7 +70,7 @@ export function MoreMeUI() {
       <CaptureBar />
       <div style={{ display: "flex", gap: 6, padding: "10px 18px", flexWrap: "wrap", borderBottom: `1px solid ${T.line}` }}>
         {tabs.map((t) => (
-          <button key={t} className={"mm-tab" + (tab === t ? " active" : "")} onClick={() => setTab(t)}>{TAB_LABELS[t]}</button>
+          <button key={t} className={"mm-tab" + (tab === t ? " active" : "")} onClick={() => setTab(t)}>{tabLabel(t, TAB_LABELS[t], s)}</button>
         ))}
       </div>
       <div className="scrolly" style={{ flex: 1, minHeight: 0, padding: 18 }}>
@@ -80,6 +85,7 @@ export function MoreMeUI() {
         {tab === "achievements" && <AchievementsView s={s} />}
         {tab === "insights" && <InsightsView s={s} />}
         {tab === "levels" && <LevelsView s={s} />}
+        {tab === "customize" && <CustomizeView s={s} />}
       </div>
       {editing && <EventEditor s={s} draft={editing} onClose={() => setEditing(null)} />}
       {review && <WeeklyReview s={s} onClose={() => setReview(false)} onEdit={(e) => { setReview(false); setEditing(e); }} />}
@@ -193,8 +199,8 @@ function Header({ s, onReview }: { s: State; onReview: () => void }) {
       </div>
       <div style={{ flex: 1, minWidth: 240 }}>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
-          <b style={{ color: T.mint }}>Level {lv.level} · {RANK_NAMES[lv.level - 1] ?? ""}{lv.isMax ? " · MAX" : ""}</b>
-          <span style={{ color: T.inkTiny }}>{lv.total.toLocaleString()} XP{lv.isMax ? "" : ` · ${Math.max(0, lv.nextAt - lv.total).toLocaleString()} to L${lv.level + 1} (${RANK_NAMES[lv.level] ?? ""})`}</span>
+          <b style={{ color: T.mint }}>Level {lv.level} · {rankFor(lv.level, s)}{lv.isMax ? " · MAX" : ""}</b>
+          <span style={{ color: T.inkTiny }}>{lv.total.toLocaleString()} XP{lv.isMax ? "" : ` · ${Math.max(0, lv.nextAt - lv.total).toLocaleString()} to L${lv.level + 1} (${rankFor(lv.level + 1, s)})`}</span>
         </div>
         <div className="mm-progress"><div className="mm-progress-fill" style={{ width: pct + "%" }} /><div className="mm-progress-text">{pct}%</div></div>
       </div>
@@ -968,7 +974,7 @@ function AchievementsView({ s }: { s: State }) {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
         <div className="serif" style={{ fontSize: 20 }}>Achievements</div>
-        <div style={{ fontSize: 12, color: T.inkTiny }}>{unlockedCount}/{ACHIEVEMENTS.length} earned</div>
+        <div style={{ fontSize: 12, color: T.inkTiny }}>{unlockedCount}/{ACHIEVEMENTS.length} earned{s.customization.customAchievements.length ? ` · ${s.customization.customAchievements.filter((a) => a.claimedAt).length}/${s.customization.customAchievements.length} of yours` : ""}</div>
       </div>
       {cats.map((cat) => {
         const list = ACHIEVEMENTS.filter((a) => a.category === cat);
@@ -995,6 +1001,25 @@ function AchievementsView({ s }: { s: State }) {
           </div>
         );
       })}
+      {s.customization.customAchievements.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 11, letterSpacing: ".12em", textTransform: "uppercase", color: T.mint, marginBottom: 8 }}>yours</div>
+          <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
+            {s.customization.customAchievements.map((a) => (
+              <div key={a.id} className={"mm-ach" + (a.claimedAt ? " unlocked" : "")}>
+                <div className="mm-medal">{a.claimedAt ? "★" : "◇"}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <b style={{ fontSize: 13 }}>{a.title || "(untitled)"}</b>
+                  {a.desc && <div style={{ fontSize: 11, color: T.inkSoft, margin: "2px 0 5px" }}>{a.desc}</div>}
+                  <div style={{ fontSize: 10, color: T.inkTiny, marginTop: 3 }}>
+                    {a.claimedAt ? `Claimed · +${a.xp} XP` : `Reward: ${a.xp} XP · claim in Customize`}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1019,7 +1044,7 @@ function LevelsView({ s }: { s: State }) {
                 <div style={{ fontSize: 18, fontWeight: 800, color: reached ? T.mint : T.inkTiny }}>{level}</div>
               </div>
               <div style={{ width: 150 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: reached ? T.ink : T.inkSoft }}>{RANK_NAMES[level - 1]}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: reached ? T.ink : T.inkSoft }}>{rankFor(level, s)}</div>
                 <div style={{ fontSize: 10, color: T.inkTiny, marginTop: 2 }}>
                   {need.toLocaleString()} XP{level < MAX_LEVEL ? ` · +${levelStep(level).toLocaleString()}` : " · max"}
                 </div>

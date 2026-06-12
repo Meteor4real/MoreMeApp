@@ -199,6 +199,31 @@ export type ScreenSettings = {
   awardXpPerUrgeResisted: number; // XP credit for an urge you logged + resisted
 };
 
+// ── Customization ──────────────────────────────────────────────────────────
+// Lets the user rename tabs, hide ones they don't use, override the 20 rank
+// names, add their own achievements, and define a third theme palette.
+export type CustomTheme = {
+  bg: string; elev: string; sunk: string;
+  ink: string; inkSoft: string; inkTiny: string; line: string;
+  mint: string; mintDeep: string; mintHi: string;
+  warn: string; cool: string;
+};
+export type CustomAchievement = {
+  id: string;
+  title: string;
+  desc: string;
+  xp: number;
+  claimedAt?: number;   // first claim timestamp; subsequent claims are no-ops
+};
+export type Customization = {
+  tabLabels: Record<string, string>;     // tabId -> override label ("" or absent = use default)
+  hiddenTabs: string[];                   // tabIds hidden from the tab row
+  customRanks: (string | undefined)[];   // length 20; undefined = use RANK_NAMES default
+  customAchievements: CustomAchievement[];
+  customTheme?: CustomTheme;             // when set, "custom" theme becomes selectable
+  useCustomTheme: boolean;               // toggle for the picker
+};
+
 export type LevelReward = { level: number; reward: string };
 
 // Mount Vernon Upper School context. `grade9Year` is the calendar year you
@@ -212,7 +237,8 @@ export type School = {
 };
 
 export type State = {
-  schemaVersion: 10;
+  schemaVersion: 11;
+  customization: Customization;
   school: School;
   events: CalEvent[];
   // completions keyed by `${eventId}::${YYYY-MM-DD}` -> unlock timestamp.

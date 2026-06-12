@@ -3,14 +3,22 @@
 // economy, conflict detection, and rule-based (earnable) achievements.
 
 import type {
-  CalEvent, Category, Class, ClassPeriod, DistractionLog, Goal, Goals, InboxItem,
-  LevelReward, Note, Person, Project, ProjectKind, Replacement, School, SchoolPath,
-  ScreenCategory, ScreenSession, ScreenSettings, State, UrgeLog, UrgeResolution,
-  Venture, VentureStatus,
+  CalEvent, Category, Class, ClassPeriod, CustomAchievement, CustomTheme,
+  Customization, DistractionLog, Goal, Goals, InboxItem, LevelReward, Note, Person,
+  Project, ProjectKind, Replacement, School, SchoolPath, ScreenCategory,
+  ScreenSession, ScreenSettings, State, UrgeLog, UrgeResolution, Venture, VentureStatus,
 } from "./types";
-import { MAX_LEVEL, cumulativeXp } from "./types";
+import { MAX_LEVEL, RANK_NAMES, cumulativeXp } from "./types";
+import { setCustomThemeResolver } from "./styles";
 
-const KEY = "nchub.moreme.v10";
+// Tell styles.ts how to fetch the user's custom palette out of state. This
+// avoids styles.ts having to import the store (which would cycle). Called
+// at module-load so initTheme() sees the resolver on first paint.
+setCustomThemeResolver(() => {
+  try { return loadState().customization.customTheme ?? null; } catch { return null; }
+});
+
+const KEY = "nchub.moreme.v11";
 
 // Current YYYY-MM month key (for venture revenue).
 export const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -238,7 +246,7 @@ function seedVentures(): Venture[] {
 function seedState(): State {
   const start = today();
   return {
-    schemaVersion: 10,
+    schemaVersion: 11,
     notes: [],
     school: seedSchool(),
     events: seedRoutines(start),
@@ -264,9 +272,21 @@ function seedState(): State {
     urges: [],
     replacements: seedReplacements(),
     screen: seedScreenSettings(),
+    customization: seedCustomization(),
     rewards: Array.from({ length: MAX_LEVEL }, (_, i) => ({ level: i + 1, reward: "" })),
     unlockedAchievements: {},
     startedAt: Date.now(),
+  };
+}
+
+function seedCustomization(): Customization {
+  return {
+    tabLabels: {},
+    hiddenTabs: [],
+    customRanks: Array.from({ length: MAX_LEVEL }, () => undefined),
+    customAchievements: [],
+    customTheme: undefined,
+    useCustomTheme: false,
   };
 }
 
@@ -282,7 +302,7 @@ export function loadState(): State {
       const p = JSON.parse(raw) as Partial<State>;
       const d = seedState();
       cache = {
-        schemaVersion: 10,
+        schemaVersion: 11,
         school: p.school ?? d.school,
         events: p.events ?? d.events,
         completions: p.completions ?? {},
@@ -300,6 +320,8 @@ export function loadState(): State {
         // seeded list so the urge button has somewhere to send them.
         replacements: p.replacements && p.replacements.length > 0 ? p.replacements : d.replacements,
         screen: { ...d.screen, ...(p.screen ?? {}) },
+        // Customization (v11+) — back-fill cleanly for existing installs.
+        customization: mergeCustomization(d.customization, p.customization),
         rewards: p.rewards && p.rewards.length === MAX_LEVEL ? p.rewards : d.rewards,
         unlockedAchievements: p.unlockedAchievements ?? {},
         startedAt: p.startedAt ?? Date.now(),
@@ -392,6 +414,10 @@ export function totalXp(s: State = loadState()): number {
   // Resisting an urge is real, hard work — credit it. Configurable per user.
   const resisted = s.urges.filter((u) => u.resolution === "resisted").length;
   total += resisted * Math.max(0, s.screen.awardXpPerUrgeResisted);
+  // Custom achievements — only count once claimed; xp clamped non-negative.
+  for (const a of s.customization.customAchievements) {
+    if (a.claimedAt) total += Math.max(0, Math.round(a.xp));
+  }
   return Math.max(0, total);
 }
 
@@ -1054,6 +1080,156 @@ export function distractionsOn(date: string, s: State = loadState()): Distractio
 }
 export function setReward(level: number, reward: string) {
   updateState((s) => ({ ...s, rewards: s.rewards.map((r) => (r.level === level ? { ...r, reward } : r)) }));
+}
+
+// ── customization (rename tabs, hide tabs, custom ranks, custom achievements,
+// custom theme) ────────────────────────────────────────────────────────────
+//
+// Migration-safe defaults backstop: any missing field gets the seed value,
+// and the rank array is normalized to exactly MAX_LEVEL entries.
+function mergeCustomization(d: Customization, p?: Partial<Customization>): Customization {
+  if (!p) return d;
+  const ranks = Array.from({ length: MAX_LEVEL }, (_, i) => {
+    const v = p.customRanks?.[i];
+    return typeof v === "string" && v.trim() ? v : undefined;
+  });
+  return {
+    tabLabels: p.tabLabels ?? d.tabLabels,
+    hiddenTabs: p.hiddenTabs ?? d.hiddenTabs,
+    customRanks: ranks,
+    customAchievements: p.customAchievements ?? d.customAchievements,
+    customTheme: p.customTheme ?? d.customTheme,
+    useCustomTheme: !!p.useCustomTheme,
+  };
+}
+
+export function tabLabel(id: string, fallback: string, s: State = loadState()): string {
+  const v = s.customization.tabLabels[id];
+  return v && v.trim() ? v : fallback;
+}
+export function setTabLabel(id: string, label: string) {
+  updateState((s) => ({
+    ...s,
+    customization: {
+      ...s.customization,
+      tabLabels: { ...s.customization.tabLabels, [id]: label.trim() },
+    },
+  }));
+}
+export function resetTabLabel(id: string) {
+  updateState((s) => {
+    const next = { ...s.customization.tabLabels };
+    delete next[id];
+    return { ...s, customization: { ...s.customization, tabLabels: next } };
+  });
+}
+
+export function isTabHidden(id: string, s: State = loadState()): boolean {
+  return s.customization.hiddenTabs.includes(id);
+}
+export function toggleTabHidden(id: string) {
+  updateState((s) => {
+    const cur = s.customization.hiddenTabs;
+    const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+    return { ...s, customization: { ...s.customization, hiddenTabs: next } };
+  });
+}
+
+export function rankFor(level: number, s: State = loadState()): string {
+  const i = Math.max(1, Math.min(MAX_LEVEL, level)) - 1;
+  const override = s.customization.customRanks[i];
+  return override && override.trim() ? override : (RANK_NAMES[i] ?? "");
+}
+export function setRank(level: number, name: string) {
+  updateState((s) => {
+    const i = Math.max(1, Math.min(MAX_LEVEL, level)) - 1;
+    const ranks = s.customization.customRanks.slice();
+    ranks[i] = name.trim() || undefined;
+    return { ...s, customization: { ...s.customization, customRanks: ranks } };
+  });
+}
+export function resetAllRanks() {
+  updateState((s) => ({
+    ...s,
+    customization: {
+      ...s.customization,
+      customRanks: Array.from({ length: MAX_LEVEL }, () => undefined),
+    },
+  }));
+}
+
+// Custom achievements — user-defined goals with XP rewards. Unlike the
+// built-in rule-based ones, these are MANUALLY claimed (you decide when
+// you've earned them). Claim once, claim sticks; XP counts once.
+export const blankCustomAchievement = (): CustomAchievement => ({
+  id: uid(), title: "", desc: "", xp: 100,
+});
+export function addCustomAchievement(a: CustomAchievement) {
+  updateState((s) => ({
+    ...s,
+    customization: {
+      ...s.customization,
+      customAchievements: [...s.customization.customAchievements, a],
+    },
+  }));
+}
+export function updateCustomAchievement(id: string, patch: Partial<CustomAchievement>) {
+  updateState((s) => ({
+    ...s,
+    customization: {
+      ...s.customization,
+      customAchievements: s.customization.customAchievements.map((a) => (a.id === id ? { ...a, ...patch } : a)),
+    },
+  }));
+}
+export function removeCustomAchievement(id: string) {
+  updateState((s) => ({
+    ...s,
+    customization: {
+      ...s.customization,
+      customAchievements: s.customization.customAchievements.filter((a) => a.id !== id),
+    },
+  }));
+}
+export function claimCustomAchievement(id: string) {
+  updateState((s) => ({
+    ...s,
+    customization: {
+      ...s.customization,
+      customAchievements: s.customization.customAchievements.map((a) =>
+        a.id === id && !a.claimedAt ? { ...a, claimedAt: Date.now() } : a
+      ),
+    },
+  }));
+}
+export function unclaimCustomAchievement(id: string) {
+  updateState((s) => ({
+    ...s,
+    customization: {
+      ...s.customization,
+      customAchievements: s.customization.customAchievements.map((a) =>
+        a.id === id ? { ...a, claimedAt: undefined } : a
+      ),
+    },
+  }));
+}
+
+// Custom theme — user-defined palette. setCustomTheme also flips the theme
+// preference to "custom" so it applies immediately.
+export function setCustomTheme(p: CustomTheme) {
+  updateState((s) => ({
+    ...s,
+    customization: { ...s.customization, customTheme: p, useCustomTheme: true },
+  }));
+}
+export function clearCustomTheme() {
+  updateState((s) => ({
+    ...s,
+    customization: { ...s.customization, customTheme: undefined, useCustomTheme: false },
+  }));
+}
+export function setUseCustomTheme(on: boolean) {
+  updateState((s) => ({ ...s, customization: { ...s.customization, useCustomTheme: on } }));
 }
 
 // ── achievements (earnable, rule-based) ─────────────────────────────────────
