@@ -207,6 +207,7 @@ export type CustomTheme = {
   ink: string; inkSoft: string; inkTiny: string; line: string;
   mint: string; mintDeep: string; mintHi: string;
   warn: string; cool: string;
+  heroImage?: string;  // optional URL — shown as a faint backdrop on Today
 };
 export type CustomAchievement = {
   id: string;
