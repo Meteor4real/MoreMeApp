@@ -9,6 +9,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { makePrintHandler } from "./print";
+import {
+  clearTracking, getTracking, setTrackingEnabled, subscribeTracking,
+  trackingReport, type TrackingCurrent, type TrackingReport,
+} from "./tracking";
 import { T } from "./styles";
 import { SCREEN_CATEGORIES, SCREEN_CATEGORY_LABEL } from "./types";
 import type { Replacement, ScreenCategory, ScreenSession, State, UrgeResolution } from "./types";
@@ -174,6 +178,9 @@ export function ScreensView({ s }: { s: State }) {
 
       {/* Settings */}
       <ScreenSettingsCard s={s} />
+
+      {/* OS-level foreground tracking — opt-in. Siren fires until enabled. */}
+      <TrackingCard />
 
       {/* Replacement drawer manager */}
       <ReplacementDrawerCard s={s} />
@@ -371,6 +378,101 @@ function ScreenSettingsCard({ s }: { s: State }) {
       </div>
       <div style={{ fontSize: 11, color: T.inkTiny, marginTop: 6 }}>
         Pre-commit a window when you're calm. Future-you will thank present-you.
+      </div>
+    </Section>
+  );
+}
+
+// ── OS-level tracking panel ────────────────────────────────────────────────
+function TrackingCard() {
+  const [enabled, setEnabled] = useState(false);
+  const [current, setCurrent] = useState<TrackingCurrent | null>(null);
+  const [report, setReport] = useState<TrackingReport>({ sessions: [] });
+  const [now, setNow] = useState(Date.now());
+  const [busy, setBusy] = useState(false);
+
+  // Initial fetch + subscribe to ticks for live updates.
+  useEffect(() => {
+    void getTracking().then((s) => { setEnabled(s.enabled); setCurrent(s.current); });
+    return subscribeTracking((m) => { setEnabled(m.enabled); setCurrent(m.current); });
+  }, []);
+  // Refresh today's report every 15s while enabled.
+  useEffect(() => {
+    let cancelled = false;
+    async function pull() {
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      const r = await trackingReport(start.getTime());
+      if (!cancelled) setReport(r);
+    }
+    void pull();
+    if (!enabled) return;
+    const id = window.setInterval(() => void pull(), 15_000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, [enabled]);
+  useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 30_000); return () => window.clearInterval(id); }, []);
+
+  // Roll up today's sessions by (app, tab) so the list reads cleanly.
+  const rollups = useMemo(() => {
+    const live: TrackingReport["sessions"] = current
+      ? [{ app: current.app, title: current.title, tab: current.tab, browser: current.browser, start: current.start, end: now, durationMs: Math.max(0, now - current.start) }]
+      : [];
+    const all = [...report.sessions, ...live];
+    const m = new Map<string, { app: string; tab?: string; browser?: string; ms: number; lastEnd: number }>();
+    for (const s of all) {
+      const tab = s.tab ?? s.title;
+      const k = `${s.app}|${tab}|${s.browser ?? ""}`;
+      const ex = m.get(k);
+      if (ex) { ex.ms += s.durationMs; ex.lastEnd = Math.max(ex.lastEnd, s.end); }
+      else m.set(k, { app: s.app, tab, browser: s.browser, ms: s.durationMs, lastEnd: s.end });
+    }
+    return [...m.values()].sort((a, b) => b.ms - a.ms).slice(0, 20);
+  }, [report, current, now]);
+
+  async function toggle() {
+    setBusy(true);
+    try { await setTrackingEnabled(!enabled); } finally { setBusy(false); }
+  }
+  async function reset() {
+    if (!confirm("Clear all tracked sessions on this machine? (Tracking stays on.)")) return;
+    await clearTracking();
+    setReport({ sessions: [] });
+  }
+
+  return (
+    <Section title={`OS tracking · ${enabled ? "ON" : "OFF — siren is firing"}`}>
+      <div style={{ fontSize: 12, color: T.inkSoft, lineHeight: 1.5 }}>
+        Tracks which app + foreground browser tab you're on, every 5 seconds. Opt-in by design:
+        until you enable it, the app fires a short siren tone every few seconds so you can't conveniently forget.
+        Data lives <b>on this device only</b> (userData/tracking.json). Last 30 days kept.
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
+        <button className={"mm-btn " + (enabled ? "mm-btn-danger" : "mm-btn-primary")} disabled={busy} onClick={toggle}>
+          {enabled ? "Disable tracking" : "Enable tracking (silence the siren)"}
+        </button>
+        <button className="mm-btn" onClick={reset} disabled={!enabled && report.sessions.length === 0}>Clear today's data</button>
+        {current && enabled && (
+          <span style={{ fontSize: 11, color: T.mint, marginLeft: 6 }}>
+            Now: <b>{current.app}</b>{current.tab ? ` · ${current.tab}` : current.title ? ` · ${current.title}` : ""}
+          </span>
+        )}
+      </div>
+      <div style={{ marginTop: 8 }}>
+        {report.sessions.length === 0 && !current && (
+          <Empty>Nothing tracked today yet.{enabled ? " Open something other than MoreMe — it'll appear here." : " Enable tracking first."}</Empty>
+        )}
+        {rollups.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {rollups.map((r) => (
+              <div key={r.app + "|" + r.tab} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "4px 8px", background: T.sunk, borderRadius: 8 }}>
+                <span style={{ width: 110, color: T.inkSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.app}>{r.app}</span>
+                <span style={{ flex: 1, minWidth: 0, color: T.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.tab}>
+                  {r.tab}{r.browser ? ` · ${r.browser}` : ""}
+                </span>
+                <span style={{ fontFamily: "ui-monospace, monospace", color: T.mint, minWidth: 60, textAlign: "right" }}>{fmtMin(Math.round(r.ms / 60_000))}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </Section>
   );

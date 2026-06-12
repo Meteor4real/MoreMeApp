@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
+import { setupTracking } from "./tracking";
 
 // In a CJS build __dirname exists; guard for ESM just in case.
 const dir =
@@ -116,6 +117,7 @@ function refreshTrayMenu() {
 app.whenReady().then(() => {
   configureSecurity();
   registerIpc();
+  setupTracking();
   ensureTray();
   applyBgPrefs(readBgPrefs());
   createWindow();
