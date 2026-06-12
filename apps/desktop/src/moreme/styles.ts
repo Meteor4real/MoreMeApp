@@ -1,24 +1,93 @@
-// MoreMe shared style tokens — Dude Perfect mint dark theme.
+// MoreMe theme tokens. Two palettes you can switch at runtime:
+//   dp       — Dude Perfect: turquoise on deep navy + panda black/white.
+//   papatui  — The Rock's Papatui: warm Polynesian earth (sand/cream, deep
+//              teal-green, bronze, espresso black). Interpreted from the
+//              brand's documented earthy identity (no public hex guide).
+//
+// `T` is a LIVE object: setTheme() reassigns its fields in place, so every
+// component that reads `T.mint` (incl. `T.mint + "55"` alpha math) picks up
+// the new palette on the next render. The class-based CSS is rebuilt from
+// `T` via buildMMStyle(); the desktop chrome follows via root CSS vars.
 
-export const T = {
-  bg: "#0F1318",
-  elev: "#1A2028",
-  sunk: "#070A0D",
-  ink: "#FFFFFF",
-  inkSoft: "#A8B3C0",
-  inkTiny: "#6A7280",
-  line: "#2A3038",
-  mint: "#3EDBB5",
-  mintDeep: "#00C896",
-  mintHi: "#7FEBD0",
-  warn: "#FF5C5F",
-  cool: "#33B5FF",
+export type ThemeName = "dp" | "papatui";
+
+export type Palette = {
+  bg: string; elev: string; sunk: string;
+  ink: string; inkSoft: string; inkTiny: string; line: string;
+  mint: string; mintDeep: string; mintHi: string;  // primary accent family
+  warn: string; cool: string;
 };
 
-export const MM_STYLE = `
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap');
+export const PALETTES: Record<ThemeName, Palette> = {
+  dp: {
+    bg: "#0C1422", elev: "#16223A", sunk: "#080E1A",
+    ink: "#FFFFFF", inkSoft: "#A6B6CC", inkTiny: "#5E6E86", line: "#233247",
+    mint: "#3EFBB7", mintDeep: "#15D6A0", mintHi: "#8BFFDD",
+    warn: "#FF5C5F", cool: "#1E90FF",
+  },
+  papatui: {
+    bg: "#19140F", elev: "#241C15", sunk: "#0F0B08",
+    ink: "#F4EAD9", inkSoft: "#C8B59B", inkTiny: "#8A7355", line: "#3A2E22",
+    mint: "#2FA98A", mintDeep: "#1E7D66", mintHi: "#5CCBB0",
+    warn: "#D9603B", cool: "#C9A24B",
+  },
+};
+
+export const THEME_META: Record<ThemeName, { label: string; note: string; swatch: string[] }> = {
+  dp:      { label: "Dude Perfect", note: "Turquoise on navy. Panda energy.", swatch: ["#3EFBB7", "#0C1422", "#1E90FF"] },
+  papatui: { label: "Papatui",      note: "Warm Polynesian earth. The Rock.",  swatch: ["#2FA98A", "#19140F", "#C9A24B"] },
+};
+
+// The live token object every component imports.
+export const T: Palette = { ...PALETTES.dp };
+
+const KEY = "nchub.moreme.theme.v1";
+const subs = new Set<() => void>();
+
+export function currentThemeName(): ThemeName {
+  try { const n = localStorage.getItem(KEY); if (n === "dp" || n === "papatui") return n; } catch { /* ignore */ }
+  return "dp";
+}
+
+// Push the palette onto the desktop chrome's CSS vars so the topbar / login
+// shell follow the MoreMe theme too. The token names (--red etc.) are legacy
+// aliases; only the values matter.
+function applyRootVars(p: Palette) {
+  const r = document.documentElement.style;
+  r.setProperty("--bg", p.bg);
+  r.setProperty("--panel", p.elev);
+  r.setProperty("--line", p.line);
+  r.setProperty("--ink", p.ink);
+  r.setProperty("--mute", p.inkSoft);
+  r.setProperty("--red", p.mint);
+  r.setProperty("--pink", p.mintHi);
+  r.setProperty("--orange", p.cool);
+  r.setProperty("--glow", p.mint);
+}
+
+export function setTheme(name: ThemeName) {
+  Object.assign(T, PALETTES[name]);
+  try { localStorage.setItem(KEY, name); } catch { /* ignore */ }
+  applyRootVars(T);
+  subs.forEach((fn) => fn());
+}
+export function subscribeTheme(fn: () => void): () => void {
+  subs.add(fn); return () => subs.delete(fn);
+}
+// Call once on boot so the persisted choice is live before first paint.
+export function initTheme() {
+  Object.assign(T, PALETTES[currentThemeName()]);
+  applyRootVars(T);
+}
+
+// Class-based MoreMe CSS, rebuilt from the current palette. Called inside the
+// embed component and re-run on theme change.
+export function buildMMStyle(): string {
+  return `
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700;800&display=swap');
 .moreme-embed { background: ${T.bg}; color: ${T.ink}; font-family: "Inter", system-ui, sans-serif; }
 .moreme-embed .serif { font-family: "Cormorant Garamond", Georgia, serif; font-weight: 600; letter-spacing: .01em; }
+.moreme-embed .condensed { font-family: "Barlow Condensed", "Inter", sans-serif; text-transform: uppercase; letter-spacing: .04em; }
 .moreme-embed .mm-card { background: ${T.elev}; border: 1px solid ${T.line}; border-radius: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35); }
 .moreme-embed .mm-card-mint { background: ${T.elev}; border: 1px solid ${T.mint}55; border-radius: 14px; box-shadow: 0 0 24px ${T.mint}11 inset, 0 8px 24px rgba(0,0,0,.35); }
 .moreme-embed .mm-action { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid ${T.line}; border-radius: 10px; background: ${T.sunk}; transition: border-color .15s, background .15s; width: 100%; text-align: left; }
@@ -39,8 +108,6 @@ export const MM_STYLE = `
 .moreme-embed .mm-progress { position: relative; height: 12px; background: ${T.bg}; border: 1px solid ${T.line}; border-radius: 6px; overflow: hidden; }
 .moreme-embed .mm-progress-fill { position: absolute; inset: 0; background: linear-gradient(90deg, ${T.mintHi}, ${T.mint}); transition: width .35s ease; }
 .moreme-embed .mm-progress-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; color: ${T.inkSoft}; letter-spacing: .04em; mix-blend-mode: luminosity; }
-
-/* calendar grid */
 .moreme-embed .mm-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
 .moreme-embed .mm-dow { text-align: center; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: ${T.inkTiny}; padding-bottom: 4px; }
 .moreme-embed .mm-day { position: relative; min-height: 86px; background: ${T.sunk}; border: 1px solid ${T.line}; border-radius: 10px; padding: 6px; cursor: pointer; transition: border-color .12s, background .12s; overflow: hidden; display: flex; flex-direction: column; gap: 3px; }
@@ -69,7 +136,24 @@ export const MM_STYLE = `
 .moreme-embed .scrolly { overflow: auto; }
 .moreme-embed .scrolly::-webkit-scrollbar { width: 8px; height: 8px; }
 .moreme-embed .scrolly::-webkit-scrollbar-thumb { background: ${T.line}; border-radius: 4px; }
+
+/* Print: when printing, strip the dark theme to clean black-on-white and hide
+   everything except the marked printable region. */
+@media print {
+  body * { visibility: hidden !important; }
+  .mm-print, .mm-print * { visibility: visible !important; }
+  .mm-print { position: absolute; inset: 0; background: #fff !important; color: #111 !important; padding: 24px; }
+  .mm-print .mm-card, .mm-print .mm-action, .mm-print .mm-day { background: #fff !important; border-color: #ccc !important; box-shadow: none !important; color: #111 !important; }
+  .mm-no-print { display: none !important; }
+  .mm-print * { color: #111 !important; }
+  .mm-print .mm-progress-fill { background: #888 !important; }
+}
 `;
+}
+
+// Back-compat: some modules still import MM_STYLE as a value. Provide the
+// initial build; the embed re-renders with buildMMStyle() on theme change.
+export const MM_STYLE = buildMMStyle();
 
 export const inp: React.CSSProperties = {
   flex: 1, background: "rgba(0,0,0,0.4)", border: `1px solid ${T.line}`, borderRadius: 10,

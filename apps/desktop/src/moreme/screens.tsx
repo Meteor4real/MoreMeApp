@@ -7,7 +7,8 @@
 //   - Routines earn budget; budget isn't punishment, it's a trade.
 //   - The urge button is FOR you, not against you — log it, see the wins.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { makePrintHandler } from "./print";
 import { T } from "./styles";
 import { SCREEN_CATEGORIES, SCREEN_CATEGORY_LABEL } from "./types";
 import type { Replacement, ScreenCategory, ScreenSession, State, UrgeResolution } from "./types";
@@ -115,14 +116,19 @@ export function ScreensView({ s }: { s: State }) {
   const todays = screenSessionsOn(date, s);
   const trend = useMemo(() => last30Trend(s), [s, tick]); // eslint-disable-line react-hooks/exhaustive-deps
   const urges = useMemo(() => [...s.urges].slice().sort((a, b) => b.ts - a.ts).slice(0, 30), [s.urges]);
+  const printRef = useRef<HTMLDivElement>(null);
+  const print = makePrintHandler(() => printRef.current);
 
   return (
-    <div style={{ maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div>
-        <div className="serif" style={{ fontSize: 22, lineHeight: 1 }}>Screens</div>
-        <div style={{ fontSize: 11, color: T.inkTiny, letterSpacing: ".08em", textTransform: "uppercase", marginTop: 4 }}>
-          honest mirror — no nags
+    <div ref={printRef} style={{ maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <div className="serif" style={{ fontSize: 22, lineHeight: 1 }}>Screens</div>
+          <div style={{ fontSize: 11, color: T.inkTiny, letterSpacing: ".08em", textTransform: "uppercase", marginTop: 4 }}>
+            honest mirror — no nags
+          </div>
         </div>
+        <button className="mm-btn mm-no-print" onClick={print} title="Print last-30-days screen report">⎙ Print report</button>
       </div>
 
       {/* Hero */}

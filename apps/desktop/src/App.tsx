@@ -5,6 +5,7 @@ import { MoreMe } from "./embedded/MoreMe";
 import { NT5 } from "./embedded/NT5";
 import { applyAccent, loadAccent } from "./theme-accent";
 import { applyUiPrefs, loadPrefs } from "./uiPrefs";
+import { initTheme } from "./moreme/styles";
 import { startWireScheduler } from "./services/nt5Wire";
 import { startDesk } from "./services/nt5Desk";
 import { startOriginPolling } from "./services/originRealms";
@@ -23,6 +24,9 @@ export function App() {
   useEffect(() => {
     applyAccent(loadAccent());
     applyUiPrefs(loadPrefs());
+    // MoreMe theme (DP / Papatui) is the user-visible chrome theme; it
+    // overrides the legacy accent's CSS vars by writing root vars too.
+    initTheme();
     // NT5: the per-anchor desk pulls real headlines for the user's topics on
     // each anchor's own cadence, 24/7. The wire scheduler adds occasional
     // in-universe Nova Terris flavor on top. Origin Realms pulse feeds the
