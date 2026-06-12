@@ -2,7 +2,7 @@
 // Achievements / Levels, plus a full event editor. Subscribes to the single
 // store; XP is earned by completing scheduled items and project milestones.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { T } from "./styles";
 import {
   CATEGORY_META, CATEGORY_ORDER, HELP_KINDS, HELP_KIND_LABEL, MAX_LEVEL, RANK_NAMES, cumulativeXp, levelStep,
@@ -30,6 +30,9 @@ import { PlansView } from "./plans";
 import { ScreensView, ScreenCardToday, LogSessionModal, UrgeModal } from "./screens";
 import { generateClassPeriods, clearClassPeriods, setClassPeriod } from "./store";
 import { pullOnce, pushOnce, subscribeSync, type SyncStatus } from "./sync";
+import { THEME_META, currentThemeName, setTheme, subscribeTheme, type ThemeName } from "./styles";
+import { quoteOfDay } from "./quotes";
+import { makePrintHandler } from "./print";
 
 type Tab = "today" | "ahead" | "calendar" | "screens" | "empire" | "projects" | "plans" | "goals" | "achievements" | "insights" | "levels";
 type CalMode = "month" | "week" | "day";
@@ -50,6 +53,9 @@ export function MoreMeUI() {
   const [tab, setTab] = useState<Tab>("today");
   const [editing, setEditing] = useState<CalEvent | null>(null);
   const [review, setReview] = useState(false);
+  // Force a re-render of every component using `T.*` when the theme flips.
+  const [, bumpTheme] = useState(0);
+  useEffect(() => subscribeTheme(() => bumpTheme((n) => n + 1)), []);
 
   const tabs: Tab[] = ["today", "ahead", "calendar", "screens", "empire", "projects", "plans", "goals", "achievements", "insights", "levels"];
 
@@ -279,13 +285,21 @@ function TodayView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }) {
   const conflicts = conflictIds(date, s);
   const upcoming = upcomingWithReminders(s);
   const [screenModal, setScreenModal] = useState<"log" | "urge" | null>(null);
+  const printRef = useRef<HTMLDivElement>(null);
+  const print = makePrintHandler(() => printRef.current);
+  const quote = quoteOfDay(date);
 
   return (
-    <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr", maxWidth: 760, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div ref={printRef} style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr", maxWidth: 760, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
         <div className="serif" style={{ fontSize: 20 }}>{new Date(date + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</div>
-        <button className="mm-btn mm-btn-primary" onClick={() => onEdit({ ...blankEvent(date) })}>+ New item</button>
+        <div className="mm-no-print" style={{ display: "flex", gap: 6 }}>
+          <button className="mm-btn" onClick={print} title="Print today">⎙ Print</button>
+          <button className="mm-btn mm-btn-primary" onClick={() => onEdit({ ...blankEvent(date) })}>+ New item</button>
+        </div>
       </div>
+
+      <QuoteBanner quote={quote} />
 
       {conflicts.size > 0 && (
         <div className="mm-card" style={{ padding: "10px 14px", borderColor: T.warn, color: T.warn, fontSize: 12 }}>
@@ -382,12 +396,25 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Empty({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 12, color: T.inkTiny, fontStyle: "italic" }}>{children}</div>;
 }
+function QuoteBanner({ quote }: { quote: { text: string; by: string } }) {
+  return (
+    <div className="mm-card-mint" style={{ padding: "14px 18px", display: "flex", gap: 14, alignItems: "center", borderLeft: `4px solid ${T.mint}` }}>
+      <span className="condensed" style={{ fontSize: 10, color: T.mint, letterSpacing: ".2em", flex: "none", writingMode: "vertical-rl", transform: "rotate(180deg)" }}>Today</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="serif" style={{ fontSize: 17, lineHeight: 1.35, color: T.ink }}>“{quote.text}”</div>
+        <div style={{ fontSize: 11, color: T.inkTiny, marginTop: 4, letterSpacing: ".06em", textTransform: "uppercase" }}>— {quote.by}</div>
+      </div>
+    </div>
+  );
+}
 
 // ── Calendar ────────────────────────────────────────────────────────────────
 function CalendarView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }) {
   const [mode, setMode] = useState<CalMode>("month");
   const [cursor, setCursor] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
   const [sel, setSel] = useState(today());
+  const printRef = useRef<HTMLDivElement>(null);
+  const print = makePrintHandler(() => printRef.current);
 
   const grid = useMemo(() => buildMonth(cursor.y, cursor.m), [cursor]);
   const selEvents = eventsOnDate(sel, s);
@@ -408,7 +435,7 @@ function CalendarView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }
   }
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: mode === "month" ? "minmax(0,1fr) 320px" : "minmax(0,1fr)", gap: 16, alignItems: "start" }}>
+    <div ref={printRef} style={{ display: "grid", gridTemplateColumns: mode === "month" ? "minmax(0,1fr) 320px" : "minmax(0,1fr)", gap: 16, alignItems: "start" }}>
       <div className="mm-card" style={{ padding: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
           <button className="mm-btn" onClick={() => shift(-1)}>‹</button>
@@ -421,6 +448,7 @@ function CalendarView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }
           </div>
           <button className="mm-btn" onClick={() => shift(1)}>›</button>
           <button className="mm-btn" onClick={goToday}>Today</button>
+          <button className="mm-btn mm-no-print" onClick={print} title="Print this calendar view">⎙</button>
           <div className="mm-seg">
             {(["month", "week", "day"] as CalMode[]).map((m) => (
               <button key={m} className={mode === m ? "on" : ""} onClick={() => setMode(m)}>{m}</button>
@@ -690,9 +718,44 @@ function ProjectsView({ s }: { s: State }) {
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <SchoolCard s={s} />
+        <ThemeCard />
         <BackgroundCard />
         <ClassesCard s={s} />
         <CircleCard s={s} />
+      </div>
+    </div>
+  );
+}
+function ThemeCard() {
+  const [name, setName] = useState<ThemeName>(currentThemeName);
+  return (
+    <div className="mm-card" style={{ padding: 16 }}>
+      <div className="serif" style={{ fontSize: 16, marginBottom: 4 }}>Theme</div>
+      <div style={{ fontSize: 11, color: T.inkTiny, marginBottom: 10 }}>
+        Switch the whole app's palette. Saves the second you pick.
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {(Object.keys(THEME_META) as ThemeName[]).map((k) => {
+          const meta = THEME_META[k];
+          const on = name === k;
+          return (
+            <button
+              key={k}
+              onClick={() => { setName(k); setTheme(k); }}
+              className="mm-action"
+              style={{ borderColor: on ? T.mint : undefined, background: on ? T.mint + "0d" : undefined, cursor: "pointer" }}
+            >
+              <span style={{ display: "inline-flex", gap: 0, borderRadius: 6, overflow: "hidden", flex: "none", boxShadow: `0 0 0 1px ${T.line}` }}>
+                {meta.swatch.map((c) => <span key={c} style={{ width: 14, height: 22, background: c, display: "inline-block" }} />)}
+              </span>
+              <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                <b style={{ fontSize: 13 }}>{meta.label}</b>
+                <div style={{ fontSize: 11, color: T.inkTiny }}>{meta.note}</div>
+              </div>
+              {on && <span className="mm-pill" style={{ background: T.mint, color: T.bg }}>Active</span>}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
