@@ -4,9 +4,10 @@
 
 import type {
   CalEvent, Category, Class, ClassPeriod, CustomAchievement, CustomTheme,
-  Customization, DistractionLog, Goal, Goals, InboxItem, LevelReward, Note, Person,
-  Project, ProjectKind, Replacement, School, SchoolPath, ScreenCategory,
-  ScreenSession, ScreenSettings, State, UrgeLog, UrgeResolution, Venture, VentureStatus,
+  Customization, DistractionLog, DynamicTab, Goal, Goals, InboxItem, LevelReward,
+  Note, Person, Project, ProjectKind, Replacement, School, SchoolPath, ScreenCategory,
+  ScreenSession, ScreenSettings, State, StatSource, UrgeLog, UrgeResolution,
+  Venture, VentureStatus, Widget,
 } from "./types";
 import { MAX_LEVEL, RANK_NAMES, cumulativeXp } from "./types";
 import { setCustomThemeResolver } from "./styles";
@@ -18,7 +19,7 @@ setCustomThemeResolver(() => {
   try { return loadState().customization.customTheme ?? null; } catch { return null; }
 });
 
-const KEY = "nchub.moreme.v11";
+const KEY = "nchub.moreme.v12";
 
 // Current YYYY-MM month key (for venture revenue).
 export const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -246,7 +247,7 @@ function seedVentures(): Venture[] {
 function seedState(): State {
   const start = today();
   return {
-    schemaVersion: 11,
+    schemaVersion: 12,
     notes: [],
     school: seedSchool(),
     events: seedRoutines(start),
@@ -287,6 +288,8 @@ function seedCustomization(): Customization {
     customAchievements: [],
     customTheme: undefined,
     useCustomTheme: false,
+    dynamicTabs: [],
+    widgets: {},
   };
 }
 
@@ -302,7 +305,7 @@ export function loadState(): State {
       const p = JSON.parse(raw) as Partial<State>;
       const d = seedState();
       cache = {
-        schemaVersion: 11,
+        schemaVersion: 12,
         school: p.school ?? d.school,
         events: p.events ?? d.events,
         completions: p.completions ?? {},
@@ -1100,6 +1103,8 @@ function mergeCustomization(d: Customization, p?: Partial<Customization>): Custo
     customAchievements: p.customAchievements ?? d.customAchievements,
     customTheme: p.customTheme ?? d.customTheme,
     useCustomTheme: !!p.useCustomTheme,
+    dynamicTabs: Array.isArray(p.dynamicTabs) ? p.dynamicTabs : d.dynamicTabs,
+    widgets: p.widgets && typeof p.widgets === "object" ? p.widgets : d.widgets,
   };
 }
 
@@ -1230,6 +1235,156 @@ export function clearCustomTheme() {
 }
 export function setUseCustomTheme(on: boolean) {
   updateState((s) => ({ ...s, customization: { ...s.customization, useCustomTheme: on } }));
+}
+
+// ── Dynamic UI (the agent API) ─────────────────────────────────────────────
+// Everything here is a pure state mutation. An external agent (or the in-app
+// builder UI) can compose tabs and widgets without touching source. Persisted
+// + synced via the same path as everything else.
+
+export function addDynamicTab(label: string, icon?: string, notes?: string): DynamicTab {
+  const t: DynamicTab = { id: "dyn-" + uid(), label: label.trim() || "Untitled", icon, notes };
+  updateState((s) => ({
+    ...s,
+    customization: { ...s.customization, dynamicTabs: [...s.customization.dynamicTabs, t] },
+  }));
+  return t;
+}
+export function updateDynamicTab(id: string, patch: Partial<DynamicTab>) {
+  updateState((s) => ({
+    ...s,
+    customization: {
+      ...s.customization,
+      dynamicTabs: s.customization.dynamicTabs.map((t) => (t.id === id ? { ...t, ...patch, id: t.id } : t)),
+    },
+  }));
+}
+export function removeDynamicTab(id: string) {
+  updateState((s) => {
+    const widgets = { ...s.customization.widgets };
+    delete widgets[id];
+    return {
+      ...s,
+      customization: {
+        ...s.customization,
+        dynamicTabs: s.customization.dynamicTabs.filter((t) => t.id !== id),
+        widgets,
+      },
+    };
+  });
+}
+export function moveDynamicTab(id: string, dir: -1 | 1) {
+  updateState((s) => {
+    const arr = s.customization.dynamicTabs.slice();
+    const i = arr.findIndex((t) => t.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= arr.length) return s;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    return { ...s, customization: { ...s.customization, dynamicTabs: arr } };
+  });
+}
+
+// Widgets live under a tab id. Built-in tab ids (e.g. "today") are valid
+// targets — drop a widget on Today and it renders above the default content.
+export function widgetsOn(tabId: string, s: State = loadState()): Widget[] {
+  return s.customization.widgets[tabId] ?? [];
+}
+
+// Build a typed blank Widget for a given kind. The agent / builder picks
+// fields from here; field validation happens in addWidget.
+export function blankWidget(kind: Widget["kind"]): Widget {
+  const id = "w-" + uid();
+  switch (kind) {
+    case "text":      return { id, kind, title: "", body: "" };
+    case "counter":   return { id, kind, title: "Counter", value: 0, step: 1 };
+    case "note":      return { id, kind, title: "", body: "" };
+    case "checklist": return { id, kind, title: "Checklist", items: [] };
+    case "link":      return { id, kind, title: "Open", url: "https://" };
+    case "iframe":    return { id, kind, title: "", url: "https://", height: 360 };
+    case "stat":      return { id, kind, title: "Stat", source: "xp.total", format: "number" };
+    case "image":     return { id, kind, title: "", url: "https://", height: 240 };
+    case "divider":   return { id, kind };
+    case "quote":     return { id, kind, title: "" };
+  }
+}
+
+export function addWidget(tabId: string, widget: Widget) {
+  // Defensive: re-id if the caller forgot, so two widgets can't collide.
+  const safe: Widget = widget.id ? widget : { ...widget, id: "w-" + uid() };
+  updateState((s) => {
+    const list = s.customization.widgets[tabId] ?? [];
+    return {
+      ...s,
+      customization: {
+        ...s.customization,
+        widgets: { ...s.customization.widgets, [tabId]: [...list, safe] },
+      },
+    };
+  });
+}
+export function updateWidget(tabId: string, widgetId: string, patch: Partial<Widget>) {
+  updateState((s) => {
+    const list = s.customization.widgets[tabId] ?? [];
+    return {
+      ...s,
+      customization: {
+        ...s.customization,
+        widgets: {
+          ...s.customization.widgets,
+          [tabId]: list.map((w) => (w.id === widgetId ? { ...w, ...patch, id: w.id, kind: w.kind } as Widget : w)),
+        },
+      },
+    };
+  });
+}
+export function removeWidget(tabId: string, widgetId: string) {
+  updateState((s) => {
+    const list = s.customization.widgets[tabId] ?? [];
+    return {
+      ...s,
+      customization: {
+        ...s.customization,
+        widgets: { ...s.customization.widgets, [tabId]: list.filter((w) => w.id !== widgetId) },
+      },
+    };
+  });
+}
+export function moveWidget(tabId: string, widgetId: string, dir: -1 | 1) {
+  updateState((s) => {
+    const list = (s.customization.widgets[tabId] ?? []).slice();
+    const i = list.findIndex((w) => w.id === widgetId);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= list.length) return s;
+    [list[i], list[j]] = [list[j], list[i]];
+    return {
+      ...s,
+      customization: {
+        ...s.customization,
+        widgets: { ...s.customization.widgets, [tabId]: list },
+      },
+    };
+  });
+}
+
+// Stat widget data source. Pure read — the renderer calls this each render.
+export function statValue(source: StatSource, s: State = loadState()): number {
+  switch (source) {
+    case "screen.todayMinutes":     return screenMinutesOn(today(), s);
+    case "screen.todayBudget":      return earnedBudgetOn(today(), s).total;
+    case "screen.urgesResistedToday": return urgesOn(today(), s).filter((u) => u.resolution === "resisted").length;
+    case "screen.urgesResistedTotal": return s.urges.filter((u) => u.resolution === "resisted").length;
+    case "xp.total":                return totalXp(s);
+    case "xp.level":                return levelInfo(s).level;
+    case "xp.streak":               return streakInfo(s).current;
+    case "events.todayCompleted": {
+      let n = 0;
+      for (const e of eventsOnDate(today(), s)) if (isDone(e, today(), s)) n++;
+      return n;
+    }
+    case "events.todayTotal":       return eventsOnDate(today(), s).length;
+    case "ventures.mrr":            return empireMRR(s);
+    case "ventures.lifetime":       return empireLifetime(s);
+  }
 }
 
 // ── achievements (earnable, rule-based) ─────────────────────────────────────

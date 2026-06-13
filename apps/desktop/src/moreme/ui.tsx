@@ -30,15 +30,20 @@ import { PlansView } from "./plans";
 import { CustomizeView } from "./customize";
 import { ScreensView, ScreenCardToday, LogSessionModal, UrgeModal } from "./screens";
 import { isTabHidden, rankFor, tabLabel } from "./store";
+import { WidgetView } from "./widgets";
 import { generateClassPeriods, clearClassPeriods, setClassPeriod } from "./store";
 import { pullOnce, pushOnce, subscribeSync, type SyncStatus } from "./sync";
 import { THEME_META, currentThemeName, heroImageUrl, setTheme, subscribeTheme, type ThemeName } from "./styles";
 import { quoteOfDay } from "./quotes";
 import { makePrintHandler } from "./print";
 
-type Tab = "today" | "ahead" | "calendar" | "screens" | "empire" | "projects" | "plans" | "goals" | "achievements" | "insights" | "levels" | "customize";
+// Built-in tab ids. The render code accepts ANY string so dynamic tab ids
+// (created at runtime) can be the active tab too — the only routing needs
+// are the well-known ids plus a default-cases fall-through.
+type BuiltInTab = "today" | "ahead" | "calendar" | "screens" | "empire" | "projects" | "plans" | "goals" | "achievements" | "insights" | "levels" | "customize";
+type Tab = BuiltInTab | string;
 type CalMode = "month" | "week" | "day";
-const TAB_LABELS: Record<Tab, string> = {
+const TAB_LABELS: Record<BuiltInTab, string> = {
   today: "today", ahead: "get ahead", calendar: "calendar", screens: "screens", empire: "empire",
   projects: "projects", plans: "plans", goals: "goals", achievements: "achievements",
   insights: "insights", levels: "levels", customize: "customize",
@@ -59,10 +64,17 @@ export function MoreMeUI() {
   const [, bumpTheme] = useState(0);
   useEffect(() => subscribeTheme(() => bumpTheme((n) => n + 1)), []);
 
-  const ALL_TABS: Tab[] = ["today", "ahead", "calendar", "screens", "empire", "projects", "plans", "goals", "achievements", "insights", "levels", "customize"];
+  const ALL_TABS: BuiltInTab[] = ["today", "ahead", "calendar", "screens", "empire", "projects", "plans", "goals", "achievements", "insights", "levels", "customize"];
   // Customize is always available — otherwise you could hide it and lose the
   // way back. Everything else respects the user's `hiddenTabs` choice.
   const tabs = ALL_TABS.filter((t) => t === "customize" || !isTabHidden(t, s));
+  const dyn = s.customization.dynamicTabs;
+  // The active tab id is a string — built-in Tab type union OR a dynamic tab id.
+  const tabIdStr = String(tab);
+  const dynamicCurrent = dyn.find((d) => d.id === tabIdStr);
+
+  // Render widgets dropped onto this tab id (built-in OR dynamic).
+  const widgetsHere = s.customization.widgets[tabIdStr] ?? [];
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", position: "relative" }}>
@@ -72,8 +84,19 @@ export function MoreMeUI() {
         {tabs.map((t) => (
           <button key={t} className={"mm-tab" + (tab === t ? " active" : "")} onClick={() => setTab(t)}>{tabLabel(t, TAB_LABELS[t], s)}</button>
         ))}
+        {dyn.map((d) => (
+          <button key={d.id} className={"mm-tab" + (tabIdStr === d.id ? " active" : "")} onClick={() => setTab(d.id as Tab)}>
+            {d.icon ? `${d.icon} ` : ""}{d.label}
+          </button>
+        ))}
       </div>
       <div className="scrolly" style={{ flex: 1, minHeight: 0, padding: 18 }}>
+        {/* Widgets dropped onto any built-in tab render here first. */}
+        {widgetsHere.length > 0 && tab !== "customize" && !dynamicCurrent && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 760, margin: "0 auto 16px" }}>
+            {widgetsHere.map((w) => <WidgetView key={w.id} s={s} tabId={tabIdStr} w={w} />)}
+          </div>
+        )}
         {tab === "today" && <TodayView s={s} onEdit={setEditing} />}
         {tab === "ahead" && <GetAheadView s={s} onEdit={setEditing} />}
         {tab === "calendar" && <CalendarView s={s} onEdit={setEditing} />}
@@ -86,10 +109,27 @@ export function MoreMeUI() {
         {tab === "insights" && <InsightsView s={s} />}
         {tab === "levels" && <LevelsView s={s} />}
         {tab === "customize" && <CustomizeView s={s} />}
+        {dynamicCurrent && <DynamicTabView s={s} tabId={dynamicCurrent.id} />}
       </div>
       {editing && <EventEditor s={s} draft={editing} onClose={() => setEditing(null)} />}
       {review && <WeeklyReview s={s} onClose={() => setReview(false)} onEdit={(e) => { setReview(false); setEditing(e); }} />}
       <ReminderToasts s={s} onOpen={setEditing} />
+    </div>
+  );
+}
+
+// ── Dynamic tab renderer ──────────────────────────────────────────────────
+// A user/agent-created tab. Renders its widget list and an honest empty
+// state pointing to the Customize builder.
+function DynamicTabView({ s, tabId }: { s: State; tabId: string }) {
+  const t = s.customization.dynamicTabs.find((x) => x.id === tabId);
+  const list = s.customization.widgets[tabId] ?? [];
+  return (
+    <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="serif" style={{ fontSize: 22 }}>{t?.icon ? `${t.icon} ` : ""}{t?.label ?? "Tab"}</div>
+      {list.length === 0
+        ? <div style={{ fontSize: 12, color: T.inkTiny, fontStyle: "italic", padding: 16 }}>No widgets here yet. Open <b>Customize → Pages &amp; widgets</b> to drop some in.</div>
+        : list.map((w) => <WidgetView key={w.id} s={s} tabId={tabId} w={w} />)}
     </div>
   );
 }
