@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Logo } from "./logo";
 
 const OWNER = "Meteor4real";
-const REPO = "NetworkChuckHub";
+const REPO = "MoreMeApp"; // repo was renamed; old URL still 301-redirects but the explicit new name is safer
 const RELEASES_PAGE = `https://github.com/${OWNER}/${REPO}/releases`;
 const ACTIONS_PAGE = `https://github.com/${OWNER}/${REPO}/actions`;
 
