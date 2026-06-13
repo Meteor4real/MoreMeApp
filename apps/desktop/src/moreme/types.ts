@@ -223,7 +223,61 @@ export type Customization = {
   customAchievements: CustomAchievement[];
   customTheme?: CustomTheme;             // when set, "custom" theme becomes selectable
   useCustomTheme: boolean;               // toggle for the picker
+  // ── Dynamic UI (the agent API) ───────────────────────────────────────
+  // dynamicTabs are user/agent-created tabs ordered after the built-ins.
+  // widgets is a per-tab list, including built-in tab ids (e.g. "today"),
+  // so an agent can drop a card onto Today without source edits.
+  dynamicTabs: DynamicTab[];
+  widgets: Record<string, Widget[]>;
 };
+
+// A user/agent-created tab. Each has its own list of widgets (looked up in
+// `widgets[id]`). The icon is a plain string (emoji or letter) shown next to
+// the label; agent can leave it empty.
+export type DynamicTab = {
+  id: string;        // stable id, used as a key into `widgets`
+  label: string;
+  icon?: string;
+  notes?: string;    // free-text for the agent / user — never shown
+};
+
+// Widgets are the atoms an agent can compose. All keep state inline so a
+// JSON dump of `widgets` round-trips losslessly.
+export type Widget =
+  | { id: string; kind: "text";      title?: string; body: string }
+  | { id: string; kind: "counter";   title: string; value: number; step?: number; xpPerStep?: number }
+  | { id: string; kind: "note";      title?: string; body: string }
+  | { id: string; kind: "checklist"; title: string; items: { id: string; text: string; done: boolean }[] }
+  | { id: string; kind: "link";      title: string; url: string }
+  | { id: string; kind: "iframe";    title?: string; url: string; height?: number }
+  | { id: string; kind: "stat";      title: string; source: StatSource; format?: "minutes" | "number" | "percent" }
+  | { id: string; kind: "image";     title?: string; url: string; height?: number }
+  | { id: string; kind: "divider" }
+  | { id: string; kind: "quote";     title?: string };
+
+// A read-only stat sourced from the live state. The renderer maps the source
+// name to a computed value. Agents can ship new dashboards by composing these.
+export type StatSource =
+  | "screen.todayMinutes"
+  | "screen.todayBudget"
+  | "screen.urgesResistedToday"
+  | "screen.urgesResistedTotal"
+  | "xp.total"
+  | "xp.level"
+  | "xp.streak"
+  | "events.todayCompleted"
+  | "events.todayTotal"
+  | "ventures.mrr"
+  | "ventures.lifetime";
+
+export const STAT_SOURCES: StatSource[] = [
+  "screen.todayMinutes", "screen.todayBudget", "screen.urgesResistedToday",
+  "screen.urgesResistedTotal", "xp.total", "xp.level", "xp.streak",
+  "events.todayCompleted", "events.todayTotal", "ventures.mrr", "ventures.lifetime",
+];
+
+export type WidgetKind = Widget["kind"];
+export const WIDGET_KINDS: WidgetKind[] = ["text", "counter", "note", "checklist", "link", "iframe", "stat", "image", "divider", "quote"];
 
 export type LevelReward = { level: number; reward: string };
 
@@ -238,7 +292,7 @@ export type School = {
 };
 
 export type State = {
-  schemaVersion: 11;
+  schemaVersion: 12;
   customization: Customization;
   school: School;
   events: CalEvent[];

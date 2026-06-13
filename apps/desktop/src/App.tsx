@@ -12,6 +12,7 @@ import { startDesk } from "./services/nt5Desk";
 import { startOriginPolling } from "./services/originRealms";
 import { startSync, stopSync } from "./moreme/sync";
 import { initTrackingSiren } from "./moreme/tracking";
+import { installAgentApi } from "./moreme/agentApi";
 import { NT5AmbientTicker } from "./shell/NT5AmbientTicker";
 
 // Three surfaces behind the accounts gate: MoreMe (the product), NT5 News
@@ -46,6 +47,10 @@ export function App() {
     // the user enables it. (Opt-in by design — the only way to silence it
     // is to flip the switch.)
     initTrackingSiren();
+    // Install the agent API on window.moremeAgent so external scripts (or
+    // the dev console, or a future Hermes/OpenClaw bridge) can mutate the
+    // UI at runtime: add tabs, drop widgets, change theme, etc.
+    installAgentApi();
   }, []);
 
   function logout() {
