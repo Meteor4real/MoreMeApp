@@ -5,6 +5,11 @@ Empire dashboard for the ventures you run, GTD capture + Weekly Review, and
 20 levels you actually earn. Synced. Quiet. Always on. Plus **NT5 News** —
 an on-device anchor wire — as a bonus second tab.
 
+> **For LLM agents (Hermes / Claude / OpenClaw / etc.):** the operations
+> manual is at [`HERMES_SKILL.md`](./HERMES_SKILL.md) (also installed at
+> `.claude/skills/moreme-davis/SKILL.md`). It covers how to operate, modify,
+> and manage the user on MoreMe via the in-renderer `window.moremeAgent` API.
+
 The repo's still named `networkchuckhub` (this was the NetworkChuck Hub
 monorepo originally) but the product has been refocused.
 
