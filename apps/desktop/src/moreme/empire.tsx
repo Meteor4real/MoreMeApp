@@ -31,17 +31,37 @@ export function EmpireView({ s }: { s: State }) {
         <button className="mm-btn mm-btn-primary" onClick={() => upsertVenture({ ...blankVenture(), name: "New venture" })}>+ Venture</button>
       </div>
 
-      <div className="mm-card-mint" style={{ padding: 16, marginBottom: 16, display: "flex", gap: 28, flexWrap: "wrap" }}>
-        <Metric label="Monthly revenue" value={money(mrr)} />
-        <Metric label="Lifetime revenue" value={money(lifetime)} />
-        <Metric label="Active ventures" value={String(s.ventures.filter((v) => v.status === "live" || v.status === "scaling").length)} />
-        <Metric label="Total ventures" value={String(s.ventures.length)} />
-      </div>
+      {s.ventures.length > 0 && (
+        <div className="mm-card-mint" style={{ padding: 16, marginBottom: 16, display: "flex", gap: 28, flexWrap: "wrap" }}>
+          <Metric label="Monthly revenue" value={money(mrr)} />
+          <Metric label="Lifetime revenue" value={money(lifetime)} />
+          <Metric label="Active ventures" value={String(s.ventures.filter((v) => v.status === "live" || v.status === "scaling").length)} />
+          <Metric label="Total ventures" value={String(s.ventures.length)} />
+        </div>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {s.ventures.length === 0 && <Empty>No ventures yet. Add the first one.</Empty>}
-        {s.ventures.map((v) => <VentureCard key={v.id} v={v} />)}
+        {s.ventures.length === 0 ? (
+          <EmptyState
+            title="No ventures yet"
+            line="The Empire tracks every business you run — status, monthly revenue, next action. Add the first one and the dashboard starts filling in."
+            ctaLabel="Add your first venture"
+            onCta={() => upsertVenture({ ...blankVenture(), name: "" })}
+          />
+        ) : (
+          s.ventures.map((v) => <VentureCard key={v.id} v={v} />)
+        )}
       </div>
+    </div>
+  );
+}
+
+function EmptyState({ title, line, ctaLabel, onCta }: { title: string; line: string; ctaLabel: string; onCta: () => void }) {
+  return (
+    <div className="mm-card" style={{ padding: 24, textAlign: "center", borderStyle: "dashed" }}>
+      <div className="serif" style={{ fontSize: 17, marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: 12, color: T.inkSoft, lineHeight: 1.55, maxWidth: 460, margin: "0 auto 14px" }}>{line}</div>
+      <button className="mm-btn mm-btn-primary" onClick={onCta}>{ctaLabel}</button>
     </div>
   );
 }

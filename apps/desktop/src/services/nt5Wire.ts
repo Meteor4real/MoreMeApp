@@ -15,11 +15,25 @@ import {
   type Topic, type TopicHit,
 } from "./nt5Topics";
 
+// Article shapes — every wire item is one of these. The UI renders each shape
+// differently so the wire reads as a real network: hard-news briefs, deep
+// articles, breaking-news bulletins, opinion columns, anchor social posts,
+// ticker fragments. Default to "brief" for items that predate this field
+// (existing localStorage state).
+export type ArticleKind =
+  | "brief"      // 2-3 sentence hard-news brief — the historical default
+  | "article"    // long-form, 4-6 paragraphs with structure
+  | "broadcast"  // BREAKING bulletin, one urgent sentence, red treatment
+  | "blog"       // op-ed / opinion column, 3-4 paragraphs of analysis
+  | "social"     // tweet-shaped casual post in anchor voice, ≤280 chars
+  | "ticker";    // one-line headline fragment for the crawl only
+
 export type WireArticle = {
   id: string;
   slug: string;
   title: string;
   body: string;
+  kind: ArticleKind;
   category: string;        // "breaking" | "field" | "earth_trending" | "gaming" | "space" | "cc_lore" | "culture" | "tech"
   anchor_id: string;       // "voss" | "zara" | "dex" | "lena" | "orin"
   author_display: string;
@@ -32,6 +46,47 @@ export type WireArticle = {
   source_name?: string;    // publisher / subreddit for attribution
   topic_label?: string;    // which user topic produced it
   topics: string[];
+};
+
+// Weighted distribution for the in-universe generator. Briefs lead because
+// they're the bread-and-butter of a news wire; articles + broadcasts surface
+// often enough to feel like a real network; blogs/socials/tickers sprinkle
+// flavor without dominating.
+const KIND_WEIGHTS: Array<[ArticleKind, number]> = [
+  ["brief", 40], ["article", 20], ["broadcast", 15], ["blog", 10], ["social", 10], ["ticker", 5],
+];
+
+// Real-world re-voicing leans heavier on briefs + articles because the
+// source material is a real headline + snippet — broadcasts and tickers
+// can still spin up but blogs/socials get less weight to avoid making the
+// model invent opinion on real Earth events.
+const REAL_KIND_WEIGHTS: Array<[ArticleKind, number]> = [
+  ["brief", 55], ["article", 20], ["broadcast", 15], ["ticker", 5], ["social", 3], ["blog", 2],
+];
+
+function pickKind(weights: Array<[ArticleKind, number]>): ArticleKind {
+  const total = weights.reduce((a, [, w]) => a + w, 0);
+  let r = Math.random() * total;
+  for (const [k, w] of weights) { r -= w; if (r <= 0) return k; }
+  return weights[0][0];
+}
+
+// Per-kind generation directives. Drives the model toward the right length
+// + tone + structure for each shape. The model returns body text in the
+// shape we ask for; the UI renders it accordingly.
+const KIND_PROMPTS: Record<ArticleKind, string> = {
+  brief:
+    "A tight 2-3 sentence hard-news brief. Lead with the fact. No preamble, no opinion.",
+  article:
+    "A long-form article, 4-6 paragraphs. Open with a hook lede, then 3-4 paragraphs of body that develop the angle (context, players, stakes), then a 1-sentence closing line. Use double-newlines between paragraphs. No section headers, no markdown.",
+  broadcast:
+    "A BREAKING NEWS bulletin: ONE urgent sentence, no more. Present tense, active voice, specific. The kind of line an anchor reads cold on-camera as the chyron flashes.",
+  blog:
+    "An opinion column, 3-4 paragraphs, in the anchor's voice. Take a clear stance, build the argument, land a memorable closer. Double-newlines between paragraphs. No markdown.",
+  social:
+    "A casual social post from the anchor's account — 1-2 sentences, max ~280 characters total. Conversational, signature anchor voice. Optionally a single hashtag at the end. No quote marks around the post.",
+  ticker:
+    "A single-line headline fragment, 10-18 words. Just the news beat, no body. This goes on the crawl only.",
 };
 
 // Display name lookup — kept thin; the full bible lives in nt5Lore.
@@ -54,7 +109,11 @@ function readAll(): WireArticle[] {
     const arr = JSON.parse(raw) as WireArticle[];
     if (!Array.isArray(arr)) return [];
     // Newest-first by publish time so the freshest real headlines lead.
-    return arr.slice().sort((a, b) => Date.parse(b.published_at) - Date.parse(a.published_at));
+    // Backfill kind="brief" on legacy items so the UI's per-kind branching
+    // never sees an undefined.
+    return arr
+      .map((a) => (a.kind ? a : { ...a, kind: "brief" as ArticleKind }))
+      .sort((a, b) => Date.parse(b.published_at) - Date.parse(a.published_at));
   } catch { return []; }
 }
 function writeAll(arts: WireArticle[]) {
@@ -127,50 +186,82 @@ function parseItems(text: string): { category: string; anchor_id: string; title:
   return [];
 }
 
-export async function runWireOnce(count = 3): Promise<{ ok: boolean; added: WireArticle[]; error?: string }> {
+// Parse a single-item JSON object (used by the per-kind generator that
+// asks for one piece at a time). Falls back to wrapping the raw text as
+// the body when the model returns prose instead of JSON.
+function parseOne(text: string, fallbackAnchor: string): { category: string; anchor_id: string; title: string; body: string } | null {
+  let t = text.trim().replace(/^```(json)?/i, "").replace(/```$/, "").trim();
+  const a = t.indexOf("{");
+  const b = t.lastIndexOf("}");
+  if (a >= 0 && b > a) t = t.slice(a, b + 1);
+  try {
+    const obj = JSON.parse(t);
+    if (obj && obj.title && obj.body) {
+      return {
+        category: String(obj.category || "latest"),
+        anchor_id: String(obj.anchor_id || obj.anchor || fallbackAnchor),
+        title: String(obj.title),
+        body: String(obj.body),
+      };
+    }
+  } catch { /* fall through */ }
+  return null;
+}
+
+// Generate one wire item of a specific shape. The kind drives the prompt
+// (length, tone, structure) so the wire reads as a real network instead
+// of one repeating shape. Returns null on parse failure / model error.
+async function generateOne(kind: ArticleKind, recentTitles: string[]): Promise<{ category: string; anchor_id: string; title: string; body: string } | null> {
   const topics = DEFAULT_TOPICS;
-  // Feed live context to the wire so Dex's Origin Realms coverage tracks the
-  // server's actual right-now state instead of being purely imagined.
   const pulse = getOriginPulse();
   const liveCtx = pulse
-    ? `\nLIVE CONTEXT (real-time, use this in any Origin Realms item — especially Dex's): play.originrealms.com is ${pulse.online ? `online with ${pulse.players}/${pulse.max} players` : "offline"}; MOTD: "${pulse.motd}"; version: ${pulse.version}.`
+    ? `\nLIVE CONTEXT (real-time): play.originrealms.com is ${pulse.online ? `online with ${pulse.players}/${pulse.max} players` : "offline"}; MOTD: "${pulse.motd}"; version: ${pulse.version}. Use this if you write an Origin Realms item (especially in Dex's voice).`
     : "";
-  // Sample a few rotating formats + shuffle the topic weighting so each batch
-  // reads differently from the last. Recent headlines are passed back so the
-  // model actively avoids repeating itself.
-  const formats = [...STORY_FORMATS].sort(() => Math.random() - 0.5).slice(0, Math.min(count, 4));
+  const format = STORY_FORMATS[Math.floor(Math.random() * STORY_FORMATS.length)];
   const weighted = [...topics].sort(() => Math.random() - 0.5);
-  const recentTitles = readAll().slice(0, 12).map((a) => a.title);
   const avoidBlock = recentTitles.length
-    ? `\nDo NOT repeat or lightly reword any of these recently-filed headlines:\n- ${recentTitles.join("\n- ")}`
+    ? `\nDo NOT repeat or lightly reword any of these recently-filed headlines:\n- ${recentTitles.slice(0, 12).join("\n- ")}`
     : "";
-  // Pick one or two recurring storylines to advance this batch — so coverage
-  // feels continuous, not memoryless.
-  const pickedStorylines = [...STORYLINES].sort(() => Math.random() - 0.5).slice(0, 2);
+  const storyline = STORYLINES[Math.floor(Math.random() * STORYLINES.length)];
+
+  const kindBlock = `\nSHAPE FOR THIS ITEM: ${kind.toUpperCase()}\n${KIND_PROMPTS[kind]}`;
+
   const res = await window.hub.llm.chat(
-    SYSTEM,
-    `Earth topics to weight (real, current-world), most important first: ${weighted.join(", ")}.${liveCtx}` +
-    `\nNova Terris storylines to ADVANCE or REFERENCE in at least one item: ${pickedStorylines.map((s) => `\n- ${s}`).join("")}` +
-    `\nUse a DIFFERENT story format for each item, drawn from: ${formats.join("; ")}.` +
+    SYSTEM + kindBlock,
+    `Earth topics to weight (real, current-world): ${weighted.join(", ")}.${liveCtx}` +
+    `\nA Nova Terris storyline to advance OR reference if it fits: ${storyline}` +
+    `\nStory angle: ${format}.` +
     avoidBlock +
-    `\nWrite ${count} fresh NT5 wire items now as JSON only.`,
+    `\nReturn ONE JSON object (no array, no prose, no markdown fence): ` +
+    `{"category","anchor_id","title","body"}.`,
     { temperature: 0.95 }
   );
-  if (!res.ok) return { ok: false, added: [], error: res.error };
-  const items = parseItems(res.text || "");
+  if (!res.ok) return null;
+  return parseOne(res.text || "", "voss");
+}
+
+export async function runWireOnce(count = 3): Promise<{ ok: boolean; added: WireArticle[]; error?: string }> {
   const existing = readAll();
   const existingTitles = new Set(existing.map((a) => a.title.toLowerCase()));
-  const now = new Date();
-  const added: WireArticle[] = items.filter((i) => !existingTitles.has(i.title.toLowerCase())).map((i, k) => {
-    const id = `wire-${Date.now()}-${k}`;
-    return {
+  const added: WireArticle[] = [];
+  let lastError: string | undefined;
+  for (let i = 0; i < count; i++) {
+    const kind = pickKind(KIND_WEIGHTS);
+    const titles = [...added.map((a) => a.title), ...existing.slice(0, 10).map((a) => a.title)];
+    const item = await generateOne(kind, titles).catch((e) => { lastError = String(e); return null; });
+    if (!item) continue;
+    if (existingTitles.has(item.title.toLowerCase())) continue;
+    const id = `wire-${Date.now()}-${i}`;
+    const now = new Date();
+    const wire: WireArticle = {
       id,
-      slug: slugify(i.title) || id,
-      title: i.title,
-      body: i.body,
-      category: i.category,
-      anchor_id: i.anchor_id in ANCHORS ? i.anchor_id : "voss",
-      author_display: ANCHORS[i.anchor_id] || ANCHORS.voss,
+      slug: slugify(item.title) || id,
+      title: item.title,
+      body: item.body,
+      kind,
+      category: item.category,
+      anchor_id: item.anchor_id in ANCHORS ? item.anchor_id : "voss",
+      author_display: ANCHORS[item.anchor_id] || ANCHORS.voss,
       published_at: now.toISOString(),
       created_at: now.toISOString(),
       voice_audio_url: null,
@@ -178,18 +269,19 @@ export async function runWireOnce(count = 3): Promise<{ ok: boolean; added: Wire
       broadcast_segment: null,
       source_urls: [],
       topics: [],
-    } as WireArticle;
-  });
+    };
+    added.push(wire);
+    existingTitles.add(item.title.toLowerCase());
+  }
   if (added.length) {
     const merged = [...added, ...existing].slice(0, 80);
     writeAll(merged);
     subs.forEach((fn) => fn(merged));
-    // Push fresh items into any open NT5 iframes so the bundled site stays alive.
     document.querySelectorAll("iframe").forEach((f) => {
       try { f.contentWindow?.postMessage({ type: "nt5-add-articles", articles: added }, "*"); } catch { /* ignore */ }
     });
   }
-  return { ok: true, added };
+  return { ok: added.length > 0, added, error: added.length === 0 ? lastError : undefined };
 }
 
 // Module-level scheduler — single timer per app load. Restarts when the
@@ -306,17 +398,30 @@ export async function runTopicOnce(topic: Topic): Promise<{ ok: boolean; added: 
 // isn't ready so the item still lands as a real reference with its source.
 async function fileRealItem(topic: Topic, hit: TopicHit): Promise<WireArticle | null> {
   const anchor = topic.anchor;
+  // Roll a shape for this real-world item. Real news leans heavily toward
+  // brief + article since blogs / socials risk inventing opinion that isn't
+  // in the source snippet — for those, the model is constrained tighter.
+  const kind = pickKind(REAL_KIND_WEIGHTS);
   let body = (hit.description || "").slice(0, 360);
   try {
     const s = await window.hub.llm.status();
     if (s.ready) {
       const a = LORE_ANCHORS[anchor] ?? LORE_ANCHORS.voss;
+      // Per-kind re-voicing instructions. The hard constraint stays the
+      // same: use ONLY facts present in the snippet for any factual claim.
+      // Opinion shapes (blog / social) frame angle but can't invent events.
+      const shape = KIND_PROMPTS[kind];
+      const factsGuard =
+        kind === "blog" || kind === "social"
+          ? "You may add stance / framing in the anchor's voice, but factual claims must come from the snippet only — do not invent events or numbers."
+          : "Use ONLY facts present in the snippet — invent nothing.";
       const sys =
         `You are NT5 anchor ${a.name} (${a.role}). Voice: ${a.voice}\n` +
-        `Re-voice a REAL current headline + snippet into a tight 2-sentence brief ` +
-        `in your voice. Use ONLY facts present in the snippet — invent nothing. ` +
-        `Keep it accurate; this is real news. No preamble, no markdown.`;
-      const u = `TOPIC: ${topic.label}\nHEADLINE: ${hit.title}\nSNIPPET: ${hit.description || "(headline only)"}\nWrite the brief now.`;
+        `Re-voice a REAL current headline + snippet in your voice.\n` +
+        `SHAPE: ${kind.toUpperCase()} — ${shape}\n` +
+        `${factsGuard}\n` +
+        `No preamble, no markdown, no quote marks around the output.`;
+      const u = `TOPIC: ${topic.label}\nHEADLINE: ${hit.title}\nSNIPPET: ${hit.description || "(headline only)"}\nWrite the piece now.`;
       const r = await window.hub.llm.chat(sys, u);
       if (r.ok && r.text) body = r.text.trim().replace(/^["']|["']$/g, "");
     }
@@ -330,6 +435,7 @@ async function fileRealItem(topic: Topic, hit: TopicHit): Promise<WireArticle | 
     slug: slugify(hit.title) || id,
     title: hit.title,
     body,
+    kind,
     category: topic.category,
     anchor_id: anchor in ANCHORS ? anchor : "voss",
     author_display: ANCHORS[anchor] || ANCHORS.voss,

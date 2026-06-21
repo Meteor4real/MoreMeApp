@@ -22,21 +22,47 @@ export type Palette = {
   heroImage?: string;
 };
 
+// Hero image cycles per theme — picked deterministically by date so the
+// backdrop feels lived-in (changes day to day) without random churn during
+// a single session. All Unsplash, no shipped assets.
+const DP_HEROES = [
+  "https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&w=1600&q=70",   // court
+  "https://images.unsplash.com/photo-1518614368389-1f9b9c8c2b15?auto=format&w=1600&q=70", // arena lights
+  "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&w=1600&q=70", // ball + hoop
+];
+const PAPATUI_HEROES = [
+  "https://images.unsplash.com/photo-1505228395891-9a51e7e86bf6?auto=format&w=1600&q=70", // ocean
+  "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&w=1600&q=70", // beach
+  "https://images.unsplash.com/photo-1571260899304-425eee4c7efc?auto=format&w=1600&q=70", // palm grove
+];
+const SPORTS_HEROES = [
+  "https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&w=1600&q=70", // track lights
+  "https://images.unsplash.com/photo-1535131749006-b7f58c99034b?auto=format&w=1600&q=70", // stadium
+  "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&w=1600&q=70",   // gym
+];
+function dailyPick<T>(list: T[]): T {
+  // Hash YYYY-MM-DD → stable index for the day; lets the backdrop shift
+  // tomorrow without random shuffling that would feel unstable mid-session.
+  const d = new Date();
+  const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = ((h << 5) - h + key.charCodeAt(i)) | 0;
+  return list[Math.abs(h) % list.length];
+}
+
 const DP_PALETTE: Palette = {
   bg: "#0C1422", elev: "#16223A", sunk: "#080E1A",
   ink: "#FFFFFF", inkSoft: "#A6B6CC", inkTiny: "#5E6E86", line: "#233247",
   mint: "#3EFBB7", mintDeep: "#15D6A0", mintHi: "#8BFFDD",
   warn: "#FF5C5F", cool: "#1E90FF",
-  // A basketball court — Dude Perfect trick-shot energy. Free, Unsplash.
-  heroImage: "https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&w=1600&q=70",
+  heroImage: dailyPick(DP_HEROES),
 };
 const PAPATUI_PALETTE: Palette = {
   bg: "#19140F", elev: "#241C15", sunk: "#0F0B08",
   ink: "#F4EAD9", inkSoft: "#C8B59B", inkTiny: "#8A7355", line: "#3A2E22",
   mint: "#2FA98A", mintDeep: "#1E7D66", mintHi: "#5CCBB0",
   warn: "#D9603B", cool: "#C9A24B",
-  // Polynesian ocean — Papatui's earthy heritage cue.
-  heroImage: "https://images.unsplash.com/photo-1505228395891-9a51e7e86bf6?auto=format&w=1600&q=70",
+  heroImage: dailyPick(PAPATUI_HEROES),
 };
 // Sports — high-contrast scoreboard / SportsCenter look. Carbon black, ESPN
 // red, athletic gold. Designed for clean number displays.
@@ -46,8 +72,7 @@ const SPORTS_PALETTE: Palette = {
   mint: "#FFB400", mintDeep: "#D99100", mintHi: "#FFCD3C",  // gold accent
   warn: "#E1153B",                                         // ESPN red
   cool: "#1FA9FF",
-  // Track stadium under lights — sports/training mood.
-  heroImage: "https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&w=1600&q=70",
+  heroImage: dailyPick(SPORTS_HEROES),
 };
 export const PALETTES: Record<ThemeName, Palette> = {
   dp: DP_PALETTE,
@@ -87,7 +112,10 @@ export function setCustomThemeResolver(fn: () => Palette | null) {
 }
 
 export function currentThemeName(): ThemeName {
-  try { const n = localStorage.getItem(KEY); if (n === "dp" || n === "papatui" || n === "custom") return n; } catch { /* ignore */ }
+  try {
+    const n = localStorage.getItem(KEY);
+    if (n === "dp" || n === "papatui" || n === "sports" || n === "custom") return n;
+  } catch { /* ignore */ }
   return "dp";
 }
 
@@ -141,7 +169,11 @@ export function buildMMStyle(): string {
 .moreme-embed .serif { font-family: "Cormorant Garamond", Georgia, serif; font-weight: 600; letter-spacing: .01em; }
 .moreme-embed .condensed { font-family: "Barlow Condensed", "Inter", sans-serif; text-transform: uppercase; letter-spacing: .04em; }
 .moreme-embed .mm-card { background: ${T.elev}; border: 1px solid ${T.line}; border-radius: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35); }
-.moreme-embed .mm-card-mint { background: ${T.elev}; border: 1px solid ${T.mint}55; border-radius: 14px; box-shadow: 0 0 24px ${T.mint}11 inset, 0 8px 24px rgba(0,0,0,.35); }
+.moreme-embed .mm-card-mint { background: ${T.elev}; border: 1px solid ${T.mint}55; border-radius: 14px; box-shadow: 0 0 24px ${T.mint}11 inset, 0 8px 24px rgba(0,0,0,.35); animation: mmGlow 6s ease-in-out infinite; }
+@keyframes mmGlow { 0%, 100% { box-shadow: 0 0 24px ${T.mint}11 inset, 0 8px 24px rgba(0,0,0,.35); } 50% { box-shadow: 0 0 30px ${T.mint}22 inset, 0 0 30px ${T.mint}22, 0 8px 24px rgba(0,0,0,.35); } }
+@keyframes mmPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@keyframes mmShimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+.moreme-embed .mm-live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${T.mint}; box-shadow: 0 0 8px ${T.mint}; animation: mmPulse 2.2s ease-in-out infinite; flex: none; }
 .moreme-embed .mm-action { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid ${T.line}; border-radius: 10px; background: ${T.sunk}; transition: border-color .15s, background .15s; width: 100%; text-align: left; }
 .moreme-embed .mm-action:hover:not(:disabled) { border-color: ${T.mint}; }
 .moreme-embed .mm-action.done { opacity: .6; }

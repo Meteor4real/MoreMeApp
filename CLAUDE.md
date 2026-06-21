@@ -44,8 +44,13 @@ passion-project, the story's "GTD") is a graduation requirement that starts
 in Grade 9 on every path. The owner enters **Grade 9 in the 2026-27 year**.
 Grade level **auto-advances every August** (`gradeNumber`/`gradeLabel`,
 rollover month = August) — anchored to `school.grade9Year`, configurable in
-Projects → School, never manually bumped. Characters Lily (friend), Mrs.
-Bridget (teacher), Principal Harrison stay as fictional NPCs.
+Projects → School, never manually bumped.
+
+**First launch is empty.** No fictional NPCs (the old Lily / Mrs. Bridget /
+Principal Harrison seeds are out), no placeholder classes, no preset goals
+/ routines / ventures / quotes. Only the school config is seeded — that's
+the user's reality, not fiction. Every tab surfaces an empty-state CTA to
+guide population.
 
 Data model (`moreme/types.ts`, `moreme/store.ts`):
 - **`CalEvent`** is the one schedulable unit: recurring routines AND one-off
@@ -74,13 +79,27 @@ Mint dark theme tokens in `moreme/styles.ts`.
 REMOVED for good: modes (semester/vacation/exam/travel), strict time-blocked
 schedules, focus blocks, strikes, session breaks, tiers, prestige.
 
-## NT5 News — the bonus surface (kept as-is)
+## NT5 News — the bonus surface
 
 Embedded NT5 (`embedded/NT5.tsx`, `embedded/nt5/*`, `embedded/NT5Studio.tsx`)
 with the on-device wire scheduler (`services/nt5Wire.ts`) that generates fresh
 anchor articles via the bundled local model, the Origin Realms pulse
-(`services/originRealms.ts`), and the broadcast bar. Don't expand it; just keep
-it building. Anchors run on `window.hub.llm`.
+(`services/originRealms.ts`), and the broadcast bar. Anchors run on
+`window.hub.llm`.
+
+**Multi-shape articles** (`ArticleKind`): every wire item is one of
+`brief` / `article` / `broadcast` / `blog` / `social` / `ticker`. The
+generator rolls a kind per item with weighted distribution and uses
+shape-specific prompts (length, tone, structure). The newsroom UI renders
+each kind differently — broadcasts get a red urgent treatment, articles
+get full paragraph layout, social posts get @-handle cards, tickers are
+crawl-only.
+
+**Per-anchor TTS** (`embedded/nt5/nt5tts.ts`): the read-aloud + broadcast
+mode pick voice / rate / pitch per anchor from a profile table that
+prefers OS neural voices (Microsoft Aria, Jenny, Guy, etc.) and falls
+back gracefully. Voss reads as authoritative male, Lena as energetic
+female, Orin measured male, Dex younger / snappier, Zara warm female.
 
 ## HARD RULES (owner's words)
 
@@ -145,8 +164,10 @@ DONE:
   hidden; sync flushes on visibility-hidden + beforeunload and pulls on
   refocus; the existing tray + "close hides to tray" pref keeps the renderer
   (and thus sync) alive after the window is closed. Background prefs
-  (close-to-tray + launch-on-startup) now **default ON** so it's 24/7 out of
-  the box; toggles surfaced in Projects → Background.
+  (close-to-tray + launch-on-startup) **default OFF**. Opting in is on the
+  user (tray menu + Projects → Background). The previous default-ON
+  behavior read as malware-shaped to first-time installers; bg-prefs file
+  was bumped to `.v2.json` so legacy default-ON installs reset cleanly.
 - **Class timetables**: a class can carry a weekly `period` (days + start/end
   + room); "Add to calendar" generates one idempotent recurring `class` event
   for the school year (id `clsperiod-<classId>`). In Projects → Classes.

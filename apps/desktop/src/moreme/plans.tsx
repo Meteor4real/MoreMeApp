@@ -24,7 +24,15 @@ export function PlansView({ s }: { s: State }) {
         <button className="mm-btn mm-btn-primary" onClick={() => { const n = blankNote(); upsertNote(n); setOpenId(n.id); }}>+ New plan</button>
       </div>
 
-      {notes.length === 0 && <Empty>Nothing here yet. Capture a plan, a draft, a secret.</Empty>}
+      {notes.length === 0 && (
+        <div className="mm-card" style={{ padding: 24, textAlign: "center", borderStyle: "dashed", marginBottom: 12 }}>
+          <div className="serif" style={{ fontSize: 17, marginBottom: 6 }}>No plans yet</div>
+          <div style={{ fontSize: 12, color: T.inkSoft, lineHeight: 1.55, maxWidth: 460, margin: "0 auto 14px" }}>
+            Plans is the reference bucket — ideas, ARG plotting, meeting talking points, the things you're not ready to schedule. Pin the important ones, mark the secret ones unannounced.
+          </div>
+          <button className="mm-btn mm-btn-primary" onClick={() => { const n = blankNote(); upsertNote(n); setOpenId(n.id); }}>+ Write your first plan</button>
+        </div>
+      )}
 
       <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
         {notes.map((n) => {
@@ -77,6 +85,3 @@ function NoteEditor({ s, note, onClose }: { s: State; note: Note; onClose: () =>
   );
 }
 
-function Empty({ children }: { children: React.ReactNode }) {
-  return <div style={{ fontSize: 12, color: T.inkTiny, fontStyle: "italic", padding: 16 }}>{children}</div>;
-}

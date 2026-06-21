@@ -135,6 +135,13 @@ function DividerView() {
 function QuoteView({ w }: { w: Extract<Widget, { kind: "quote" }> }) {
   const today = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
   const q = quoteOfDay(today);
+  if (!q) {
+    return (
+      <Frame title={w.title}>
+        <div style={{ fontSize: 12, color: T.inkTiny }}>No quotes yet — add some in Customize → Quotes.</div>
+      </Frame>
+    );
+  }
   return (
     <Frame title={w.title}>
       <div className="serif" style={{ fontSize: 17, lineHeight: 1.35, color: T.ink }}>“{q.text}”</div>

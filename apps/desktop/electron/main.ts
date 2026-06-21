@@ -18,14 +18,19 @@ let tray: Tray | null = null;
 let quitting = false;
 
 // Background prefs — stored on disk so the user's choices survive restarts.
-// Default ON: the app is meant to live in the tray and stay synced 24/7.
-// A user who turns either off writes `false`, which then persists (the file
-// overrides these defaults), so this only seeds the very first run.
+// Default OFF on first run. The previous default-ON behavior shipped a
+// silently-tray-resident, launch-on-boot app, which read as malware to anyone
+// who installed it. Opt-in only — toggles surface in the tray menu + the
+// Background card in Projects.
 type BgPrefs = { minimizeToTray: boolean; runOnStartup: boolean };
-function bgPrefsPath() { return path.join(app.getPath("userData"), "bg-prefs.json"); }
+// v2: distinct path so installs that opted into the old default-ON behavior
+// don't carry it forward silently. The legacy bg-prefs.json (default-ON era)
+// is ignored; the user gets a clean opt-out by default and can re-enable
+// either toggle from the tray menu.
+function bgPrefsPath() { return path.join(app.getPath("userData"), "bg-prefs.v2.json"); }
 function readBgPrefs(): BgPrefs {
-  try { return { minimizeToTray: true, runOnStartup: true, ...JSON.parse(fs.readFileSync(bgPrefsPath(), "utf8")) }; }
-  catch { return { minimizeToTray: true, runOnStartup: true }; }
+  try { return { minimizeToTray: false, runOnStartup: false, ...JSON.parse(fs.readFileSync(bgPrefsPath(), "utf8")) }; }
+  catch { return { minimizeToTray: false, runOnStartup: false }; }
 }
 function writeBgPrefs(p: BgPrefs) {
   try { fs.mkdirSync(path.dirname(bgPrefsPath()), { recursive: true }); fs.writeFileSync(bgPrefsPath(), JSON.stringify(p)); } catch { /* ignore */ }

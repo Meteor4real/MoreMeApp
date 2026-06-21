@@ -3,7 +3,6 @@ import { Login } from "./auth/Login";
 import { isAuthed, signOut, clearGuest } from "./auth/supabase";
 import { MoreMe } from "./embedded/MoreMe";
 import { NT5 } from "./embedded/NT5";
-import { HALOS } from "./embedded/HALOS";
 import { applyAccent, loadAccent } from "./theme-accent";
 import { applyUiPrefs, loadPrefs } from "./uiPrefs";
 import { initTheme } from "./moreme/styles";
@@ -15,10 +14,10 @@ import { initTrackingSiren } from "./moreme/tracking";
 import { installAgentApi } from "./moreme/agentApi";
 import { NT5AmbientTicker } from "./shell/NT5AmbientTicker";
 
-// Three surfaces behind the accounts gate: MoreMe (the product), NT5 News
-// (the bonus wire), and HALOS (the S.P.A.C.E. collaboration console — the
-// real HALOS Interface site, bundled and run offline via the hub-shim).
-type Tab = "moreme" | "news" | "halos";
+// Two surfaces behind the accounts gate: MoreMe (the product) and NT5 News
+// (the bonus wire). The HALOS embed shipped briefly as a third tab but read
+// as inert in real use — pulled until/unless it earns its keep.
+type Tab = "moreme" | "news";
 
 export function App() {
   const [authed, setAuthed] = useState(() => isAuthed());
@@ -27,29 +26,13 @@ export function App() {
   useEffect(() => {
     applyAccent(loadAccent());
     applyUiPrefs(loadPrefs());
-    // MoreMe theme (DP / Papatui) is the user-visible chrome theme; it
-    // overrides the legacy accent's CSS vars by writing root vars too.
     initTheme();
-    // NT5: the per-anchor desk pulls real headlines for the user's topics on
-    // each anchor's own cadence, 24/7. The wire scheduler adds occasional
-    // in-universe Nova Terris flavor on top. Origin Realms pulse feeds the
-    // gaming desk's context.
     startDesk();
     startWireScheduler();
     startOriginPolling();
-    // The bundled local model powers the NT5 anchors — ensure it in the
-    // background so the wire has a brain when it fires.
     void window.hub?.llm?.ensure?.().catch(() => undefined);
-    // MoreMe state syncs to Supabase so it follows the user across devices.
-    // Skips itself in guest mode.
     startSync();
-    // OS-level screen tracking: if disabled, an audible siren fires until
-    // the user enables it. (Opt-in by design — the only way to silence it
-    // is to flip the switch.)
     initTrackingSiren();
-    // Install the agent API on window.moremeAgent so external scripts (or
-    // the dev console, or a future Hermes/OpenClaw bridge) can mutate the
-    // UI at runtime: add tabs, drop widgets, change theme, etc.
     installAgentApi();
   }, []);
 
@@ -79,12 +62,6 @@ export function App() {
           >
             News
           </button>
-          <button
-            className={"hub-tab mono" + (tab === "halos" ? " active" : "")}
-            onClick={() => setTab("halos")}
-          >
-            HALOS
-          </button>
         </nav>
         <div style={{ flex: 1 }} />
         <button className="hub-tab mono" onClick={logout} title="Sign out">
@@ -92,22 +69,18 @@ export function App() {
         </button>
       </header>
 
-      {/* Ambient layer: NT5 ticker visible across BOTH tabs so news lives at
+      {/* Ambient layer: NT5 ticker visible across both tabs so news lives at
           the edge of attention. Click to jump to the Broadcast tab. */}
       <NT5AmbientTicker onOpen={() => setTab("news")} />
 
       <main style={{ flex: 1, minHeight: 0, display: "flex" }}>
-        {/* All three surfaces stay mounted so NT5's wire state, MoreMe's
-            in-progress edits, and HALOS's iframe session survive tab
-            switches; we just toggle display. */}
+        {/* Both surfaces stay mounted so NT5's wire state and MoreMe's
+            in-progress edits survive tab switches; we just toggle display. */}
         <div style={{ flex: 1, minWidth: 0, display: tab === "moreme" ? "flex" : "none" }}>
           <MoreMe />
         </div>
         <div style={{ flex: 1, minWidth: 0, display: tab === "news" ? "flex" : "none" }}>
           <NT5 />
-        </div>
-        <div style={{ flex: 1, minWidth: 0, display: tab === "halos" ? "flex" : "none" }}>
-          <HALOS />
         </div>
       </main>
     </div>
