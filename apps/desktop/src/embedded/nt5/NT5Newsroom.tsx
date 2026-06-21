@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { subscribeWire, runWireOnce, runRealWorldOnce, getWireArticles, type WireArticle } from "../../services/nt5Wire";
+import { subscribeWire, runWireOnce, runRealWorldOnce, getWireArticles, type WireArticle, type ArticleKind } from "../../services/nt5Wire";
 import { NT5Segments, BreakingBumper } from "./NT5Segments";
+import { pickAnchorVoice, cancelSpeak } from "./nt5tts";
 
 // NT5 Newsroom — native, glowing 24/7 control surface for the in-app wire.
 // Renders the real WireArticle store (house-model generated + real-world RSS
@@ -23,6 +24,18 @@ const CAT_META: Record<string, { label: string; color: string }> = {
   earth_trending:  { label: "EARTH TRENDING", color: "#f59e0b" },
   culture:         { label: "CULTURE",        color: "#ec4899" },
   cc_lore:         { label: "NETWORK",        color: "#a78bfa" },
+};
+
+// Per-shape metadata for the small badge that rides next to the category
+// chip on every card / hero / detail header. Distinct colors so the wire
+// reads visually varied even before you read a single line.
+const KIND_META: Record<ArticleKind, { label: string; color: string; tone: string }> = {
+  brief:     { label: "BRIEF",     color: "#cbd5e1", tone: "tight hard-news read" },
+  article:   { label: "ARTICLE",   color: "#d946ef", tone: "long-form deep read" },
+  broadcast: { label: "BROADCAST", color: "#ef4444", tone: "urgent on-air bulletin" },
+  blog:      { label: "COLUMN",    color: "#22d3ee", tone: "opinion / op-ed" },
+  social:    { label: "POST",      color: "#a78bfa", tone: "anchor's social account" },
+  ticker:    { label: "TICKER",    color: "#9b8fb0", tone: "crawl line only" },
 };
 
 const ANCHORS = [
@@ -64,6 +77,7 @@ export function NT5Newsroom() {
   const [bookmarks, setBookmarks] = useState<Set<string>>(loadBookmarks);
   const [readingId, setReadingId] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [kindFilter, setKindFilter] = useState<"all" | ArticleKind>("all");
   // Remember the previous-visit timestamp so we can highlight what landed
   // since then; bump the saved value when the user leaves the view.
   const [lastVisit] = useState<number>(loadLastVisit);
@@ -99,6 +113,9 @@ export function NT5Newsroom() {
     const horizons: Record<TimeRange, number> = { all: 0, "24h": 86400e3, week: 7 * 86400e3, month: 30 * 86400e3 };
     const cutoff = timeFilter === "all" ? 0 : Date.now() - horizons[timeFilter];
     return arts.filter((a) => {
+      // Ticker-kind items only show up when explicitly filtered for; the
+      // rest of the time they live on the crawl strip only.
+      if (kindFilter !== "ticker" && a.kind === "ticker") return false;
       if (filter !== "all" && a.category !== filter) return false;
       if (anchorFilter !== "all" && a.anchor_id !== anchorFilter) return false;
       const isReal = (a.source_urls || []).length > 0;
@@ -106,13 +123,19 @@ export function NT5Newsroom() {
       if (sourceFilter === "lore" && isReal) return false;
       if (cutoff > 0 && Date.parse(a.published_at) < cutoff) return false;
       if (showBookmarksOnly && !bookmarks.has(a.id)) return false;
+      if (kindFilter !== "all" && a.kind !== kindFilter) return false;
       if (text && !(a.title.toLowerCase().includes(text) || a.body.toLowerCase().includes(text) || a.author_display.toLowerCase().includes(text))) return false;
       return true;
     });
-  }, [arts, filter, anchorFilter, timeFilter, sourceFilter, showBookmarksOnly, bookmarks, q]);
-  const isFiltering = filter !== "all" || anchorFilter !== "all" || timeFilter !== "all" || sourceFilter !== "all" || showBookmarksOnly || q.trim() !== "";
+  }, [arts, filter, anchorFilter, timeFilter, sourceFilter, showBookmarksOnly, bookmarks, q, kindFilter]);
+  const isFiltering = filter !== "all" || anchorFilter !== "all" || timeFilter !== "all" || sourceFilter !== "all" || showBookmarksOnly || kindFilter !== "all" || q.trim() !== "";
+  // Articles that show in feeds (rails / cards / hero). Ticker-kind items
+  // never appear here — they only crawl across the bottom strip.
+  const feedArts = useMemo(() => arts.filter((a) => a.kind !== "ticker"), [arts]);
 
-  const breaking = arts.find((a) => a.category === "breaking") || arts[0] || null;
+  // Hero: prefer the most recent broadcast-kind (the loud "BREAKING" treatment),
+  // then a category=breaking article, then whatever's freshest.
+  const breaking = feedArts.find((a) => a.kind === "broadcast") || feedArts.find((a) => a.category === "breaking") || feedArts[0] || null;
   const todayCount = useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     return arts.filter((a) => Date.parse(a.published_at) >= today.getTime()).length;
@@ -125,9 +148,9 @@ export function NT5Newsroom() {
 
   const byCat = useMemo(() => {
     const m: Record<string, WireArticle[]> = {};
-    for (const a of arts) (m[a.category] ||= []).push(a);
+    for (const a of feedArts) (m[a.category] ||= []).push(a);
     return m;
-  }, [arts]);
+  }, [feedArts]);
 
   // The freshest breaking story drives the bumper. Only fire it for items that
   // landed since the user last looked, so it's a real alert not a loop.
@@ -205,6 +228,13 @@ export function NT5Newsroom() {
               {(["all", "real", "lore"] as const).map((sf) => <FilterBtn key={sf} active={sourceFilter === sf} onClick={() => setSourceFilter(sf)} color={sf === "real" ? C.cyan : sf === "lore" ? C.magenta : undefined}>{sf}</FilterBtn>)}
               <span style={{ width: 1, height: 16, background: C.line, margin: "0 6px" }} />
               <FilterBtn active={showBookmarksOnly} onClick={() => setShowBookmarksOnly((v) => !v)} color="#ffd166">★ saved ({bookmarks.size})</FilterBtn>
+            </div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 9, color: C.muted, letterSpacing: 1.5, textTransform: "uppercase", marginRight: 4 }}>shape</span>
+              <FilterBtn active={kindFilter === "all"} onClick={() => setKindFilter("all")}>any</FilterBtn>
+              {(Object.entries(KIND_META) as Array<[ArticleKind, typeof KIND_META[ArticleKind]]>).map(([k, m]) => (
+                <FilterBtn key={k} active={kindFilter === k} onClick={() => setKindFilter(k)} color={m.color}>{m.label}</FilterBtn>
+              ))}
             </div>
 
             {isFiltering ? (
@@ -312,7 +342,10 @@ function SectionHead({ children }: { children: React.ReactNode }) {
 
 function Hero({ article, onOpen }: { article: WireArticle; onOpen: () => void }) {
   const meta = CAT_META[article.category];
-  const color = meta?.color || C.magenta;
+  const kindMeta = KIND_META[article.kind];
+  // Broadcasts use a red urgent treatment regardless of category; other
+  // shapes follow the category palette so the hero "feels" right per kind.
+  const color = article.kind === "broadcast" ? "#ef4444" : (meta?.color || C.magenta);
   return (
     <div onClick={onOpen} style={{
       position: "relative", padding: 22, background: `linear-gradient(135deg, ${C.panel} 0%, #0a0820 60%, #06061a 100%)`,
@@ -320,16 +353,39 @@ function Hero({ article, onOpen }: { article: WireArticle; onOpen: () => void })
       boxShadow: `0 0 24px ${color}22, inset 0 0 60px rgba(0,0,0,0.4)`,
     }}>
       <div style={{ position: "absolute", inset: 0, background: `linear-gradient(120deg, transparent 30%, ${color}11 50%, transparent 70%)`, backgroundSize: "200% 100%", animation: "nt5shimmer 8s linear infinite", pointerEvents: "none" }} />
-      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", background: color, color: "#0a0820", fontFamily: "ui-monospace,monospace", fontSize: 10, fontWeight: 800, letterSpacing: 2 }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#0a0820", animation: "nt5pulse 1.6s ease-in-out infinite" }} />
           {(meta?.label || article.category).toUpperCase()}
         </span>
+        <KindBadge kind={article.kind} large />
         <span style={{ color: C.muted, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase" }}>{article.author_display} · {rel(Date.parse(article.published_at))}</span>
       </div>
-      <h1 style={{ position: "relative", margin: 0, fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 30, lineHeight: 1.1, color: C.ink, textShadow: `0 2px 16px ${color}55` }}>{article.title}</h1>
-      <p style={{ position: "relative", marginTop: 10, color: "#cfb6e0", fontSize: 14, lineHeight: 1.55, maxWidth: 880 }}>{article.body.slice(0, 280)}{article.body.length > 280 ? "…" : ""}</p>
+      <h1 style={{ position: "relative", margin: 0, fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: article.kind === "broadcast" ? 34 : 30, lineHeight: 1.1, color: C.ink, textShadow: `0 2px 16px ${color}55`, textTransform: article.kind === "broadcast" ? "uppercase" : "none" }}>{article.title}</h1>
+      <p style={{ position: "relative", marginTop: 10, color: "#cfb6e0", fontSize: article.kind === "social" ? 16 : 14, lineHeight: 1.55, maxWidth: 880, fontStyle: article.kind === "blog" ? "italic" : "normal", whiteSpace: article.kind === "article" || article.kind === "blog" ? "pre-wrap" : "normal" }}>
+        {article.body.slice(0, article.kind === "article" || article.kind === "blog" ? 480 : 280)}
+        {article.body.length > (article.kind === "article" || article.kind === "blog" ? 480 : 280) ? "…" : ""}
+      </p>
+      <div style={{ position: "relative", marginTop: 10, fontSize: 10, color: C.muted, letterSpacing: 1.5, textTransform: "uppercase" }}>{kindMeta.tone}</div>
     </div>
+  );
+}
+
+function KindBadge({ kind, large = false }: { kind: ArticleKind; large?: boolean }) {
+  const m = KIND_META[kind];
+  return (
+    <span style={{
+      display: "inline-block",
+      padding: large ? "3px 9px" : "1px 6px",
+      fontSize: large ? 10 : 9,
+      fontFamily: "ui-monospace,monospace",
+      fontWeight: 700,
+      letterSpacing: 1.5,
+      color: m.color,
+      border: `1px solid ${m.color}66`,
+      borderRadius: 3,
+      background: `${m.color}11`,
+    }}>{m.label}</span>
   );
 }
 
@@ -355,9 +411,10 @@ function RailCard({ article, color, onClick, bookmarked, onBookmark, reading, is
       transition: "border-color .15s, box-shadow .15s, transform .08s" }}
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${color}aa`; e.currentTarget.style.boxShadow = `0 0 18px ${color}33`; }}
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${color}33`; e.currentTarget.style.boxShadow = "none"; }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <span style={{ fontSize: 9, color: color, letterSpacing: 1.5, textTransform: "uppercase" }}>{article.author_display}</span>
-        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 4 }}>
+        <span style={{ fontSize: 9, color: color, letterSpacing: 1.5, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{article.author_display}</span>
+        <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
+          <KindBadge kind={article.kind} />
           {isNew && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ffd166", boxShadow: "0 0 8px #ffd166", marginRight: 2 }} title="New since your last visit" />}
           {reading && <span style={{ fontSize: 8, padding: "1px 5px", background: "#ef4444", color: "#fff", borderRadius: 3, letterSpacing: 1, textTransform: "uppercase", animation: "nt5pulse 1.6s ease-in-out infinite" }}>READING</span>}
           {isReal && <span style={{ fontSize: 8, color: C.cyan, letterSpacing: 1, textTransform: "uppercase", padding: "1px 5px", border: `1px solid ${C.cyan}55`, borderRadius: 3 }}>REAL</span>}
@@ -388,7 +445,10 @@ function CardGrid({ articles, onOpen, bookmarks, onToggleBookmark, readingId, la
 }
 
 function DetailModal({ article, onClose, bookmarked, onToggleBookmark, onReadingChange }: { article: WireArticle; onClose: () => void; bookmarked: boolean; onToggleBookmark: () => void; onReadingChange?: (reading: boolean) => void }) {
-  const color = CAT_META[article.category]?.color || C.magenta;
+  const kindMeta = KIND_META[article.kind];
+  const baseColor = CAT_META[article.category]?.color || C.magenta;
+  // Broadcasts get a red urgent treatment overriding the category color.
+  const color = article.kind === "broadcast" ? "#ef4444" : baseColor;
   const [reading, setReading] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   useEffect(() => { onReadingChange?.(reading); }, [reading, onReadingChange]);
@@ -396,14 +456,15 @@ function DetailModal({ article, onClose, bookmarked, onToggleBookmark, onReading
   async function readAloud() {
     if (reading) {
       try { audioRef.current?.pause(); } catch { /* ignore */ }
-      try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
+      cancelSpeak();
       setReading(false); return;
     }
     setReading(true);
     const text = `${article.author_display} for NT5. ${article.title}. ${article.body}`;
-    const anchorVoice: Record<string, string> = { voss: "voss", lena: "lena", orin: "orin", dex: "dex", zara: "zara" };
+    // Prefer the bundled high-quality TTS service when available; otherwise
+    // fall back to the per-anchor SpeechSynthesis voice profile.
     try {
-      const r = await window.hub.media.tts({ voiceId: anchorVoice[article.anchor_id] || "voss", text });
+      const r = await window.hub.media.tts({ voiceId: article.anchor_id || "voss", text });
       if (r.ok) {
         const a = new Audio(`data:${r.mime};base64,${r.base64}`); audioRef.current = a;
         a.onended = () => setReading(false); a.onerror = () => setReading(false);
@@ -411,19 +472,28 @@ function DetailModal({ article, onClose, bookmarked, onToggleBookmark, onReading
         return;
       }
     } catch { /* fall through */ }
-    // Web Speech fallback
-    try {
-      const u = new SpeechSynthesisUtterance(text);
-      u.onend = () => setReading(false); u.onerror = () => setReading(false);
-      window.speechSynthesis.speak(u);
-    } catch { setReading(false); }
+    // Web Speech fallback with per-anchor voice + rate/pitch.
+    if (!window.speechSynthesis) { setReading(false); return; }
+    cancelSpeak();
+    const { voice, rate, pitch } = pickAnchorVoice(article.anchor_id);
+    const u = new SpeechSynthesisUtterance(text);
+    if (voice) u.voice = voice;
+    u.rate = rate;
+    u.pitch = pitch;
+    u.onend = () => setReading(false);
+    u.onerror = () => setReading(false);
+    try { window.speechSynthesis.speak(u); } catch { setReading(false); }
   }
+
+  const paragraphs = (article.body || "").split(/\n{2,}/).filter((p) => p.trim());
+  const bodyIsMulti = article.kind === "article" || article.kind === "blog";
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 30 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: 820, width: "100%", maxHeight: "90vh", background: C.panel, border: `1px solid ${color}55`, borderRadius: 12, boxShadow: `0 0 40px ${color}33`, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: 18, borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ padding: 18, borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <span style={{ padding: "3px 9px", background: color, color: "#0a0820", fontFamily: "ui-monospace,monospace", fontSize: 10, fontWeight: 800, letterSpacing: 2 }}>{(CAT_META[article.category]?.label || article.category).toUpperCase()}</span>
+          <KindBadge kind={article.kind} large />
           <span style={{ color: C.muted, fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase" }}>{article.author_display} · {rel(Date.parse(article.published_at))}</span>
           <span style={{ flex: 1 }} />
           <button className="btn" onClick={onToggleBookmark} title={bookmarked ? "Remove bookmark" : "Save"} style={{ padding: "6px 12px", fontSize: 13, color: bookmarked ? "#ffd166" : undefined, borderColor: bookmarked ? "rgba(255,209,102,0.6)" : undefined }}>★ {bookmarked ? "Saved" : "Save"}</button>
@@ -434,8 +504,41 @@ function DetailModal({ article, onClose, bookmarked, onToggleBookmark, onReading
           <button className="btn" onClick={onClose} style={{ padding: "6px 12px" }}>Close</button>
         </div>
         <div style={{ padding: 22, overflow: "auto" }}>
-          <h2 style={{ margin: 0, fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 24, lineHeight: 1.15, color: C.ink, textShadow: `0 2px 14px ${color}55` }}>{article.title}</h2>
-          <p style={{ marginTop: 14, color: C.ink, fontSize: 15, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{article.body}</p>
+          {/* Kind tone strip — tells the reader what shape they're looking at */}
+          <div style={{ fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>
+            {kindMeta.tone}
+          </div>
+          {article.kind === "broadcast" ? (
+            <>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", background: "#ef4444", color: "#0a0820", fontFamily: "ui-monospace,monospace", fontSize: 10, fontWeight: 800, letterSpacing: 3, marginBottom: 14 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#0a0820", animation: "nt5pulse 1.2s ease-in-out infinite" }} />
+                ON AIR · BREAKING
+              </div>
+              <h2 style={{ margin: 0, fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 30, lineHeight: 1.1, color: "#fef2f2", textShadow: `0 2px 14px ${color}88`, textTransform: "uppercase" }}>{article.title}</h2>
+              <p style={{ marginTop: 14, color: "#fee2e2", fontSize: 18, lineHeight: 1.5 }}>{article.body}</p>
+            </>
+          ) : article.kind === "social" ? (
+            <div style={{ padding: 16, background: "rgba(167,139,250,0.06)", border: `1px solid ${color}33`, borderRadius: 10 }}>
+              <div style={{ fontSize: 11, color: color, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>@{article.anchor_id} · {article.author_display}</div>
+              <div style={{ fontSize: 16, lineHeight: 1.5, color: C.ink }}>{article.body}</div>
+              <div style={{ marginTop: 10, fontSize: 11, color: C.muted, fontFamily: "ui-monospace,monospace" }}>{article.title}</div>
+            </div>
+          ) : bodyIsMulti && paragraphs.length > 1 ? (
+            <>
+              <h2 style={{ margin: 0, fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 26, lineHeight: 1.15, color: C.ink, textShadow: `0 2px 14px ${color}55`, fontStyle: article.kind === "blog" ? "italic" : "normal" }}>{article.title}</h2>
+              {article.kind === "blog" && (
+                <div style={{ marginTop: 6, fontSize: 11, color: color, letterSpacing: 1.5, textTransform: "uppercase" }}>Opinion · by {article.author_display}</div>
+              )}
+              {paragraphs.map((p, i) => (
+                <p key={i} style={{ marginTop: 14, color: C.ink, fontSize: 15, lineHeight: 1.7 }}>{p}</p>
+              ))}
+            </>
+          ) : (
+            <>
+              <h2 style={{ margin: 0, fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 24, lineHeight: 1.15, color: C.ink, textShadow: `0 2px 14px ${color}55` }}>{article.title}</h2>
+              <p style={{ marginTop: 14, color: C.ink, fontSize: 15, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{article.body}</p>
+            </>
+          )}
           {(article.source_urls || []).length > 0 && (
             <div style={{ marginTop: 18, padding: 12, background: "rgba(34,211,238,0.05)", border: `1px solid ${C.cyan}33`, borderRadius: 6 }}>
               <div style={{ fontSize: 10, color: C.cyan, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 }}>

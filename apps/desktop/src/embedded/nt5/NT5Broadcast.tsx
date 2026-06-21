@@ -9,23 +9,26 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { WireArticle } from "../../services/nt5Wire";
 import { subscribeWire, runWireOnce } from "../../services/nt5Wire";
 import { ANCHORS, NT5_TAGLINE, SPACE_TAGLINE, type AnchorId } from "../../services/nt5Lore";
+import { pickAnchorVoice } from "./nt5tts";
 
 type Anchor = (typeof ANCHORS)[AnchorId];
 
 const anchorOf = (id: string): Anchor => ANCHORS[(id as AnchorId)] ?? ANCHORS.voss;
 
 export function NT5Broadcast() {
-  const [arts, setArts] = useState<WireArticle[]>([]);
+  // Ticker-kind items don't get a full TV slot — they're crawl-only.
+  const [allArts, setAllArts] = useState<WireArticle[]>([]);
+  const arts = useMemo(() => allArts.filter((a) => a.kind !== "ticker"), [allArts]);
   const [idx, setIdx] = useState(0);
   const [playing, setPlaying] = useState(true);   // auto-play on open
   const [caret, setCaret] = useState(0);
   const [muted, setMuted] = useState(false);
   const uttRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-  useEffect(() => subscribeWire(setArts), []);
+  useEffect(() => subscribeWire(setAllArts), []);
   useEffect(() => {
     // If the wire is empty when broadcast opens, prime the pump.
-    if (arts.length === 0) {
+    if (allArts.length === 0) {
       void runWireOnce(3).catch(() => undefined);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -38,9 +41,11 @@ export function NT5Broadcast() {
   useEffect(() => {
     window.speechSynthesis.cancel();
     if (!article || !playing || muted) { setCaret(0); return; }
+    const { voice, rate, pitch } = pickAnchorVoice(article.anchor_id);
     const u = new SpeechSynthesisUtterance(fullText);
-    u.rate = 1.0;
-    u.pitch = anchor.id === "zara" || anchor.id === "lena" ? 1.05 : 0.95;
+    if (voice) u.voice = voice;
+    u.rate = rate;
+    u.pitch = pitch;
     u.onstart = () => setCaret(0);
     u.onboundary = (e) => setCaret(e.charIndex || 0);
     u.onend = () => {
@@ -128,7 +133,7 @@ export function NT5Broadcast() {
           {playing ? "■ Pause" : "▶ Play"}
         </button>
         <button className="btn" onClick={next} title="Next story">›</button>
-        <button className="btn" onClick={() => setMuted((m) => !m)} title={muted ? "Unmute" : "Mute"}>{muted ? "🔇" : "🔊"}</button>
+        <button className="btn" onClick={() => setMuted((m) => !m)} title={muted ? "Unmute" : "Mute"}>{muted ? "Unmute" : "Mute"}</button>
         <span className="mono" style={{ fontSize: 10, color: anchor.color, letterSpacing: 2, textTransform: "uppercase", display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 10 }}>
           <span style={{ width: 8, height: 8, borderRadius: "50%", background: anchor.color, boxShadow: `0 0 12px ${anchor.color}`, animation: "nt5pulse 2s ease-in-out infinite" }} />
           On Air · Story {Math.min(idx + 1, arts.length)}/{arts.length}
