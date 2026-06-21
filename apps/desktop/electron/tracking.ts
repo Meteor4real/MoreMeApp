@@ -78,17 +78,24 @@ function queryActiveWindow(): Promise<{ app: string; title: string } | null> {
     if (platform === "win32") {
       // PowerShell oneliner using PInvoke to call GetForegroundWindow +
       // GetWindowText + GetWindowThreadProcessId, then Get-Process for app name.
+      //
+      // Bug history: this used `$pid` for the out-param, which is a reserved
+      // PowerShell auto-variable bound to the current process. Writing to it
+      // either silently no-oped or surfaced an error, so the whole query
+      // returned empty and tracking looked broken on Windows. Rename to
+      // $procId. Also pass the C# source to Add-Type as -TypeDefinition
+      // explicitly so PowerShell doesn't try to treat it as a path.
       cmd =
         'powershell -NoProfile -ExecutionPolicy Bypass -Command "' +
         "$sig=@'\n" +
         "using System;using System.Runtime.InteropServices;using System.Text;\n" +
         "public class W{[DllImport(\\\"user32.dll\\\")]public static extern IntPtr GetForegroundWindow();" +
         "[DllImport(\\\"user32.dll\\\")]public static extern int GetWindowText(IntPtr h,StringBuilder s,int n);" +
-        "[DllImport(\\\"user32.dll\\\")]public static extern int GetWindowThreadProcessId(IntPtr h,out int pid);}\n" +
-        "'@; Add-Type $sig; " +
+        "[DllImport(\\\"user32.dll\\\")]public static extern int GetWindowThreadProcessId(IntPtr h,out int procId);}\n" +
+        "'@; Add-Type -TypeDefinition $sig; " +
         "$h=[W]::GetForegroundWindow(); $sb=New-Object System.Text.StringBuilder 512; [void][W]::GetWindowText($h,$sb,512); " +
-        "$pid=0; [void][W]::GetWindowThreadProcessId($h,[ref]$pid); " +
-        "$proc=(Get-Process -Id $pid -ErrorAction SilentlyContinue).ProcessName; " +
+        "$procId=0; [void][W]::GetWindowThreadProcessId($h,[ref]$procId); " +
+        "$proc=(Get-Process -Id $procId -ErrorAction SilentlyContinue).ProcessName; " +
         "Write-Output \"$proc|$($sb.ToString())\"\"";
     } else if (platform === "darwin") {
       cmd =

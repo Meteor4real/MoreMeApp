@@ -47,27 +47,18 @@ export const monthLabel = (y: number, m: number) =>
   new Date(y, m, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
 
 // ── seeds ─────────────────────────────────────────────────────────────────
-function g(text: string): Goal { return { id: uid(), text }; }
+// First launch is intentionally empty. No fictional NPCs, no placeholder
+// classes, no preset goals or routines. The Mount Vernon school config is
+// the only thing seeded — that's the user's actual reality, not fiction.
+// Empty state surfaces in each tab guide the user through adding what they
+// actually use.
 
 function seedPeople(): Person[] {
-  return [
-    { id: "p-lily", name: "Lily", role: "Friend" },
-    { id: "p-bridget", name: "Mrs. Bridget", role: "Teacher" },
-    { id: "p-harrison", name: "Principal Harrison", role: "Principal" },
-  ];
+  return [];
 }
 
 function seedClasses(): Class[] {
-  // Placeholder courseload — rename / replace these once your real schedule
-  // is locked in. The point is to give the Get Ahead view something to chew
-  // on; assignments link to a class so the % pre-done bar is meaningful.
-  return [
-    { id: "c-history", name: "World History",   teacher: "p-bridget" },
-    { id: "c-math",    name: "Algebra II" },
-    { id: "c-english", name: "English" },
-    { id: "c-science", name: "Biology" },
-    { id: "c-iproj",   name: "iProject" },
-  ];
+  return [];
 }
 
 // Seed: you're entering Grade 9 in the 2026-27 school year, Inquiry path.
@@ -165,62 +156,20 @@ export function setSchool(school: Partial<School>) {
   updateState((s) => ({ ...s, school: { ...s.school, ...school } }));
 }
 
-// Default recurring routines for a Mount Vernon Innovation Diploma student.
-// No "focus block", no "no-YouTube" block — zero distraction is a standing
-// expectation now, not a checkable item.
-function seedRoutines(start: string): CalEvent[] {
-  const base = (id: string, title: string, s: string, e: string, xp: number, notes?: string): CalEvent => ({
-    id, title, category: "routine", date: start, allDay: false, start: s, end: e,
-    people: [], checklist: [], priority: "normal", visibility: "visible",
-    recurrence: { kind: "weekdays" }, reminders: [], xp, status: "planned",
-    notes, createdAt: Date.now(),
-  });
-  const daily = (id: string, title: string, s: string, e: string, xp: number, notes?: string): CalEvent =>
-    ({ ...base(id, title, s, e, xp, notes), recurrence: { kind: "daily" } });
-  return [
-    daily("rt-morning", "Morning routine", "06:30", "06:50", 10, "Water · stretch · top 3 for the day"),
-    base("rt-ontime", "On time to Mount Vernon", "07:30", "08:00", 10, "You show up."),
-    base("rt-iproject", "iProject block", "10:00", "11:30", 20, "Independent project / GTD time"),
-    base("rt-school-ahead", "School work — stay ahead", "12:00", "13:00", 20, "Work next week's assignments before they're assigned"),
-    base("rt-build", "Project / build time", "16:00", "17:30", 20, "Mods, ARG, ventures"),
-    daily("rt-move", "Movement / sport", "17:30", "18:30", 15, "Lift, run, or play a sport"),
-    daily("rt-bed", "Bedtime routine", "21:40", "22:00", 10, "Set out clothes · screens off · one win"),
-  ];
+// No default routines — the user defines their own from the Calendar /
+// event editor. Blank canvas on first launch.
+function seedRoutines(_start: string): CalEvent[] {
+  return [];
 }
 
 function seedGoals(): Goals {
-  return {
-    week: [g("Finish all of next week's school work early"), g("Ship one ARG stage"), g("3 workouts")],
-    semester: [g("Stay a full week ahead in every class"), g("Launch a new venture"), g("Complete 3 personal projects")],
-    year: [g("Known at Mount Vernon as focused and reliable"), g("Grow the businesses"), g("Run a mile without stopping")],
-    identity: [
-      g("I show up."),
-      g("I finish what I start."),
-      g("I take responsibility."),
-      g("I don't distract myself or others."),
-      g("My work is done before it's due."),
-      g("I earn my screen time."),
-      g("The phone goes away first."),
-      g("I do my own work."),
-      g("I read first, then I do."),
-    ],
-  };
+  return { week: [], semester: [], year: [], identity: [] };
 }
 
-// Default replacement drawer — the alternatives shown when an urge hits.
-// Short and physical on purpose: the urge dies fastest if you do something
-// with your body for two minutes. Edit / add your own in Screens → Settings.
+// No default replacement drawer — the user adds their own from
+// Screens → Settings. Empty drawer surfaces an "Add your first" CTA.
 function seedReplacements(): Replacement[] {
-  return [
-    { id: uid(), label: "20 push-ups",               minutes: 2 },
-    { id: uid(), label: "Walk around the block",     minutes: 10 },
-    { id: uid(), label: "Water + snack",             minutes: 5 },
-    { id: uid(), label: "Four deep breaths",         minutes: 1 },
-    { id: uid(), label: "Read 5 pages",              minutes: 10 },
-    { id: uid(), label: "Stretch for 5 minutes",     minutes: 5 },
-    { id: uid(), label: "Sketch one thing",          minutes: 10 },
-    { id: uid(), label: "Write what's on your mind", minutes: 5 },
-  ];
+  return [];
 }
 
 function seedScreenSettings(): ScreenSettings {
@@ -236,33 +185,17 @@ function seedScreenSettings(): ScreenSettings {
 }
 
 function seedVentures(): Venture[] {
-  return [
-    {
-      id: "v-meteor", name: "Meteor Enterprises", tagline: "Your flagship company",
-      status: "scaling", revenue: [], nextAction: "Prep the exec meeting deck", createdAt: Date.now(),
-    },
-  ];
+  return [];
 }
 
 function seedState(): State {
-  const start = today();
   return {
     schemaVersion: 12,
     notes: [],
     school: seedSchool(),
-    events: seedRoutines(start),
+    events: [],
     completions: {},
-    projects: [
-      {
-        id: "proj-arg", name: "Cosmos Crew ARG", kind: "arg", status: "active",
-        notes: "Weekly clue stages for the school.",
-        milestones: [
-          { id: uid(), text: "Outline next stage", done: false },
-          { id: uid(), text: "Build the clues", done: false },
-          { id: uid(), text: "Schedule the release", done: false },
-        ],
-      },
-    ],
+    projects: [],
     ventures: seedVentures(),
     inbox: [],
     people: seedPeople(),

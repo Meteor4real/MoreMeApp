@@ -360,7 +360,7 @@ function TodayView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }) {
         </div>
       </div>
 
-      <QuoteBanner quote={quote} />
+      {quote && <QuoteBanner quote={quote} />}
 
       {conflicts.size > 0 && (
         <div className="mm-card" style={{ padding: "10px 14px", borderColor: T.warn, color: T.warn, fontSize: 12 }}>
