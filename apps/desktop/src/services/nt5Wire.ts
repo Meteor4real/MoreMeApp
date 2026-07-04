@@ -96,9 +96,6 @@ const ANCHORS: Record<string, string> = Object.fromEntries(
 const slugify = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70);
 
 const KEY = "nt5wire.articles";
-// Topic seeds. Real-world threads + Nova Terris storylines mixed so every
-// batch has both an Earth hook and an in-universe through-line.
-const DEFAULT_TOPICS = ["Origin Realms", "Minecraft updates", "space + NASA", "AI", "viral creators", "gaming"];
 
 const subs = new Set<(arts: WireArticle[]) => void>();
 
@@ -211,14 +208,26 @@ function parseOne(text: string, fallbackAnchor: string): { category: string; anc
 // Generate one wire item of a specific shape. The kind drives the prompt
 // (length, tone, structure) so the wire reads as a real network instead
 // of one repeating shape. Returns null on parse failure / model error.
+//
+// Earth-topic weighting comes from the user's OWN topic desk (nt5Topics),
+// never a hardcoded guess at their interests — the desk starts empty and
+// the user sets it. With nothing set yet, the generator is told exactly
+// that: cover the ordinary general-news beats, don't assume a personal
+// interest that hasn't been configured.
 async function generateOne(kind: ArticleKind, recentTitles: string[]): Promise<{ category: string; anchor_id: string; title: string; body: string } | null> {
-  const topics = DEFAULT_TOPICS;
-  const pulse = getOriginPulse();
+  const userTopics = enabledTopics();
+  const topicEarthBlock = userTopics.length
+    ? `Earth topics to weight (real, current-world), drawn from the user's own configured desk: ${userTopics.map((t) => t.label).join(", ")}.`
+    : "The user hasn't set any topics on their desk yet. Write general current-events coverage across the ordinary news beats (world, business, science, culture, sports, tech) — don't assume any specific personal interest.";
+  // Only surface the Origin Realms live server pulse if the user actually
+  // has an Origin Realms topic on their desk — otherwise this is exactly
+  // the same "assumed you're into it" problem as the old hardcoded list.
+  const caresAboutOriginRealms = userTopics.some((t) => /origin\s*realms/i.test(t.label) || /origin\s*realms/i.test(t.query));
+  const pulse = caresAboutOriginRealms ? getOriginPulse() : null;
   const liveCtx = pulse
     ? `\nLIVE CONTEXT (real-time): play.originrealms.com is ${pulse.online ? `online with ${pulse.players}/${pulse.max} players` : "offline"}; MOTD: "${pulse.motd}"; version: ${pulse.version}. Use this if you write an Origin Realms item (especially in Dex's voice).`
     : "";
   const format = STORY_FORMATS[Math.floor(Math.random() * STORY_FORMATS.length)];
-  const weighted = [...topics].sort(() => Math.random() - 0.5);
   const avoidBlock = recentTitles.length
     ? `\nDo NOT repeat or lightly reword any of these recently-filed headlines:\n- ${recentTitles.slice(0, 12).join("\n- ")}`
     : "";
@@ -228,7 +237,7 @@ async function generateOne(kind: ArticleKind, recentTitles: string[]): Promise<{
 
   const res = await window.hub.llm.chat(
     SYSTEM + kindBlock,
-    `Earth topics to weight (real, current-world): ${weighted.join(", ")}.${liveCtx}` +
+    `${topicEarthBlock}${liveCtx}` +
     `\nA Nova Terris storyline to advance OR reference if it fits: ${storyline}` +
     `\nStory angle: ${format}.` +
     avoidBlock +

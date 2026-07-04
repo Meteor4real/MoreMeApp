@@ -190,10 +190,16 @@ DONE:
   the edge instead of dropping them.
 - **NT5 real-news depth**: article/blog-shaped real items fetch the actual
   source page (best-effort text extraction) and demote to brief when the
-  page yields too little — no padded long-forms. Topic seed covers world/
-  US/business/sports (NBA/NFL)/fitness/health + the original beats;
-  `nt5.topics.seedv` appends new default beats to existing installs once
-  per seed version without touching user edits.
+  page yields too little — no padded long-forms.
+- **NT5 topic desk is empty by default** (`nt5Topics.ts` `seedTopics()` →
+  `[]`) — same rule as MoreMe: don't assume the user's interests. The user
+  adds their own topics in News → Topics; nothing is pre-loaded, "Clear
+  all" replaced the old "Reset to defaults". The in-universe generator's
+  "Earth topics to weight" is derived from the user's own enabled topics
+  (`generateOne` in `nt5Wire.ts`) — with none set, it's told explicitly to
+  cover general news beats rather than assume gaming/Minecraft/etc. The
+  Origin Realms live-server pulse only gets injected into a generated item
+  if the user actually has an Origin Realms topic on their desk.
 
 NEXT / IDEAS:
 - Per-class accent colors + bulk "add a week of class periods" template.
