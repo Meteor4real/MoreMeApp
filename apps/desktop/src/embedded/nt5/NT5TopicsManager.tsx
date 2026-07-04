@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  blankTopic, loadTopics, removeTopic, resetTopics, subscribeTopics,
+  blankTopic, clearTopics, loadTopics, removeTopic, subscribeTopics,
   upsertTopic, RECENCIES, SOURCES, type Recency, type Topic, type TopicSource,
 } from "../../services/nt5Topics";
 import { runRealWorldOnce, runTopicOnce } from "../../services/nt5Wire";
@@ -61,16 +61,26 @@ export function NT5TopicsManager() {
             YOUR NEWS DESK
           </div>
           <div style={{ flex: 1 }} />
-          <button className="btn" disabled={busyAll} onClick={() => void pullAll()} style={{ color: C.cyan, borderColor: `${C.cyan}66` }}>
-            {busyAll ? "pulling…" : "↻ Force a full sweep"}
-          </button>
-          <button className="btn" onClick={() => { if (confirm("Reset to the default topic set? Your edits will be lost.")) resetTopics(); }}>Reset to defaults</button>
+          {topics.length > 0 && (
+            <button className="btn" disabled={busyAll} onClick={() => void pullAll()} style={{ color: C.cyan, borderColor: `${C.cyan}66` }}>
+              {busyAll ? "pulling…" : "↻ Force a full sweep"}
+            </button>
+          )}
+          {topics.length > 0 && (
+            <button className="btn" onClick={() => { if (confirm("Clear every topic on your desk? This can't be undone.")) clearTopics(); }} style={{ color: C.red, borderColor: `${C.red}55` }}>Clear all</button>
+          )}
         </div>
         <p style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginTop: 0 }}>
-          Set topics and forget — each anchor files <b style={{ color: C.ink }}>real, current headlines</b> for their beat
-          on their own cadence, 24/7. Below: the live desk (who's on, when they file next),
-          then the topic list anchors pull from.
+          NT5 doesn't know what you're into — <b style={{ color: C.ink }}>you set the desk</b>. Add a topic below
+          (any search terms, a subreddit, or a feed URL) and its anchor files real, current headlines for it on
+          their own cadence, 24/7. Nothing is pre-loaded.
         </p>
+        {topics.length === 0 && (
+          <div style={{ padding: 16, background: C.panel, border: `1px dashed ${C.line}`, borderRadius: 8, marginBottom: 4, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
+            Your desk is empty. Add a topic below — anything: a team, a game, a hobby, world news, a specific
+            subreddit. The anchor assigned to it starts pulling real headlines the moment you save it.
+          </div>
+        )}
         {flash && <div style={{ fontSize: 12, color: C.cyan, margin: "4px 0 10px" }}>{flash}</div>}
 
         <AnchorDeskPanel />

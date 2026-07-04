@@ -36,43 +36,12 @@ export const SOURCES: TopicSource[] = ["google-news", "reddit", "rss"];
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-// A strong starter desk — "news for anything and everything": every broad
-// beat a real network runs (world, business, sports, science, culture,
-// gaming) each routed to the right anchor. Fully editable in the Topics
-// manager; deleting one you don't want is one click.
+// No starter desk. NT5 doesn't know what you're into — you tell it, one
+// topic at a time, in the Topics manager. Empty by default, same as every
+// other first-launch surface in MoreMe.
 function seedTopics(): Topic[] {
-  const t = (
-    label: string, query: string, anchor: AnchorId, category: WireCategory,
-    source: TopicSource = "google-news", recency: Recency = "1d", perPull = 3,
-  ): Topic => ({ id: uid(), label, query, anchor, category, source, recency, perPull, enabled: true });
-  return [
-    t("Minecraft", "Minecraft", "dex", "gaming"),
-    t("Origin Realms", "Origin Realms Minecraft server", "dex", "gaming", "google-news", "3d", 2),
-    t("Gaming", "video game news", "dex", "gaming"),
-    t("r/Minecraft", "Minecraft", "dex", "gaming", "reddit", "1d", 3),
-    t("Celebrities", "celebrity news", "zara", "culture"),
-    t("Music", "music news new release", "zara", "culture"),
-    t("Movies & TV", "movie OR streaming series news", "zara", "earth_trending"),
-    t("Space & NASA", "NASA OR SpaceX OR space mission", "orin", "space"),
-    t("AI & Tech", "artificial intelligence technology", "orin", "tech"),
-    t("Science", "science discovery research", "orin", "space", "google-news", "3d"),
-    t("World", "world breaking news", "voss", "breaking", "google-news", "6h"),
-    t("US News", "United States national news", "voss", "earth_trending", "google-news", "12h"),
-    t("Business", "business markets economy", "voss", "breaking", "google-news", "1d"),
-    t("Sports", "sports news highlights", "lena", "earth_trending", "google-news", "12h"),
-    t("NBA", "NBA basketball", "lena", "earth_trending"),
-    t("NFL", "NFL football", "lena", "earth_trending"),
-    t("Fitness & Training", "fitness training athletics", "lena", "culture", "google-news", "3d", 2),
-    t("Health", "health medicine research news", "orin", "tech", "google-news", "3d", 2),
-  ];
+  return [];
 }
-
-// Bump when seedTopics gains new beats. loadTopics() appends any NEW seed
-// topics (by label) to an existing install once per version — user edits and
-// deletions of their own topics are never touched, and re-deleting an
-// appended default won't resurrect it until the next version bump.
-const SEED_VERSION = 2;
-const SEED_VERSION_KEY = "nt5.topics.seedv";
 
 let cache: Topic[] | null = null;
 
@@ -82,24 +51,11 @@ export function loadTopics(): Topic[] {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const arr = JSON.parse(raw) as Topic[];
-      if (Array.isArray(arr)) {
-        cache = arr;
-        // One-time append of newly-added default beats for existing installs.
-        let seedv = 0;
-        try { seedv = Number(localStorage.getItem(SEED_VERSION_KEY)) || 0; } catch { /* ignore */ }
-        if (seedv < SEED_VERSION) {
-          const have = new Set(arr.map((t) => t.label.toLowerCase()));
-          const fresh = seedTopics().filter((t) => !have.has(t.label.toLowerCase()));
-          if (fresh.length) writeTopics([...arr, ...fresh]);
-          try { localStorage.setItem(SEED_VERSION_KEY, String(SEED_VERSION)); } catch { /* ignore */ }
-        }
-        return cache;
-      }
+      if (Array.isArray(arr)) { cache = arr; return cache; }
     }
   } catch { /* ignore */ }
   cache = seedTopics();
   writeTopics(cache);
-  try { localStorage.setItem(SEED_VERSION_KEY, String(SEED_VERSION)); } catch { /* ignore */ }
   return cache;
 }
 
@@ -128,8 +84,8 @@ export function upsertTopic(topic: Topic) {
 export function removeTopic(id: string) {
   writeTopics(loadTopics().filter((t) => t.id !== id));
 }
-export function resetTopics() {
-  writeTopics(seedTopics());
+export function clearTopics() {
+  writeTopics([]);
 }
 
 // ── source URL builders + parsers ──────────────────────────────────────────
