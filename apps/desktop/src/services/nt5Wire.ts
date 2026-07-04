@@ -393,35 +393,79 @@ export async function runTopicOnce(topic: Topic): Promise<{ ok: boolean; added: 
   return { ok: true, added };
 }
 
-// Take a real headline + snippet and re-voice it into a tight 2-sentence
-// brief in the topic's anchor. Falls back to the cleaned snippet if the model
-// isn't ready so the item still lands as a real reference with its source.
+// Best-effort main-text extraction from an article page. Strips scripts,
+// styles, and tags; joins paragraph contents. Returns "" when the page
+// yields nothing usable (paywall, JS-only shell, redirect page).
+function extractArticleText(html: string): string {
+  try {
+    let t = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<nav[\s\S]*?<\/nav>/gi, " ")
+      .replace(/<header[\s\S]*?<\/header>/gi, " ")
+      .replace(/<footer[\s\S]*?<\/footer>/gi, " ");
+    const paras: string[] = [];
+    const pRe = /<p[^>]*>([\s\S]*?)<\/p>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = pRe.exec(t)) && paras.join(" ").length < 4000) {
+      const clean = m[1].replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&#0?39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, " ").trim();
+      if (clean.length > 60) paras.push(clean); // skip nav crumbs / bylines
+    }
+    return paras.join("\n\n").slice(0, 2800);
+  } catch { return ""; }
+}
+
+// Take a real headline + snippet and re-voice it in the topic's anchor.
+// Long shapes (article / blog) first try to fetch the ACTUAL source page so
+// the piece has real material to work from — a 4-paragraph article written
+// off a one-line RSS snippet is padding, not news. Falls back to the cleaned
+// snippet (and finally the headline) so the item always lands with its source.
 async function fileRealItem(topic: Topic, hit: TopicHit): Promise<WireArticle | null> {
   const anchor = topic.anchor;
   // Roll a shape for this real-world item. Real news leans heavily toward
   // brief + article since blogs / socials risk inventing opinion that isn't
   // in the source snippet — for those, the model is constrained tighter.
-  const kind = pickKind(REAL_KIND_WEIGHTS);
+  let kind = pickKind(REAL_KIND_WEIGHTS);
   let body = (hit.description || "").slice(0, 360);
+
+  // For long shapes, pull the source page text. If it yields too little to
+  // honestly sustain a long read, demote the item to a brief instead of
+  // letting the model pad.
+  let sourceText = "";
+  if (kind === "article" || kind === "blog") {
+    try {
+      const page = await window.hub.net({
+        method: "GET",
+        url: hit.link,
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; NT5Wire/1.0; +https://moreme.app)" },
+      });
+      if (page.ok && typeof page.data === "string") sourceText = extractArticleText(page.data);
+    } catch { /* headline+snippet only */ }
+    if (sourceText.length < 400) { kind = "brief"; sourceText = ""; }
+  }
+
   try {
     const s = await window.hub.llm.status();
     if (s.ready) {
       const a = LORE_ANCHORS[anchor] ?? LORE_ANCHORS.voss;
       // Per-kind re-voicing instructions. The hard constraint stays the
-      // same: use ONLY facts present in the snippet for any factual claim.
-      // Opinion shapes (blog / social) frame angle but can't invent events.
+      // same: use ONLY facts present in the source material for any factual
+      // claim. Opinion shapes (blog / social) frame angle but can't invent.
       const shape = KIND_PROMPTS[kind];
       const factsGuard =
         kind === "blog" || kind === "social"
-          ? "You may add stance / framing in the anchor's voice, but factual claims must come from the snippet only — do not invent events or numbers."
-          : "Use ONLY facts present in the snippet — invent nothing.";
+          ? "You may add stance / framing in the anchor's voice, but factual claims must come from the source material only — do not invent events or numbers."
+          : "Use ONLY facts present in the source material — invent nothing.";
       const sys =
         `You are NT5 anchor ${a.name} (${a.role}). Voice: ${a.voice}\n` +
-        `Re-voice a REAL current headline + snippet in your voice.\n` +
+        `Re-voice REAL current news in your voice.\n` +
         `SHAPE: ${kind.toUpperCase()} — ${shape}\n` +
         `${factsGuard}\n` +
         `No preamble, no markdown, no quote marks around the output.`;
-      const u = `TOPIC: ${topic.label}\nHEADLINE: ${hit.title}\nSNIPPET: ${hit.description || "(headline only)"}\nWrite the piece now.`;
+      const u =
+        `TOPIC: ${topic.label}\nHEADLINE: ${hit.title}\nSNIPPET: ${hit.description || "(headline only)"}` +
+        (sourceText ? `\nFULL SOURCE TEXT:\n${sourceText}` : "") +
+        `\nWrite the piece now.`;
       const r = await window.hub.llm.chat(sys, u);
       if (r.ok && r.text) body = r.text.trim().replace(/^["']|["']$/g, "");
     }

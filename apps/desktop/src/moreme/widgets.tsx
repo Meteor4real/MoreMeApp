@@ -23,7 +23,7 @@ export function WidgetView({ s, tabId, w }: { s: State; tabId: string; w: Widget
     case "stat":      return <StatView w={w} s={s} />;
     case "image":     return <ImageView w={w} />;
     case "divider":   return <DividerView />;
-    case "quote":     return <QuoteView w={w} />;
+    case "quote":     return <QuoteView w={w} s={s} />;
   }
 }
 
@@ -132,13 +132,13 @@ function DividerView() {
   return <div style={{ height: 1, background: T.line, margin: "4px 0" }} />;
 }
 
-function QuoteView({ w }: { w: Extract<Widget, { kind: "quote" }> }) {
+function QuoteView({ w, s }: { w: Extract<Widget, { kind: "quote" }>; s: State }) {
   const today = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
-  const q = quoteOfDay(today);
+  const q = quoteOfDay(today, s.customization.quotes);
   if (!q) {
     return (
       <Frame title={w.title}>
-        <div style={{ fontSize: 12, color: T.inkTiny }}>No quotes yet — add some in Customize → Quotes.</div>
+        <div style={{ fontSize: 12, color: T.inkTiny }}>No quotes yet — add your own in Customize, under Quotes.</div>
       </Frame>
     );
   }

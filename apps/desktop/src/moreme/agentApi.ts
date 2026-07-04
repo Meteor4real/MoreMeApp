@@ -5,7 +5,7 @@
 // existing store. Persists, syncs, survives restarts.
 //
 // Example, in the renderer dev console:
-//   moremeAgent.tabs.add({ label: "Workouts", icon: "🏋️" });
+//   moremeAgent.tabs.add({ label: "Workouts", icon: "◆" });  // geometric marks only — NO emojis in the UI
 //   moremeAgent.widgets.add("today", { kind: "counter", title: "Pushups", value: 0, step: 1 });
 //   moremeAgent.theme.set("sports");
 

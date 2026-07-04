@@ -221,6 +221,7 @@ function seedCustomization(): Customization {
     customAchievements: [],
     customTheme: undefined,
     useCustomTheme: false,
+    quotes: [],
     dynamicTabs: [],
     widgets: {},
   };
@@ -252,9 +253,7 @@ export function loadState(): State {
         distractions: p.distractions ?? [],
         screenSessions: p.screenSessions ?? [],
         urges: p.urges ?? [],
-        // Existing installs without a replacement drawer get the default
-        // seeded list so the urge button has somewhere to send them.
-        replacements: p.replacements && p.replacements.length > 0 ? p.replacements : d.replacements,
+        replacements: p.replacements ?? d.replacements,
         screen: { ...d.screen, ...(p.screen ?? {}) },
         // Customization (v11+) — back-fill cleanly for existing installs.
         customization: mergeCustomization(d.customization, p.customization),
@@ -427,7 +426,17 @@ export function removeEvent(id: string) {
   });
 }
 export function revealEvent(id: string) {
-  updateState((s) => ({ ...s, events: s.events.map((e) => (e.id === id ? { ...e, visibility: "visible" } : e)) }));
+  // Stamp revealedAt only on a real hidden -> visible transition, so the
+  // "Made It Official" achievement requires actually using the reveal
+  // mechanic instead of unlocking on any normally-created announcement.
+  updateState((s) => ({
+    ...s,
+    events: s.events.map((e) =>
+      e.id === id && e.visibility === "hidden"
+        ? { ...e, visibility: "visible", revealedAt: Date.now() }
+        : e,
+    ),
+  }));
   refreshAchievements();
 }
 
@@ -742,14 +751,14 @@ export function insights(s: State = loadState()): Insights {
   const screenAvgDaily = loggedScreenDays ? Math.round(screenLast30 / loggedScreenDays) : 0;
 
   // The killer correlation: morning routine done vs not done. Look at
-  // screentime over the last 30 days bucketed by whether `rt-morning` was
-  // completed that date. Only counts days that have a session, so you're
-  // not comparing zeros.
+  // screentime over the last 30 days bucketed by whether ANY morning routine
+  // (semantic: routine starting before 10:00) was completed that date. Only
+  // counts days that have a session, so you're not comparing zeros.
   let routineDays = 0, noRoutineDays = 0;
   let routineMinSum = 0, noRoutineMinSum = 0;
   for (const d of screenMinutesByDay) {
     if (d.minutes === 0) continue;
-    if (s.completions[`rt-morning::${d.date}`]) { routineDays++; routineMinSum += d.minutes; }
+    if (morningRoutineCompletionOn(d.date, s) !== undefined) { routineDays++; routineMinSum += d.minutes; }
     else { noRoutineDays++; noRoutineMinSum += d.minutes; }
   }
   const routineDayAvgMin = routineDays ? Math.round(routineMinSum / routineDays) : 0;
@@ -1036,9 +1045,26 @@ function mergeCustomization(d: Customization, p?: Partial<Customization>): Custo
     customAchievements: p.customAchievements ?? d.customAchievements,
     customTheme: p.customTheme ?? d.customTheme,
     useCustomTheme: !!p.useCustomTheme,
+    quotes: Array.isArray(p.quotes) ? p.quotes : d.quotes,
     dynamicTabs: Array.isArray(p.dynamicTabs) ? p.dynamicTabs : d.dynamicTabs,
     widgets: p.widgets && typeof p.widgets === "object" ? p.widgets : d.widgets,
   };
+}
+
+// ── quotes (user-supplied; rotate one per day on Today + quote widgets) ──
+export function addQuote(text: string, by: string) {
+  const t = text.trim();
+  if (!t) return;
+  updateState((s) => ({
+    ...s,
+    customization: { ...s.customization, quotes: [...s.customization.quotes, { id: uid(), text: t, by: by.trim() || "Me" }] },
+  }));
+}
+export function removeQuote(id: string) {
+  updateState((s) => ({
+    ...s,
+    customization: { ...s.customization, quotes: s.customization.quotes.filter((q) => q.id !== id) },
+  }));
 }
 
 export function tabLabel(id: string, fallback: string, s: State = loadState()): string {
@@ -1338,11 +1364,15 @@ type Aggregates = {
   futureSchoolDone7: number;       // school events in next 7 days that are done
   futureSchoolDone30: number;
   longIProjectDone: boolean;       // a >=180min iProject completed
-  helipad: boolean;
   argDone: number;
   meetingPrepDone: number;         // meetings completed with all checklist done
   polymathMax: number;             // max distinct categories completed in one day
   ventureDone: number;
+  // Morning/bed routines are detected SEMANTICALLY (by start time), never by
+  // id — the app can only reward what it can actually observe from the
+  // user's own routines, whatever they named them.
+  morningRoutineDone: number;      // completions of routine events starting before 10:00
+  bedRoutineDone: number;          // completions of routine events starting 20:00 or later
   quietDays: number;               // days with >=1 completion and 0 distractions
   quietStreak: number;
   milestonesDone: number;
@@ -1371,6 +1401,24 @@ type Aggregates = {
   schoolHonestlyLogged: number;    // completed school items with helpUsed set (any value)
 };
 
+// Semantic routine-slot tests. "Morning" = starts before 10:00; "bed" =
+// starts 20:00 or later. Used by achievements + the insights correlation so
+// they work on whatever routines the user actually created.
+const isMorningRoutine = (e: CalEvent) => e.category === "routine" && !!e.start && e.start < "10:00";
+const isBedRoutine = (e: CalEvent) => e.category === "routine" && !!e.start && e.start >= "20:00";
+
+// Was any morning routine completed on `date`? Returns the earliest
+// completion timestamp if so, else undefined.
+export function morningRoutineCompletionOn(date: string, s: State): number | undefined {
+  let earliest: number | undefined;
+  for (const e of s.events) {
+    if (!isMorningRoutine(e)) continue;
+    const ts = s.completions[`${e.id}::${date}`];
+    if (ts && (earliest === undefined || ts < earliest)) earliest = ts;
+  }
+  return earliest;
+}
+
 function aggregate(s: State): Aggregates {
   const byCategory: Record<string, number> = {};
   const routineCounts: Record<string, number> = {};
@@ -1378,6 +1426,7 @@ function aggregate(s: State): Aggregates {
   const perDayCats: Record<string, Set<string>> = {};
   const perDayCompletions: Record<string, number> = {};
 
+  let morningRoutineDone = 0, bedRoutineDone = 0;
   for (const [key, ts] of Object.entries(s.completions)) {
     const [id, date] = key.split("::");
     const e = s.events.find((x) => x.id === id);
@@ -1385,6 +1434,8 @@ function aggregate(s: State): Aggregates {
     completionCount++;
     byCategory[e.category] = (byCategory[e.category] ?? 0) + 1;
     if (e.category === "routine") routineCounts[e.id] = (routineCounts[e.id] ?? 0) + 1;
+    if (isMorningRoutine(e)) morningRoutineDone++;
+    if (isBedRoutine(e)) bedRoutineDone++;
     // "ahead": completed before the occurrence date arrived
     if (iso(new Date(ts)) < date) aheadCompletions++;
     (perDayCats[date] ??= new Set()).add(e.category);
@@ -1393,13 +1444,10 @@ function aggregate(s: State): Aggregates {
 
   const t = today();
   let futureSchoolDone7 = 0, futureSchoolDone30 = 0;
-  let longIProjectDone = false, helipad = false, argDone = 0, meetingPrepDone = 0, ventureDone = 0;
+  let longIProjectDone = false, argDone = 0, meetingPrepDone = 0, ventureDone = 0;
   let eventsLinkedToPeople = 0;
   for (const e of s.events) {
     if (e.people.length) eventsLinkedToPeople++;
-    if (e.category === "travel" && (e.location ?? "").toLowerCase().includes("heli") && isDone(e, e.date, s)) {
-      helipad = true;
-    }
     // single-occurrence completion checks
     const done = isDone(e, e.date, s);
     if (!done) continue;
@@ -1452,9 +1500,10 @@ function aggregate(s: State): Aggregates {
       const allIn = sess.length > 0 && sess.every((x) => isInWindow(s, new Date(x.startedAt)) === true);
       if (allIn) daysAllSessionsInWindow++;
     }
-    // routine before phone: morning routine done that day, and its completion
-    // ts is before the first screen-session minute of the day
-    const morningCompletedTs = s.completions[`rt-morning::${d}`];
+    // routine before phone: any morning routine (semantic — starts before
+    // 10:00) done that day, with its completion ts before the first
+    // screen-session minute of the day
+    const morningCompletedTs = morningRoutineCompletionOn(d, s);
     if (morningCompletedTs) {
       const mDate = new Date(morningCompletedTs);
       const m = mDate.getHours() * 60 + mDate.getMinutes();
@@ -1487,10 +1536,13 @@ function aggregate(s: State): Aggregates {
 
   return {
     completionCount, byCategory, routineCounts, aheadCompletions,
-    futureSchoolDone7, futureSchoolDone30, longIProjectDone, helipad, argDone,
-    meetingPrepDone, polymathMax, ventureDone, quietDays, quietStreak,
+    futureSchoolDone7, futureSchoolDone30, longIProjectDone, argDone,
+    meetingPrepDone, polymathMax, ventureDone, morningRoutineDone, bedRoutineDone,
+    quietDays, quietStreak,
     milestonesDone, projectsDone, eventsLinkedToPeople, totalEvents: s.events.length,
-    announcementsRevealed: s.events.filter((e) => e.category === "announcement" && e.visibility === "visible").length,
+    // "Revealed" means it actually went hidden -> visible via revealEvent
+    // (revealedAt stamp), not just "was created visible like every event".
+    announcementsRevealed: s.events.filter((e) => e.category === "announcement" && e.visibility === "visible" && !!e.revealedAt).length,
     streakCurrent: current, streakBest: best, level: levelInfo(s).level,
     empireMRR: empireMRR(s), empireLifetime: empireLifetime(s),
     liveVentures: s.ventures.filter((v) => v.status === "live" || v.status === "scaling").length,
@@ -1511,8 +1563,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: "streak-3", title: "Three in a Row", desc: "3-day routine streak.", category: "discipline", progress: (a) => [a.streakBest, 3] },
   { id: "streak-7", title: "Week Lit", desc: "7-day routine streak.", category: "discipline", progress: (a) => [a.streakBest, 7] },
   { id: "streak-30", title: "Lock-In · 30d", desc: "30-day routine streak.", category: "discipline", progress: (a) => [a.streakBest, 30] },
-  { id: "early-bird", title: "Early Bird", desc: "Complete the morning routine 30 times.", category: "discipline", progress: (a) => [a.routineCounts["rt-morning"] ?? 0, 30] },
-  { id: "sleep-pro", title: "Sleep Pro", desc: "Complete the bedtime routine 14 times.", category: "discipline", progress: (a) => [a.routineCounts["rt-bed"] ?? 0, 14] },
+  { id: "early-bird", title: "Early Bird", desc: "Complete a morning routine (any routine starting before 10:00) 30 times.", category: "discipline", progress: (a) => [a.morningRoutineDone, 30] },
+  { id: "sleep-pro", title: "Sleep Pro", desc: "Complete a bedtime routine (any routine starting 20:00 or later) 14 times.", category: "discipline", progress: (a) => [a.bedRoutineDone, 14] },
   { id: "planner", title: "All Booked Up", desc: "Have 25 items on your calendar.", category: "discipline", progress: (a) => [a.totalEvents, 25] },
 
   // School — the get-ahead superpower
@@ -1522,7 +1574,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
 
   // Build — what you make, ship, and run
   { id: "iproject-marathon", title: "Locked In", desc: "Complete a 3-hour iProject block in a single sitting.", category: "build", progress: (a) => [a.longIProjectDone ? 1 : 0, 1] },
-  { id: "arg-architect", title: "ARG Architect", desc: "Ship 3 Cosmos Crew ARG stages.", category: "build", progress: (a) => [a.argDone, 3] },
+  { id: "arg-architect", title: "ARG Architect", desc: "Complete 3 ARG items.", category: "build", progress: (a) => [a.argDone, 3] },
   { id: "investor", title: "Walks In Prepared", desc: "Complete a meeting with its prep checklist fully done.", category: "build", progress: (a) => [a.meetingPrepDone, 1] },
   { id: "ship-it", title: "Shipped It", desc: "Complete a project.", category: "build", progress: (a) => [a.projectsDone, 1] },
   { id: "trilogy", title: "Three Down", desc: "Complete 3 projects.", category: "build", progress: (a) => [a.projectsDone, 3] },
@@ -1534,7 +1586,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
 
   // Social — your reputation at school
   { id: "people-person", title: "Knows Everyone", desc: "Link 5 items to people in your circle.", category: "social", progress: (a) => [a.eventsLinkedToPeople, 5] },
-  { id: "announcer", title: "Made It Official", desc: "Reveal a planned announcement to the school.", category: "social", progress: (a) => [a.announcementsRevealed, 1] },
+  { id: "announcer", title: "Made It Official", desc: "Reveal a hidden announcement (create it unannounced, then make it visible).", category: "social", progress: (a) => [a.announcementsRevealed, 1] },
 
   // Level milestones — the rank ladder, big steps only
   { id: "level-5", title: "Up the Ladder", desc: "Reach level 5 — Operator.", category: "level", progress: (a) => [a.level, 5] },
@@ -1560,8 +1612,6 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: "honest-school", title: "Honest Effort", desc: "Mark a school item's help honestly (any value).", category: "school", progress: (a) => [Math.min(a.schoolHonestlyLogged, 1), 1] },
   { id: "all-yours-5", title: "All Yours", desc: "Five school items completed with help = 'none'.", category: "school", progress: (a) => [a.schoolAllYours, 5] },
 
-  // Special — story-easter-egg territory
-  { id: "helipad", title: "Helipad", desc: "Complete a travel item that lands on the helipad.", category: "special", progress: (a) => [a.helipad ? 1 : 0, 1] },
 ];
 
 export function achievementProgress(s: State = loadState()): Record<string, { have: number; need: number; done: boolean }> {

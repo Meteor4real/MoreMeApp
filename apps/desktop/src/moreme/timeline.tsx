@@ -18,9 +18,16 @@ const GRID_H    = (SPAN_MIN / 60) * PX_PER_HR;
 
 function pos(e: CalEvent): { top: number; height: number } | null {
   if (e.allDay || !e.start || !e.end) return null;
-  const s = Math.max(toMin(e.start), DAY_START);
-  const en = Math.min(toMin(e.end), DAY_END);
-  if (en <= s) return null;
+  let s = Math.max(toMin(e.start), DAY_START);
+  let en = Math.min(toMin(e.end), DAY_END);
+  // An event entirely outside the 06:00–23:00 window (a 05:15 run, a 23:15
+  // wind-down) must still render SOMEWHERE — Month view shows it, so Day/Week
+  // silently dropping it makes the views disagree about what exists. Pin it
+  // as a minimum-height chip at the nearest edge instead.
+  if (en <= s) {
+    if (toMin(e.end) <= DAY_START) { s = DAY_START; en = DAY_START + 20; }
+    else { s = DAY_END - 20; en = DAY_END; }
+  }
   return { top: ((s - DAY_START) / 60) * PX_PER_HR, height: ((en - s) / 60) * PX_PER_HR };
 }
 
