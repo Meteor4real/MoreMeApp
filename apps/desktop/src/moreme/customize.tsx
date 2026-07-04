@@ -7,9 +7,9 @@ import { T, setTheme, refreshTheme, currentThemeName, PALETTES, THEME_META, type
 import { MAX_LEVEL, RANK_NAMES, WIDGET_KINDS } from "./types";
 import type { CustomAchievement, State, Widget } from "./types";
 import {
-  addCustomAchievement, addDynamicTab, addWidget, blankCustomAchievement, blankWidget,
+  addCustomAchievement, addDynamicTab, addQuote, addWidget, blankCustomAchievement, blankWidget,
   claimCustomAchievement, clearCustomTheme, isTabHidden, moveDynamicTab, moveWidget,
-  rankFor, removeCustomAchievement, removeDynamicTab, resetAllRanks, resetTabLabel,
+  rankFor, removeCustomAchievement, removeDynamicTab, removeQuote, resetAllRanks, resetTabLabel,
   setCustomTheme, setRank, setTabLabel, setUseCustomTheme, toggleTabHidden,
   unclaimCustomAchievement, updateCustomAchievement, updateDynamicTab, levelInfo,
 } from "./store";
@@ -42,11 +42,40 @@ export function CustomizeView({ s }: { s: State }) {
       <PagesAndWidgetsCard s={s} />
       <RanksCard s={s} />
       <CustomAchievementsCard s={s} />
+      <QuotesCard s={s} />
       <CustomThemeCard s={s} />
       <div style={{ fontSize: 11, color: T.inkTiny, fontStyle: "italic", padding: "6px 0 20px" }}>
         Every override is saved instantly. Reset any field to put the default back.
       </div>
     </div>
+  );
+}
+
+function QuotesCard({ s }: { s: State }) {
+  const [text, setText] = useState("");
+  const [by, setBy] = useState("");
+  const quotes = s.customization.quotes;
+  const add = () => { addQuote(text, by); setText(""); setBy(""); };
+  return (
+    <Section title="Quotes" sub="Your own quote bank. One rotates per day on Today and in any quote widget. Nothing is seeded — every line here is yours.">
+      {quotes.map((q) => (
+        <div key={q.id} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0, fontSize: 13 }}>
+            <span className="serif">“{q.text}”</span>
+            <span style={{ fontSize: 11, color: T.inkTiny, marginLeft: 8 }}>— {q.by}</span>
+          </div>
+          <button className="mm-btn mm-btn-danger" style={{ padding: "3px 8px" }} onClick={() => removeQuote(q.id)}>×</button>
+        </div>
+      ))}
+      {quotes.length === 0 && (
+        <div style={{ fontSize: 12, color: T.inkTiny, fontStyle: "italic" }}>No quotes yet. Add one below — the Today banner appears once you do.</div>
+      )}
+      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+        <input value={text} placeholder="The quote" onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} style={{ flex: 2 }} />
+        <input value={by} placeholder="Who said it" onChange={(e) => setBy(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} style={{ flex: 1 }} />
+        <button className="mm-btn mm-btn-primary" onClick={add} disabled={!text.trim()}>Add</button>
+      </div>
+    </Section>
   );
 }
 
@@ -194,7 +223,10 @@ function CustomThemeCard({ s }: { s: State }) {
   const seedPalette: Palette = s.customization.customTheme ?? PALETTES.dp;
   const [draft, setDraft] = useState<Palette>(seedPalette);
   const set = (k: keyof Palette, v: string) => setDraft((d) => ({ ...d, [k]: v }));
-  const apply = () => { setCustomTheme(draft); refreshTheme(); };
+  // Save the palette AND switch to it. refreshTheme() alone re-applies the
+  // theme name still in localStorage (dp/papatui/…), so the button looked
+  // like it did nothing — setTheme("custom") is what actually flips it.
+  const apply = () => { setCustomTheme(draft); setTheme("custom"); };
   const isActive = currentThemeName() === "custom" && s.customization.useCustomTheme;
   return (
     <Section title="Custom theme" sub="Paint your own palette. Apply to switch the whole app to it.">
@@ -249,7 +281,7 @@ function CustomThemeCard({ s }: { s: State }) {
         <button className="mm-btn" onClick={() => { setUseCustomTheme(true); setTheme("custom"); }}>Try Custom</button>
       </div>
       <div style={{ fontSize: 10, color: T.inkTiny, fontStyle: "italic", marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${T.line}`, display: "flex", alignItems: "center", gap: 6 }}>
-        <span aria-hidden="true">☕</span>
+        <span aria-hidden="true">◆</span>
         Built fellow-learner style — NetworkChuck energy, none of the dead Hub.
       </div>
     </Section>
@@ -304,7 +336,7 @@ function PagesAndWidgetsCard({ s }: { s: State }) {
         </div>
         <div className="mm-field" style={{ width: 100 }}>
           <label>Icon (optional)</label>
-          <input value={newTabIcon} placeholder="🏋️" onChange={(e) => setNewTabIcon(e.target.value)} />
+          <input value={newTabIcon} placeholder="◆ ◈ ✦ ▲" onChange={(e) => setNewTabIcon(e.target.value)} />
         </div>
         <button className="mm-btn mm-btn-primary" onClick={addNewTab}>+ Add tab</button>
       </div>

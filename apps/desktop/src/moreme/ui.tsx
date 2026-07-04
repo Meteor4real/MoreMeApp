@@ -15,7 +15,7 @@ import {
   ACHIEVEMENTS, achievementProgress, blankClass, blankEvent, blankProject,
   captureInbox, conflictIds, dayComplete, distractionsOn, dueReminders,
   eventsOnDate, fmtTime, gradeLabel, gradeStatus, inboxToEventDraft,
-  inboxToProject, iso, isDone, levelInfo, loadState, logDistraction, monthLabel,
+  inboxToGoal, inboxToProject, iso, isDone, levelInfo, loadState, logDistraction, monthLabel,
   removeClass, removeDistraction, removeEvent, removeInbox, removePerson,
   removeProject, revealEvent, schoolYearLabel, setGoals, setReward, setSchool,
   streakInfo, subscribeState, today, toggleDone, uid, upcomingWithReminders,
@@ -59,6 +59,10 @@ export function MoreMeUI() {
   const s = useStore();
   const [tab, setTab] = useState<Tab>("today");
   const [editing, setEditing] = useState<CalEvent | null>(null);
+  // Inbox item pending the editor's Save — the capture is only removed once
+  // the drafted event actually exists, so closing the editor can't eat it.
+  const [pendingInboxId, setPendingInboxId] = useState<string | null>(null);
+  const openEditor = (e: CalEvent, inboxId?: string) => { setEditing(e); setPendingInboxId(inboxId ?? null); };
   const [review, setReview] = useState(false);
   // Force a re-render of every component using `T.*` when the theme flips.
   const [, bumpTheme] = useState(0);
@@ -97,9 +101,9 @@ export function MoreMeUI() {
             {widgetsHere.map((w) => <WidgetView key={w.id} s={s} tabId={tabIdStr} w={w} />)}
           </div>
         )}
-        {tab === "today" && <TodayView s={s} onEdit={setEditing} />}
-        {tab === "ahead" && <GetAheadView s={s} onEdit={setEditing} />}
-        {tab === "calendar" && <CalendarView s={s} onEdit={setEditing} />}
+        {tab === "today" && <TodayView s={s} onEdit={openEditor} />}
+        {tab === "ahead" && <GetAheadView s={s} onEdit={openEditor} />}
+        {tab === "calendar" && <CalendarView s={s} onEdit={openEditor} />}
         {tab === "screens" && <ScreensView s={s} />}
         {tab === "empire" && <EmpireView s={s} />}
         {tab === "projects" && <ProjectsView s={s} />}
@@ -111,9 +115,17 @@ export function MoreMeUI() {
         {tab === "customize" && <CustomizeView s={s} />}
         {dynamicCurrent && <DynamicTabView s={s} tabId={dynamicCurrent.id} />}
       </div>
-      {editing && <EventEditor s={s} draft={editing} onClose={() => setEditing(null)} />}
-      {review && <WeeklyReview s={s} onClose={() => setReview(false)} onEdit={(e) => { setReview(false); setEditing(e); }} />}
-      <ReminderToasts s={s} onOpen={setEditing} />
+      {editing && (
+        <EventEditor
+          s={s}
+          draft={editing}
+          onClose={() => { setEditing(null); setPendingInboxId(null); }}
+          onSaved={() => { if (pendingInboxId) removeInbox(pendingInboxId); }}
+        />
+      )}
+      {review && <WeeklyReview s={s} onClose={() => setReview(false)} onEdit={(e) => { setReview(false); openEditor(e); }} />}
+      <ReminderToasts s={s} onOpen={openEditor} />
+      <RewardToasts s={s} />
     </div>
   );
 }
@@ -203,12 +215,71 @@ function ReminderToasts({ s, onOpen }: { s: State; onOpen: (e: CalEvent) => void
               {fmtTime(t.e.start)}{t.e.location ? ` · ${t.e.location}` : ""}
             </div>
             <div style={{ display: "flex", gap: 6 }}>
+              <button className="mm-btn mm-btn-primary" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => { toggleDone(t.e.id, t.date); setActive((c) => c.filter((x) => x.key !== t.key)); }}>Done +{t.e.xp} XP</button>
               <button className="mm-btn" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => { onOpen(t.e); setActive((c) => c.filter((x) => x.key !== t.key)); }}>Open</button>
               <button className="mm-btn" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => setActive((c) => c.filter((x) => x.key !== t.key))}>Dismiss</button>
             </div>
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ── reward toasts: the moment you earn something, you SEE it ──────────────
+// Diffs unlocked achievements + level between state changes and surfaces a
+// toast for each new unlock / level-up. No fake celebration — these only
+// fire on real, observable progress the store just recorded.
+function RewardToasts({ s }: { s: State }) {
+  type Toast = { key: string; kind: "achievement" | "level"; title: string; sub: string };
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const prevUnlocked = useRef<Set<string> | null>(null);
+  const prevLevel = useRef<number | null>(null);
+
+  useEffect(() => {
+    const unlocked = new Set(Object.keys(s.unlockedAchievements));
+    const level = levelInfo(s).level;
+    const fresh: Toast[] = [];
+    // First render just establishes the baseline — no toast storm on boot.
+    if (prevUnlocked.current) {
+      for (const id of unlocked) {
+        if (prevUnlocked.current.has(id)) continue;
+        const def = ACHIEVEMENTS.find((a) => a.id === id);
+        if (def) fresh.push({ key: `ach-${id}-${Date.now()}`, kind: "achievement", title: def.title, sub: def.desc });
+      }
+    }
+    if (prevLevel.current !== null && level > prevLevel.current) {
+      fresh.push({ key: `lvl-${level}-${Date.now()}`, kind: "level", title: `Level ${level}`, sub: `${rankFor(level, s)} reached` });
+    }
+    prevUnlocked.current = unlocked;
+    prevLevel.current = level;
+    if (fresh.length) {
+      setToasts((cur) => [...cur, ...fresh]);
+      // Self-dismiss after 6s — a moment, not a chore to close.
+      for (const t of fresh) {
+        window.setTimeout(() => setToasts((cur) => cur.filter((x) => x.key !== t.key)), 6000);
+      }
+    }
+  }, [s]);
+
+  if (!toasts.length) return null;
+  return (
+    <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: 20, display: "flex", flexDirection: "column", gap: 8, zIndex: 70, alignItems: "center" }}>
+      {toasts.map((t) => (
+        <div key={t.key} className="mm-card-mint mm-toast-in" style={{ padding: "10px 20px", display: "flex", alignItems: "center", gap: 12, boxShadow: `0 12px 40px rgba(0,0,0,.5), 0 0 24px ${T.mint}33` }}>
+          <span style={{ color: T.mint, fontSize: 18 }}>{t.kind === "level" ? "◆" : "✦"}</span>
+          <div>
+            <div style={{ fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: T.mint }}>
+              {t.kind === "level" ? "Level up" : "Achievement unlocked"}
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+              <b style={{ fontSize: 14 }}>{t.title}</b>
+              <span style={{ fontSize: 11, color: T.inkSoft }}>{t.sub}</span>
+            </div>
+          </div>
+          <button className="mm-btn" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => setToasts((c) => c.filter((x) => x.key !== t.key))}>×</button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -296,7 +367,7 @@ function EventRow({ e, date, s, onEdit }: { e: CalEvent; date: string; s: State;
         title={done ? "Mark not done" : "Complete (+XP)"}
         style={{ width: 22, height: 22, flex: "none", borderRadius: 6, border: `2px solid ${meta.color}`, background: done ? meta.color : "transparent", color: T.bg, cursor: "pointer", fontSize: 13, lineHeight: 1 }}
       >{done ? "✓" : ""}</button>
-      <span className="mm-dot" style={{ ["--c" as never]: meta.color }} />
+      <span title={meta.label} style={{ flex: "none", width: 16, textAlign: "center", color: meta.color, fontSize: 13, lineHeight: 1 }}>{meta.glyph}</span>
       <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => onEdit(e)}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <b style={{ fontSize: 13 }}>{e.title || "(untitled)"}</b>
@@ -333,7 +404,7 @@ function TodayView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }) {
   const [screenModal, setScreenModal] = useState<"log" | "urge" | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
   const print = makePrintHandler(() => printRef.current);
-  const quote = quoteOfDay(date);
+  const quote = quoteOfDay(date, s.customization.quotes);
 
   const hero = heroImageUrl();
 
@@ -397,7 +468,16 @@ function TodayView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }) {
       )}
 
       <Section title={`Routine · ${routines.filter((e) => isDone(e, date, s)).length}/${routines.length}`}>
-        {routines.length === 0 ? <Empty>No routines today.</Empty> : routines.map((e) => <EventRow key={e.id} e={e} date={date} s={s} onEdit={onEdit} />)}
+        {routines.length === 0 ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <Empty>No routines yet — routines are the daily backbone: they feed streaks and earn screen minutes.</Empty>
+            <button
+              className="mm-btn"
+              style={{ flex: "none" }}
+              onClick={() => onEdit({ ...blankEvent(date), category: "routine", start: "07:00", end: "07:20", recurrence: { kind: "daily" } })}
+            >+ Add a routine</button>
+          </div>
+        ) : routines.map((e) => <EventRow key={e.id} e={e} date={date} s={s} onEdit={onEdit} />)}
       </Section>
 
       <Section title="Scheduled">
@@ -426,13 +506,17 @@ function TodayView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }) {
     </div>
   );
 }
-function InboxRow({ item, onEdit }: { item: InboxItem; onEdit: (e: CalEvent) => void }) {
+function InboxRow({ item, onEdit }: { item: InboxItem; onEdit: (e: CalEvent, inboxId?: string) => void }) {
+  // Schedule hands the capture's id along with the draft — the inbox item is
+  // only removed when the editor actually saves, so Close/backdrop-click
+  // can't eat the note.
   return (
     <div className="mm-action" style={{ cursor: "default" }}>
       <span className="mm-dot" style={{ ["--c" as never]: "#FFD23E" }} />
       <div style={{ flex: 1, minWidth: 0, fontSize: 13 }}>{item.text}</div>
-      <button className="mm-btn" style={{ padding: "3px 8px" }} title="Schedule it" onClick={() => { onEdit(inboxToEventDraft(item)); removeInbox(item.id); }}>Schedule</button>
+      <button className="mm-btn" style={{ padding: "3px 8px" }} title="Schedule it" onClick={() => onEdit(inboxToEventDraft(item), item.id)}>Schedule</button>
       <button className="mm-btn" style={{ padding: "3px 8px" }} title="Make it a project" onClick={() => inboxToProject(item)}>Project</button>
+      <button className="mm-btn" style={{ padding: "3px 8px" }} title="Add to this week's goals" onClick={() => inboxToGoal(item, "week")}>Goal</button>
       <button className="mm-btn mm-btn-danger" style={{ padding: "3px 8px" }} title="Discard" onClick={() => removeInbox(item.id)}>×</button>
     </div>
   );
@@ -534,6 +618,7 @@ function CalendarView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }
                 </div>
                 {evs.slice(0, 3).map((e) => (
                   <div key={e.id} className={"mm-chip" + (isDone(e, cell.date, s) ? " done" : "")} style={{ ["--c" as never]: CATEGORY_META[e.category].color }}>
+                    <span style={{ color: CATEGORY_META[e.category].color, flex: "none" }}>{CATEGORY_META[e.category].glyph}</span>
                     {e.visibility === "hidden" ? "• " : ""}{e.title || CATEGORY_META[e.category].label}
                   </div>
                 ))}
@@ -575,14 +660,24 @@ function buildMonth(y: number, m: number): { date: string; day: number; inMonth:
 }
 
 // ── Event editor ────────────────────────────────────────────────────────────
-function EventEditor({ s, draft, onClose }: { s: State; draft: CalEvent; onClose: () => void }) {
+function EventEditor({ s, draft, onClose, onSaved }: { s: State; draft: CalEvent; onClose: () => void; onSaved?: () => void }) {
   const [e, setE] = useState<CalEvent>(draft);
   const exists = s.events.some((x) => x.id === e.id);
   const set = <K extends keyof CalEvent>(k: K, v: CalEvent[K]) => setE((p) => ({ ...p, [k]: v }));
   const meta = CATEGORY_META[e.category];
 
+  // Guards against events that could never occur (and so could never be
+  // found again to fix or delete): a weekly repeat with zero days, a
+  // repeat-until before the start date, or an end at/before the start.
+  const problems: string[] = [];
+  if (e.recurrence.kind === "weekly" && e.recurrence.days.length === 0) problems.push("Weekly repeat needs at least one day selected.");
+  if (e.recurrence.kind !== "none" && e.until && e.until < e.date) problems.push("Repeat-until is before the start date.");
+  if (!e.allDay && e.start && e.end && e.end <= e.start) problems.push("End time must be after the start time.");
+
   function save() {
+    if (problems.length) return;
     upsertEvent({ ...e, title: e.title.trim() || CATEGORY_META[e.category].label });
+    onSaved?.();
     onClose();
   }
 
@@ -620,7 +715,7 @@ function EventEditor({ s, draft, onClose }: { s: State; draft: CalEvent; onClose
             </>}
           </div>
 
-          <Field label="Location"><input value={e.location ?? ""} placeholder="Mrs. Bridget's room · Meteor HQ · Helipad" onChange={(ev) => set("location", ev.target.value)} /></Field>
+          <Field label="Location"><input value={e.location ?? ""} placeholder="Room · library · gym · home" onChange={(ev) => set("location", ev.target.value)} /></Field>
 
           <div className="mm-row">
             <Field label="Priority">
@@ -729,12 +824,18 @@ function EventEditor({ s, draft, onClose }: { s: State; draft: CalEvent; onClose
 
           <Field label="Notes"><textarea rows={2} value={e.notes ?? ""} onChange={(ev) => set("notes", ev.target.value)} /></Field>
 
+          {problems.length > 0 && (
+            <div style={{ padding: "8px 12px", border: `1px solid ${T.warn}66`, borderRadius: 8, color: T.warn, fontSize: 12, display: "flex", flexDirection: "column", gap: 2 }}>
+              {problems.map((p, i) => <span key={i}>{p}</span>)}
+            </div>
+          )}
+
           <div style={{ display: "flex", gap: 10, justifyContent: "space-between", marginTop: 4 }}>
             <div style={{ display: "flex", gap: 8 }}>
               {exists && <button className="mm-btn mm-btn-danger" onClick={() => { removeEvent(e.id); onClose(); }}>Delete</button>}
               {exists && e.visibility === "hidden" && <button className="mm-btn" onClick={() => { revealEvent(e.id); onClose(); }}>Reveal</button>}
             </div>
-            <button className="mm-btn mm-btn-primary" onClick={save}>Save</button>
+            <button className="mm-btn mm-btn-primary" onClick={save} disabled={problems.length > 0} style={problems.length > 0 ? { opacity: 0.5, cursor: "not-allowed" } : undefined}>Save</button>
           </div>
         </div>
       </div>

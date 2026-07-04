@@ -36,8 +36,10 @@ export const SOURCES: TopicSource[] = ["google-news", "reddit", "rss"];
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-// A strong starter desk — covers the user's examples (Minecraft, celebs) and
-// the broad beats, each routed to the right anchor. Fully editable.
+// A strong starter desk — "news for anything and everything": every broad
+// beat a real network runs (world, business, sports, science, culture,
+// gaming) each routed to the right anchor. Fully editable in the Topics
+// manager; deleting one you don't want is one click.
 function seedTopics(): Topic[] {
   const t = (
     label: string, query: string, anchor: AnchorId, category: WireCategory,
@@ -55,9 +57,22 @@ function seedTopics(): Topic[] {
     t("AI & Tech", "artificial intelligence technology", "orin", "tech"),
     t("Science", "science discovery research", "orin", "space", "google-news", "3d"),
     t("World", "world breaking news", "voss", "breaking", "google-news", "6h"),
+    t("US News", "United States national news", "voss", "earth_trending", "google-news", "12h"),
     t("Business", "business markets economy", "voss", "breaking", "google-news", "1d"),
+    t("Sports", "sports news highlights", "lena", "earth_trending", "google-news", "12h"),
+    t("NBA", "NBA basketball", "lena", "earth_trending"),
+    t("NFL", "NFL football", "lena", "earth_trending"),
+    t("Fitness & Training", "fitness training athletics", "lena", "culture", "google-news", "3d", 2),
+    t("Health", "health medicine research news", "orin", "tech", "google-news", "3d", 2),
   ];
 }
+
+// Bump when seedTopics gains new beats. loadTopics() appends any NEW seed
+// topics (by label) to an existing install once per version — user edits and
+// deletions of their own topics are never touched, and re-deleting an
+// appended default won't resurrect it until the next version bump.
+const SEED_VERSION = 2;
+const SEED_VERSION_KEY = "nt5.topics.seedv";
 
 let cache: Topic[] | null = null;
 
@@ -67,11 +82,24 @@ export function loadTopics(): Topic[] {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const arr = JSON.parse(raw) as Topic[];
-      if (Array.isArray(arr)) { cache = arr; return cache; }
+      if (Array.isArray(arr)) {
+        cache = arr;
+        // One-time append of newly-added default beats for existing installs.
+        let seedv = 0;
+        try { seedv = Number(localStorage.getItem(SEED_VERSION_KEY)) || 0; } catch { /* ignore */ }
+        if (seedv < SEED_VERSION) {
+          const have = new Set(arr.map((t) => t.label.toLowerCase()));
+          const fresh = seedTopics().filter((t) => !have.has(t.label.toLowerCase()));
+          if (fresh.length) writeTopics([...arr, ...fresh]);
+          try { localStorage.setItem(SEED_VERSION_KEY, String(SEED_VERSION)); } catch { /* ignore */ }
+        }
+        return cache;
+      }
     }
   } catch { /* ignore */ }
   cache = seedTopics();
   writeTopics(cache);
+  try { localStorage.setItem(SEED_VERSION_KEY, String(SEED_VERSION)); } catch { /* ignore */ }
   return cache;
 }
 

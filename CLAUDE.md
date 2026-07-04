@@ -173,6 +173,27 @@ DONE:
   for the school year (id `clsperiod-<classId>`). In Projects → Classes.
 - **Plans** tab (`plans.tsx`): freeform notes/plans (title + body, pin,
   link-to-project, "unannounced" hidden flag) — the GTD reference bucket.
+- **Achievements are observable-only.** Rules key on what the app can
+  actually see (completions by category/start-time semantics, logged
+  sessions, levels) — NEVER on seed ids or story fiction. Morning/bed
+  routines are detected semantically (start < 10:00 / >= 20:00). The
+  helipad story easter egg is gone; "Made It Official" requires a real
+  hidden→visible reveal (`revealedAt`). Insights' routine-vs-no-routine
+  screen correlation uses the same semantic detection.
+- **Reward feedback**: RewardToasts surfaces achievement unlocks + level-ups
+  the moment they happen; reminder toasts have a one-click Done (+XP).
+- **Quotes are user-supplied** (`customization.quotes`, Customize → Quotes);
+  banner + widget hide when empty. Inbox triage is transactional (capture
+  survives until the drafted event is saved) and offers Schedule / Project /
+  Goal. Event editor validates weekly-days/until/end-time so unreachable
+  events can't be created; Day/Week timelines pin outside-window events to
+  the edge instead of dropping them.
+- **NT5 real-news depth**: article/blog-shaped real items fetch the actual
+  source page (best-effort text extraction) and demote to brief when the
+  page yields too little — no padded long-forms. Topic seed covers world/
+  US/business/sports (NBA/NFL)/fitness/health + the original beats;
+  `nt5.topics.seedv` appends new default beats to existing installs once
+  per seed version without touching user edits.
 
 NEXT / IDEAS:
 - Per-class accent colors + bulk "add a week of class periods" template.

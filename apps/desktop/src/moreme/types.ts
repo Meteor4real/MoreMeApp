@@ -58,6 +58,10 @@ export type CalEvent = {
   // use the completions map keyed by occurrence date instead.
   status: EventStatus;
   createdAt: number;
+  // Stamped by revealEvent() on a real hidden -> visible transition. The
+  // "Made It Official" achievement keys on this, so it can only be earned by
+  // actually using the reveal mechanic.
+  revealedAt?: number;
   // ── School honesty log (only meaningful when category === "school") ──
   // The neutral mirror: did you actually read the material before starting?
   // What help did you use? What stuck? No nags — just self-reflection.
@@ -216,6 +220,8 @@ export type CustomAchievement = {
   xp: number;
   claimedAt?: number;   // first claim timestamp; subsequent claims are no-ops
 };
+export type UserQuote = { id: string; text: string; by: string };
+
 export type Customization = {
   tabLabels: Record<string, string>;     // tabId -> override label ("" or absent = use default)
   hiddenTabs: string[];                   // tabIds hidden from the tab row
@@ -223,6 +229,9 @@ export type Customization = {
   customAchievements: CustomAchievement[];
   customTheme?: CustomTheme;             // when set, "custom" theme becomes selectable
   useCustomTheme: boolean;               // toggle for the picker
+  // User-supplied quote bank — the Today banner + quote widget rotate one
+  // per day. Empty by default (no seeded quotes); managed in Customize.
+  quotes: UserQuote[];
   // ── Dynamic UI (the agent API) ───────────────────────────────────────
   // dynamicTabs are user/agent-created tabs ordered after the built-ins.
   // widgets is a per-tab list, including built-in tab ids (e.g. "today"),
@@ -371,7 +380,9 @@ export const CATEGORY_META: Record<Category, { label: string; color: string; gly
   meeting:      { label: "Meeting",      color: "#FF5577", glyph: "●" },
   travel:       { label: "Travel",       color: "#22D3EE", glyph: "✈" },
   announcement: { label: "Announcement", color: "#FFD23E", glyph: "❖" },
-  fitness:      { label: "Fitness",      color: "#4ADE80", glyph: "⚡" },
+  // U+26A1 has Emoji_Presentation=Yes and renders as the yellow emoji bolt on
+  // Windows — use a text-presentation zigzag arrow instead (NO EMOJIS rule).
+  fitness:      { label: "Fitness",      color: "#4ADE80", glyph: "↯" },
   personal:     { label: "Personal",     color: "#9aa0ad", glyph: "·" },
 };
 
