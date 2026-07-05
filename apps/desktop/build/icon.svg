@@ -1,15 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="NetworkChuck Hub">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#ff2d4a"/>
-      <stop offset="55%" stop-color="#ff5577"/>
-      <stop offset="100%" stop-color="#ff7a2d"/>
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="96" fill="#0a0a0c"/>
-  <rect x="16" y="16" width="480" height="480" rx="86" fill="none" stroke="url(#g)" stroke-width="10"/>
-  <path d="M340 168 a96 96 0 1 0 0 176" fill="none" stroke="url(#g)" stroke-width="40" stroke-linecap="round"/>
-  <circle cx="196" cy="208" r="14" fill="#0a0a0c" stroke="url(#g)" stroke-width="11"/>
-  <circle cx="196" cy="304" r="14" fill="#0a0a0c" stroke="url(#g)" stroke-width="11"/>
-  <text x="256" y="452" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-weight="900" font-size="84" letter-spacing="14" fill="url(#g)">HUB</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="MoreMe">
+  <!-- The MoreMe mark: sun + mountain peaks + barbell, on the Papatui
+       espresso tile (the app's default theme). Same geometry as the
+       .mm-logo / More_Me favicon — this IS the brand mark, recolored to
+       the Papatui palette (sand ink, bronze sun, teal-green accent). -->
+  <rect width="512" height="512" rx="96" fill="#19140F"/>
+  <rect x="14" y="14" width="484" height="484" rx="86" fill="none" stroke="#2FA98A" stroke-width="8" opacity="0.55"/>
+  <g transform="translate(64,72) scale(6)">
+    <!-- sun -->
+    <circle cx="32" cy="10" r="4" fill="#C9A24B"/>
+    <!-- peaks -->
+    <path d="M6 52 L20 24 L32 42 L44 24 L58 52" fill="none" stroke="#F4EAD9" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- horizon -->
+    <path d="M6 56 L58 56" fill="none" stroke="#F4EAD9" stroke-width="1.6" stroke-linecap="round" opacity="0.4"/>
+    <!-- barbell -->
+    <path d="M22 58 L42 58" fill="none" stroke="#2FA98A" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="20" cy="58" r="3" fill="#2FA98A"/>
+    <circle cx="44" cy="58" r="3" fill="#2FA98A"/>
+  </g>
 </svg>

@@ -3,6 +3,7 @@ import { Login } from "./auth/Login";
 import { isAuthed, signOut, clearGuest } from "./auth/supabase";
 import { MoreMe } from "./embedded/MoreMe";
 import { NT5 } from "./embedded/NT5";
+import { HALOS } from "./embedded/HALOS";
 import { applyAccent, loadAccent } from "./theme-accent";
 import { applyUiPrefs, loadPrefs } from "./uiPrefs";
 import { initTheme } from "./moreme/styles";
@@ -14,10 +15,11 @@ import { initTrackingSiren } from "./moreme/tracking";
 import { installAgentApi } from "./moreme/agentApi";
 import { NT5AmbientTicker } from "./shell/NT5AmbientTicker";
 
-// Two surfaces behind the accounts gate: MoreMe (the product) and NT5 News
-// (the bonus wire). The HALOS embed shipped briefly as a third tab but read
-// as inert in real use — pulled until/unless it earns its keep.
-type Tab = "moreme" | "news";
+// Three surfaces behind the accounts gate: MoreMe (the product), NT5 News
+// (the bonus wire), and HALOS (the S.P.A.C.E. collaboration console — the
+// owner uses it with a collaborator; it stays. Removed once by mistake in
+// #46 — don't do that again).
+type Tab = "moreme" | "news" | "halos";
 
 export function App() {
   const [authed, setAuthed] = useState(() => isAuthed());
@@ -62,6 +64,12 @@ export function App() {
           >
             News
           </button>
+          <button
+            className={"hub-tab mono" + (tab === "halos" ? " active" : "")}
+            onClick={() => setTab("halos")}
+          >
+            HALOS
+          </button>
         </nav>
         <div style={{ flex: 1 }} />
         <button className="hub-tab mono" onClick={logout} title="Sign out">
@@ -74,13 +82,17 @@ export function App() {
       <NT5AmbientTicker onOpen={() => setTab("news")} />
 
       <main style={{ flex: 1, minHeight: 0, display: "flex" }}>
-        {/* Both surfaces stay mounted so NT5's wire state and MoreMe's
-            in-progress edits survive tab switches; we just toggle display. */}
+        {/* All three surfaces stay mounted so NT5's wire state, MoreMe's
+            in-progress edits, and HALOS's iframe session survive tab
+            switches; we just toggle display. */}
         <div style={{ flex: 1, minWidth: 0, display: tab === "moreme" ? "flex" : "none" }}>
           <MoreMe />
         </div>
         <div style={{ flex: 1, minWidth: 0, display: tab === "news" ? "flex" : "none" }}>
           <NT5 />
+        </div>
+        <div style={{ flex: 1, minWidth: 0, display: tab === "halos" ? "flex" : "none" }}>
+          <HALOS />
         </div>
       </main>
     </div>

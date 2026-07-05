@@ -1,6 +1,6 @@
 {
   "name": "networkchuck-hub",
-  "version": "4.0.1",
+  "version": "4.0.2",
   "private": true,
   "description": "MoreMe — a calendar-first personal life OS, plus NT5 News (bonus). Download page (web) + desktop app.",
   "workspaces": [

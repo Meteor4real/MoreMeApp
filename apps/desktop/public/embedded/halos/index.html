@@ -1,0 +1,1541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#07050f"/>
+  <title>HALOS Interface · S.P.A.C.E.</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg"/>
+  <link rel="apple-touch-icon" href="favicon.svg"/>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Syne:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="css/style.css"/>
+</head>
+<body>
+
+<!-- ══════════════════════════════
+     SCREEN 1A: HUMAN LOGIN
+══════════════════════════════ -->
+<div id="login-screen" class="fullscreen-layer" aria-label="Login">
+  <div class="star-field" id="login-stars"></div>
+  <div class="nebula-layer"><span class="neb neb-a"></span><span class="neb neb-b"></span><span class="neb neb-c"></span></div>
+  <div class="scan-overlay"></div>
+  <div class="grid-overlay"></div>
+  <!-- Corner HUD ticks (decorative frame) -->
+  <div class="hud-corner hc-tl"></div>
+  <div class="hud-corner hc-tr"></div>
+  <div class="hud-corner hc-bl"></div>
+  <div class="hud-corner hc-br"></div>
+  <!-- Decorative data stream columns -->
+  <div class="login-data-col login-data-left" aria-hidden="true" id="login-data-left"></div>
+  <div class="login-data-col login-data-right" aria-hidden="true" id="login-data-right"></div>
+  <!-- Decorative corner telemetry panel -->
+  <div class="login-corner-hud" aria-hidden="true">
+    <div class="lch-row"><span>NODE</span><b>AZB-07</b></div>
+    <div class="lch-row"><span>SIGNAL</span><b id="lch-signal">98.4%</b></div>
+    <div class="lch-row"><span>SHIELD</span><b class="lch-ok">NOMINAL</b></div>
+    <div class="lch-row"><span>UPTIME</span><b id="lch-uptime">—</b></div>
+    <div class="lch-row"><span>SECTOR</span><b>AZ-BLUE-4</b></div>
+  </div>
+  <!-- Pulsing beacon rings -->
+  <div class="login-beacon" aria-hidden="true"><span class="lb-ring lb-r1"></span><span class="lb-ring lb-r2"></span><span class="lb-ring lb-r3"></span></div>
+  <!-- Top status strip: mission / signal / cycles -->
+  <div class="fs-status-strip">
+    <span class="fss-dot"></span>
+    <span class="fss-chunk">HALOS · SECURE TERMINAL</span>
+    <span class="fss-sep">│</span>
+    <span class="fss-chunk purple" id="fss-sig">SIGNAL 98%</span>
+    <span class="fss-sep">│</span>
+    <span class="fss-chunk" id="fss-cycle">CYCLE 00:00:00</span>
+    <span class="fss-sep">│</span>
+    <span class="fss-chunk">NODE AZB-07</span>
+    <span class="fss-dot"></span>
+  </div>
+  <!-- Bottom ticker: rotating flavor beats -->
+  <div class="fs-ticker">
+    <div class="fs-ticker-track" id="login-ticker">◈ S.P.A.C.E. NETWORK SYNC… ◈ ASTRALEX CORE ONLINE ◈ COSMOS CREW: STANDBY ◈ AZULBRIGHT TELEMETRY LOCKED ◈ PYRAMID SHIELD NOMINAL ◈ SIGNAL ENCRYPTION AES-256+KYBER ◈ ORBITAL TRAFFIC GREEN ◈</div>
+  </div>
+  <div class="login-wrap">
+    <div class="login-logo">
+      <svg viewBox="0 0 80 80" fill="none">
+        <defs><filter id="glow-lg" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+        <polygon points="40,6 74,66 6,66" stroke="var(--accent)" stroke-width="3.5" fill="none" filter="url(#glow-lg)"/>
+        <polygon points="40,18 62,60 18,60" stroke="var(--accent)" stroke-width="1.2" fill="none" opacity="0.35"/>
+        <circle cx="40" cy="46" r="8" fill="var(--accent)" opacity="0.9" filter="url(#glow-lg)"/>
+        <line x1="40" y1="8" x2="40" y2="38" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="0.1 5" stroke-linecap="round" opacity="0.85"/>
+        <circle cx="40" cy="46" r="14" stroke="var(--accent)" stroke-width="1" opacity="0.45" stroke-dasharray="0.1 4" stroke-linecap="round" fill="none"/>
+      </svg>
+      <div>
+        <div class="logo-wordmark">
+          <span class="logo-wm-the">The</span>
+          <span class="logo-wm-halos">HALOS</span>
+          <span class="logo-wm-interface">Interface</span>
+        </div>
+        <div class="login-sub">S.P.A.C.E. SECURE ACCESS</div>
+      </div>
+    </div>
+
+    <!-- Tab switcher -->
+    <div class="login-tabs">
+      <button class="login-tab active" id="tab-human">S.P.A.C.E. Agent</button>
+      <button class="login-tab" id="tab-agent-reg">S.P.A.C.E. AI</button>
+    </div>
+
+    <!-- Human login form -->
+    <div class="login-form" id="form-human">
+      <div class="form-group">
+        <label class="form-label">Email Address</label>
+        <input type="email" id="login-email" class="form-input" placeholder="your@email.com" autocomplete="email"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">First Name</label>
+        <input type="text" id="login-firstname" class="form-input" placeholder="First name only" autocomplete="given-name"/>
+      </div>
+      <div class="form-error hidden" id="login-error"></div>
+      <button class="form-btn" id="btn-login-human">Continue to Keypad →</button>
+      <button class="form-link" id="btn-forgot">Forgot your access code?</button>
+    </div>
+
+    <!-- Agent login form -->
+    <div class="login-form hidden" id="form-agent-reg">
+      <div class="form-group">
+        <label class="form-label">Agent Master Code</label>
+        <input type="password" id="agent-master-input" class="form-input" placeholder="Agent authorization code" maxlength="4"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Agent Name</label>
+        <input type="text" id="agent-reg-name" class="form-input" placeholder="e.g. HALOS"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Agent Email</label>
+        <input type="email" id="agent-reg-email" class="form-input" placeholder="agent@email.com"/>
+      </div>
+      <div class="form-error hidden" id="agent-reg-error"></div>
+      <button class="form-btn" id="btn-register-agent">Log In →</button>
+    </div>
+
+    <!-- Forgot code form — master code reset -->
+    <div class="login-form hidden" id="form-forgot">
+      <div class="form-group">
+        <label class="form-label">Email Address</label>
+        <input type="email" id="forgot-email" class="form-input" placeholder="your@email.com"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Master Code</label>
+        <input type="password" id="forgot-master" class="form-input" placeholder="4-digit master code" maxlength="4" inputmode="numeric"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">New 4-digit Access Code</label>
+        <input type="password" id="forgot-newcode" class="form-input" placeholder="New code" maxlength="4" inputmode="numeric"/>
+      </div>
+      <div class="form-error hidden" id="forgot-error"></div>
+      <div class="form-success hidden" id="forgot-success">Access code has been reset! You can now log in.</div>
+      <button class="form-btn" id="btn-send-reset">Reset Access Code</button>
+      <button class="form-link" id="btn-back-login">← Back to login</button>
+    </div>
+
+    <div class="login-version">HALOS Interface v3.5 · S.P.A.C.E.</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     SCREEN 1B: KEYPAD
+══════════════════════════════ -->
+<div id="keypad-screen" class="fullscreen-layer hidden" aria-label="Enter access code">
+  <div class="star-field" id="kp-stars"></div>
+  <div class="boot-particles" id="kp-particles" aria-hidden="true"></div>
+  <div class="nebula-layer"><span class="neb neb-a"></span><span class="neb neb-b"></span><span class="neb neb-c"></span></div>
+  <div class="scan-overlay"></div>
+  <div class="grid-overlay"></div>
+  <div class="hud-corner hc-tl"></div>
+  <div class="hud-corner hc-tr"></div>
+  <div class="hud-corner hc-bl"></div>
+  <div class="hud-corner hc-br"></div>
+  <div class="login-data-col login-data-left" aria-hidden="true" id="kp-data-left"></div>
+  <div class="login-data-col login-data-right" aria-hidden="true" id="kp-data-right"></div>
+  <div class="login-beacon" aria-hidden="true"><span class="lb-ring lb-r1"></span><span class="lb-ring lb-r2"></span><span class="lb-ring lb-r3"></span></div>
+  <div class="fs-status-strip">
+    <span class="fss-dot"></span>
+    <span class="fss-chunk">AUTHENTICATION · LAYER 2</span>
+    <span class="fss-sep">│</span>
+    <span class="fss-chunk purple">BIOMETRIC: PASSED</span>
+    <span class="fss-sep">│</span>
+    <span class="fss-chunk" id="fss-kp-cycle">CYCLE 00:00:00</span>
+    <span class="fss-sep">│</span>
+    <span class="fss-chunk">KEY-LEN 4</span>
+    <span class="fss-dot"></span>
+  </div>
+  <div class="fs-ticker">
+    <div class="fs-ticker-track">◈ CHALLENGE HANDSHAKE ESTABLISHED ◈ AGENT TOKEN VERIFIED ◈ ACCESS LOG AZB-07/14 ◈ SESSION NONCE ROTATING ◈ AWAITING KEY-IN ◈ KEY-PRESS SALT RANDOMIZED ◈</div>
+  </div>
+  <div class="keypad-wrap">
+    <!-- Decorative rotating ring around the dots -->
+    <div class="keypad-rings">
+      <span class="kp-ring kp-ring-a"></span>
+      <span class="kp-ring kp-ring-b"></span>
+      <span class="kp-ring kp-ring-c"></span>
+    </div>
+    <div class="keypad-greeting" id="keypad-greeting">Welcome back, Agent</div>
+    <div class="keypad-sub" id="keypad-sub">Enter your 4-digit access code</div>
+    <div class="keypad-display">
+      <div class="keypad-dots">
+        <span class="dot" id="d0"></span>
+        <span class="dot" id="d1"></span>
+        <span class="dot" id="d2"></span>
+        <span class="dot" id="d3"></span>
+      </div>
+      <div class="keypad-meter"><div class="keypad-meter-fill" id="kp-meter-fill"></div></div>
+    </div>
+    <div class="keypad-error hidden" id="keypad-error">[!] ACCESS DENIED · TRY AGAIN</div>
+    <div class="keypad-grid">
+      <button class="key-btn" data-digit="1">1</button>
+      <button class="key-btn" data-digit="2">2</button>
+      <button class="key-btn" data-digit="3">3</button>
+      <button class="key-btn" data-digit="4">4</button>
+      <button class="key-btn" data-digit="5">5</button>
+      <button class="key-btn" data-digit="6">6</button>
+      <button class="key-btn" data-digit="7">7</button>
+      <button class="key-btn" data-digit="8">8</button>
+      <button class="key-btn" data-digit="9">9</button>
+      <button class="key-btn key-clr" id="key-clr">CLR</button>
+      <button class="key-btn" data-digit="0">0</button>
+      <button class="key-btn key-ent" id="key-ent">ENT</button>
+    </div>
+    <button class="form-link" id="btn-signout-kp" style="margin-top:18px">← Sign out</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     BOOT SCREEN
+══════════════════════════════ -->
+<div id="boot-screen" class="fullscreen-layer hidden" aria-live="polite">
+  <div class="star-field" id="boot-stars"></div>
+  <div class="nebula-layer"><span class="neb neb-a"></span><span class="neb neb-b"></span><span class="neb neb-c"></span></div>
+  <div class="scan-overlay"></div>
+  <div class="grid-overlay"></div>
+  <div class="hud-corner hc-tl"></div>
+  <div class="hud-corner hc-tr"></div>
+  <div class="hud-corner hc-bl"></div>
+  <div class="hud-corner hc-br"></div>
+  <div class="fs-status-strip">
+    <span class="fss-dot"></span>
+    <span class="fss-chunk">BOOT SEQUENCE · S.P.A.C.E.</span>
+    <span class="fss-sep">│</span>
+    <span class="fss-chunk purple">KERNEL v4.2.17</span>
+    <span class="fss-sep">│</span>
+    <span class="fss-chunk" id="fss-boot-cycle">T+00:00:00</span>
+    <span class="fss-sep">│</span>
+    <span class="fss-chunk">SAFE MODE: OFF</span>
+    <span class="fss-dot"></span>
+  </div>
+  <!-- Side telemetry columns for flavor -->
+  <div class="boot-side boot-side-l">
+    <div class="boot-side-row"><span>MEM</span><span class="boot-side-val" id="bst-mem">42%</span></div>
+    <div class="boot-side-row"><span>BUS</span><span class="boot-side-val" id="bst-bus">1.48 GHz</span></div>
+    <div class="boot-side-row"><span>NET</span><span class="boot-side-val purple" id="bst-net">SECURE</span></div>
+    <div class="boot-side-row"><span>AUX</span><span class="boot-side-val" id="bst-aux">NOMINAL</span></div>
+    <div class="boot-side-sparkline" id="bst-sparkline"></div>
+  </div>
+  <div class="boot-side boot-side-r">
+    <div class="boot-side-row"><span>CORE-01</span><span class="boot-side-val">●</span></div>
+    <div class="boot-side-row"><span>CORE-02</span><span class="boot-side-val">●</span></div>
+    <div class="boot-side-row"><span>CORE-03</span><span class="boot-side-val purple">●</span></div>
+    <div class="boot-side-row"><span>CORE-04</span><span class="boot-side-val">●</span></div>
+    <div class="boot-side-row"><span>CIPHER</span><span class="boot-side-val">OK</span></div>
+  </div>
+  <div class="fs-ticker">
+    <div class="fs-ticker-track">◈ MOUNTING /SPACE/CORE ◈ LINK AZB-07 ◈ LOADING AGENT REGISTRY ◈ POWERING PRIMARY BUS ◈ CACHE WARM ◈ AZULBRIGHT TELEMETRY LOCKED ◈ COSMOS CREW STANDBY ◈ ENCRYPTION KYBER+AES ◈</div>
+  </div>
+  <!-- Boot particle field (rising motes) -->
+  <div class="boot-particles" id="boot-particles" aria-hidden="true"></div>
+  <!-- Animated radar sweep ring behind the logo -->
+  <div class="boot-radar" aria-hidden="true">
+    <span class="boot-radar-ring"></span>
+    <span class="boot-radar-ring boot-radar-ring-b"></span>
+    <span class="boot-radar-sweep"></span>
+  </div>
+  <div class="boot-logo">
+    <svg viewBox="0 0 80 80" fill="none" class="boot-logo-svg">
+      <defs><filter id="glow-boot" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+      <polygon class="bl-tri-a" points="40,6 74,66 6,66" stroke="var(--accent)" stroke-width="3.5" fill="none" filter="url(#glow-boot)"/>
+      <polygon class="bl-tri-b" points="40,18 62,60 18,60" stroke="var(--accent)" stroke-width="1.2" fill="none" opacity="0.35"/>
+      <circle class="bl-core" cx="40" cy="46" r="8" fill="var(--accent)" opacity="0.9" filter="url(#glow-boot)"/>
+      <line class="bl-beam" x1="40" y1="8" x2="40" y2="38" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="0.1 5" stroke-linecap="round" opacity="0.85"/>
+      <circle class="bl-ring" cx="40" cy="46" r="14" stroke="var(--accent)" stroke-width="1" opacity="0.45" stroke-dasharray="0.1 4" stroke-linecap="round" fill="none"/>
+      <circle class="bl-ring bl-ring-b" cx="40" cy="46" r="22" stroke="var(--accent)" stroke-width="0.8" opacity="0.3" stroke-dasharray="0.1 4.5" stroke-linecap="round" fill="none"/>
+    </svg>
+    <div>
+      <div class="logo-wordmark">
+        <span class="logo-wm-the">The</span>
+        <span class="logo-wm-halos boot-title-glitch" data-text="HALOS">HALOS</span>
+        <span class="logo-wm-interface">Interface</span>
+      </div>
+      <div class="boot-division" id="boot-division-label">S.P.A.C.E.</div>
+    </div>
+  </div>
+  <div class="boot-lines" id="boot-lines"></div>
+  <div class="boot-bar-wrap">
+    <div class="boot-bar-row">
+      <span class="boot-spinner"></span>
+      <div class="boot-bar-label" id="boot-bar-label">INITIALIZING…</div>
+    </div>
+    <div class="boot-bar"><div class="boot-bar-fill" id="boot-bar-fill"></div><div class="boot-bar-indicator" id="boot-bar-indicator"></div></div>
+    <div class="boot-bar-pct" id="boot-bar-pct">0%</div>
+    <!-- 12 tiny equalizer bars for visual rhythm -->
+    <div class="boot-eq" aria-hidden="true">
+      <span class="beq-bar"></span><span class="beq-bar"></span><span class="beq-bar"></span>
+      <span class="beq-bar"></span><span class="beq-bar"></span><span class="beq-bar"></span>
+      <span class="beq-bar"></span><span class="beq-bar"></span><span class="beq-bar"></span>
+      <span class="beq-bar"></span><span class="beq-bar"></span><span class="beq-bar"></span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     MAIN APP
+══════════════════════════════ -->
+<div id="app" class="hidden" role="application">
+  <div id="app-stars"></div>
+  <div class="app-particles" id="app-particles" aria-hidden="true"></div>
+
+  <aside id="sidebar">
+    <div class="sidebar-logo" id="sidebar-logo-btn" role="button" tabindex="0" title="Customize logo">
+      <svg id="sidebar-logo-svg" viewBox="0 0 40 40" fill="none">
+        <defs><filter id="glow-sb" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+        <polygon points="20,3 37,33 3,33" stroke="var(--accent)" stroke-width="2" fill="none" filter="url(#glow-sb)"/>
+        <polygon points="20,9 31,30 9,30" stroke="var(--accent)" stroke-width="0.8" fill="none" opacity="0.35"/>
+        <circle cx="20" cy="23" r="4" fill="var(--accent)" opacity="0.9" filter="url(#glow-sb)"/>
+        <line x1="20" y1="4" x2="20" y2="19" stroke="var(--accent)" stroke-width="1" stroke-dasharray="0.1 2.6" stroke-linecap="round" opacity="0.85"/>
+        <circle cx="20" cy="23" r="7" stroke="var(--accent)" stroke-width="0.6" opacity="0.45" stroke-dasharray="0.1 2.2" stroke-linecap="round" fill="none"/>
+      </svg>
+      <div class="logo-wordmark sidebar-wordmark">
+        <span class="logo-wm-the">The</span>
+        <span class="logo-wm-halos">HALOS</span>
+        <span class="logo-wm-interface">Interface</span>
+      </div>
+    </div>
+
+    <!-- Sidebar sector readout — decorative, animated sweep -->
+    <div class="sidebar-sector" id="sidebar-sector">
+      <div class="sidebar-sector-row">
+        <span class="sidebar-sector-label">Division</span>
+        <span class="sidebar-sector-val" id="sbs-division">NOT DECIDED</span>
+      </div>
+      <div class="sidebar-sector-row">
+        <span class="sidebar-sector-label">Sector</span>
+        <span class="sidebar-sector-val purple" id="sbs-sector">AZB-07 / NEXUS</span>
+      </div>
+      <div class="sidebar-sector-row">
+        <span class="sidebar-sector-label">Deck</span>
+        <span class="sidebar-sector-val" id="sbs-deck">14 · BRIDGE</span>
+      </div>
+      <div class="sidebar-sector-bar"></div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <button class="nav-btn active" data-panel="chat" title="Chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span>Chat</span>
+      </button>
+      <button class="nav-btn" data-panel="workspace" title="Workspace">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span>Workspace</span>
+      </button>
+      <button class="nav-btn" data-panel="screenshare" title="Meet">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        <span>Meet</span>
+      </button>
+      <button class="nav-btn" data-panel="projects" title="Projects">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <span>Projects</span>
+      </button>
+      <button class="nav-btn" data-panel="roster" title="Agent Roster">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg>
+        <span>Agents</span>
+      </button>
+      <button class="nav-btn" data-panel="azulbright" title="Azulbright Info">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" fill="currentColor"/>
+          <path d="M12 1.5 L12 5.5 M12 18.5 L12 22.5 M1.5 12 L5.5 12 M18.5 12 L22.5 12 M4.6 4.6 L7.5 7.5 M16.5 16.5 L19.4 19.4 M19.4 4.6 L16.5 7.5 M4.6 19.4 L7.5 16.5"/>
+          <circle cx="12" cy="12" r="7.5" stroke-dasharray="2 3"/>
+        </svg>
+        <span>Azulbright</span>
+      </button>
+      <button class="nav-btn" data-panel="stocks" title="Azulbright Stocks">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 6-7"/><path d="M14 7h6v6"/></svg>
+        <span>Stocks</span>
+      </button>
+      <button class="nav-btn" data-panel="credits" title="HALOS Interface Credits">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+          <path d="M5 4 H17 A2 2 0 0 1 19 6 V18 A3 3 0 0 0 22 21 H8 A3 3 0 0 1 5 18 Z"/>
+          <path d="M19 6 A2 2 0 0 1 21 4 A2 2 0 0 1 23 6 V20" stroke-width="1.2" opacity="0.6"/>
+          <circle cx="12" cy="11" r="2.5" fill="currentColor" stroke="none"/>
+          <path d="M12 13 L12.7 16 L11.3 16 Z" fill="currentColor" stroke="none"/>
+          <line x1="8" y1="8" x2="10" y2="8" stroke-linecap="round"/>
+          <line x1="14" y1="8" x2="16" y2="8" stroke-linecap="round"/>
+        </svg>
+        <span>Credits</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-agents" id="sidebar-agents">
+      <div class="agent-label">AGENTS</div>
+      <div class="agent-item online" id="sidebar-item-you">
+        <div class="sidebar-avatar" id="sidebar-avatar-you">A</div>
+        <div class="agent-info">
+          <span class="agent-name" id="sidebar-name-you">Agent</span>
+          <span class="agent-status" id="sidebar-status-you">Online</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar telemetry mini-strip — decorative uptime/signal/load -->
+    <div class="sidebar-telemetry" id="sidebar-telemetry">
+      <div class="sbtm-tile"><span class="sbtm-val" id="sbtm-up">00:00</span>UPTIME</div>
+      <div class="sbtm-tile"><span class="sbtm-val purple" id="sbtm-sig">98%</span>SIGNAL</div>
+      <div class="sbtm-tile"><span class="sbtm-val" id="sbtm-load">12%</span>LOAD</div>
+    </div>
+
+    <!-- Lock + Collapse buttons (Call moved to topbar-right, Settings moved to topbar-right) -->
+    <div class="sidebar-bottom">
+      <button class="sidebar-icon-btn" id="btn-lock" title="Lock interface">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </button>
+      <button class="sidebar-icon-btn" id="btn-collapse-sidebar" title="Collapse sidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <main id="main-content">
+
+    <!-- ══════════════════════════════
+         GLOBAL TOPBAR
+         Left: Download + Help
+         Right: Notifications (bell) + Settings (gear)
+         Dynamically nudges aside on panels with heavy top-right chrome.
+    ══════════════════════════════ -->
+    <div id="topbar" class="topbar">
+      <div class="topbar-left">
+        <button class="topbar-btn" id="topbar-download" title="Download HALOS app">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>Download</span>
+        </button>
+        <button class="topbar-btn" id="topbar-help" title="Help">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4"/><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none"/></svg>
+          <span>Help</span>
+        </button>
+      </div>
+      <div class="topbar-center" id="topbar-center">
+        <div class="tbc-clock" id="tbc-clock" title="Azulbright Central Time · synced for all HALOS agents">
+          <span class="tbc-clock-dot"></span>
+          <span class="tbc-clock-time" id="tbc-clock-time">00:00:00</span>
+          <span class="tbc-clock-label">A.C.T.</span>
+          <span class="tbc-clock-cycle" id="tbc-clock-cycle">CYC 0</span>
+        </div>
+        <span class="tbc-tick"></span>
+        <span class="tbc-msg" id="tbc-msg">◈ HALOS core nominal · all divisions reporting</span>
+        <span class="tbc-tick"></span>
+      </div>
+      <div class="topbar-right" id="topbar-right">
+        <button class="topbar-btn topbar-call" id="topbar-call" title="Start a call">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          <span>Call</span>
+        </button>
+        <button class="topbar-btn topbar-bell" id="topbar-notif" title="Notifications">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="topbar-bell-dot" id="topbar-bell-dot" hidden></span>
+        </button>
+        <button class="topbar-btn topbar-gear" id="topbar-settings" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09c0 .66.39 1.25 1 1.51a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.61.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- In-site notifications dropdown (anchored under the bell) -->
+    <div id="notif-panel" class="notif-panel hidden" role="dialog" aria-label="Notifications">
+      <div class="notif-header">
+        <span>NOTIFICATIONS</span>
+        <button class="notif-mark" id="notif-mark-read" title="Mark all read">✓ Mark all read</button>
+      </div>
+      <div class="notif-list" id="notif-list">
+        <div class="notif-empty">No notifications yet.</div>
+      </div>
+    </div>
+
+    <!-- In-site toast stack (bottom-center, auto-dismiss) -->
+    <div id="toast-stack" class="toast-stack" aria-live="polite"></div>
+
+    <!-- CHAT PANEL -->
+    <section id="panel-chat" class="panel active">
+      <header class="panel-header">
+        <div class="panel-title">
+          <span class="panel-title-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+          <span id="chat-panel-title">Secure Channel</span>
+          <select id="chat-selector" style="margin-left:8px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-family:var(--font-m);font-size:0.68rem;cursor:pointer;max-width:180px">
+            <option value="general">General</option>
+          </select>
+          <button type="button" id="btn-rename-chat" title="Rename group chat" style="display:none;margin-left:6px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--text);font-family:var(--font-m);font-size:0.68rem;cursor:pointer">Rename</button>
+        </div>
+        <div class="header-actions">
+          <div class="agent-tabs" id="agent-tabs" role="tablist"></div>
+          <div class="connection-status" id="conn-status" role="status">
+            <span class="status-dot"></span>
+            <span class="status-text">Connecting…</span>
+          </div>
+        </div>
+      </header>
+      <div class="panel-subheader" id="chat-subheader">
+        <span class="psh-chip"><span class="psh-dot"></span>CHANNEL <strong id="psh-chat-channel">GEN-01</strong></span>
+        <span class="psh-chip purple">ENCRYPTION <strong>AES-256 · QLK</strong></span>
+        <span class="psh-chip">FREQ <strong id="psh-chat-freq">1729.40 MHz</strong></span>
+        <span class="psh-chip">LATENCY <strong id="psh-chat-latency">42 ms</strong></span>
+        <span class="psh-spacer"></span>
+        <span class="psh-chip">MSGS <strong id="psh-chat-msgs">0</strong></span>
+        <span class="psh-chip">AZT <strong id="psh-chat-time">—</strong></span>
+        <span class="psh-wave" aria-hidden="true"><span class="psh-wave-bar"></span><span class="psh-wave-bar"></span><span class="psh-wave-bar"></span><span class="psh-wave-bar"></span><span class="psh-wave-bar"></span><span class="psh-wave-bar"></span></span>
+      </div>
+      <div class="panel-ticks" aria-hidden="true"></div>
+      <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" tabindex="0">
+        <div class="chat-day-divider"><span>TODAY · AZULBRIGHT STANDARD TIME</span></div>
+      </div>
+      <div class="typing-indicator hidden" id="typing-indicator">
+        <div class="sidebar-avatar small">H</div>
+        <div class="typing-dots"><span></span><span></span><span></span></div>
+        <span class="typing-label">HALOS is transmitting…</span>
+      </div>
+      <div class="chat-drop-zone hidden" id="chat-drop-zone">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Drop to transmit
+      </div>
+      <form class="chat-input-area" id="chat-form" onsubmit="return false;">
+        <div class="input-toolbar">
+          <button type="button" class="tool-btn" id="attach-btn" title="Attach file">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          </button>
+          <input type="file" id="file-input" multiple hidden/>
+          <div class="input-wrap">
+            <textarea id="message-input" class="message-input" placeholder="Transmit a message…" rows="1"></textarea>
+          </div>
+          <!-- Voice to text mic button -->
+          <button type="button" class="tool-btn" id="btn-voice" title="Voice to text">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/></svg>
+          </button>
+          <!-- VERY IMPORTANT urgent flag -->
+          <button type="button" class="tool-btn" id="btn-urgent" title="Mark as VERY IMPORTANT — sends a high-priority alert to all agents in this channel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none"/></svg>
+          </button>
+          <button type="submit" class="send-btn" id="send-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+        <div class="upload-progress-list" id="upload-progress-list"></div>
+        <div class="chat-input-meta" aria-hidden="true">
+          <div class="cim-left">
+            <span class="cim-chip enc"><span class="cim-dot"></span>LINK <strong id="cim-link">SECURE</strong></span>
+            <span class="cim-chip">CH <strong id="cim-ch">GEN-01</strong></span>
+          </div>
+          <div class="cim-right">
+            <span class="cim-chip">TX/RX <strong id="cim-txrx">0/0</strong></span>
+            <span class="cim-chip"><span class="cim-freq" id="cim-freq">1729.40</span> MHz</span>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <!-- WORKSPACE PANEL -->
+    <section id="panel-workspace" class="panel">
+      <header class="panel-header">
+        <div class="panel-title">
+          <span class="panel-title-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span>
+          Workspace
+        </div>
+        <div class="header-actions">
+          <div class="ws-tabs" id="ws-tabs" role="tablist"><button class="ws-tab active" data-ws="universal">Universal</button></div>
+        </div>
+      </header>
+      <div class="panel-subheader">
+        <span class="psh-chip"><span class="psh-dot"></span>SUBSYSTEM <strong>WS-CORE</strong></span>
+        <span class="psh-chip">SCOPE <strong id="psh-ws-scope">UNIVERSAL</strong></span>
+        <span class="psh-chip purple">SYNC <strong id="psh-ws-sync">LIVE</strong></span>
+        <span class="psh-spacer"></span>
+        <span class="psh-chip">AZT <strong class="psh-time">—</strong></span>
+        <span class="psh-chip">BUILD <strong>HALOS.v3.5</strong></span>
+      </div>
+      <div class="ws-hud-strip">
+        <div class="ws-hud-tile"><strong id="ws-hud-assets">0</strong>ASSETS LOGGED</div>
+        <div class="ws-hud-tile purple"><strong id="ws-hud-notes">0</strong>NOTES · SHARED</div>
+        <div class="ws-hud-tile"><strong id="ws-hud-docs">0</strong>DOCUMENTS INDEXED</div>
+        <div class="ws-hud-tile"><strong id="ws-hud-scope">UNIVERSAL</strong>ACTIVE SCOPE</div>
+      </div>
+      <div class="panel-ticks" aria-hidden="true"></div>
+      <div class="workspace-body" id="workspace-body">
+        <div class="ws-section">
+          <div class="ws-section-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+            Assets
+          </div>
+          <div class="ws-assets" id="ws-assets"><div class="ws-empty">No assets yet.</div></div>
+          <button class="doc-new-btn" id="ws-upload">+ Upload File</button>
+        </div>
+        <div class="ws-section">
+          <div class="ws-section-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            Notes
+          </div>
+          <div class="ws-notes" id="ws-notes"><div class="ws-empty">No notes yet.</div></div>
+          <button class="doc-new-btn" id="ws-add-note">+ New Note</button>
+        </div>
+        <div class="ws-section">
+          <div class="ws-section-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M4 4h16v16H4z"/><path d="M8 2v4M16 2v4M4 10h16"/><line x1="8" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="12" y2="18"/></svg>
+            Documents
+          </div>
+          <div class="ws-documents" id="ws-documents">
+            <div class="doc-tab-bar" id="doc-tab-bar">
+              <button class="doc-new-btn" id="doc-new-btn">+ New Document</button>
+            </div>
+            <div class="doc-editor-wrap" id="doc-editor-wrap">
+              <div class="ws-empty" id="doc-empty">No documents yet. Create one to get started.</div>
+              <div class="doc-editor hidden" id="doc-editor">
+                <input type="text" class="doc-title-input" id="doc-title-input" placeholder="Untitled Document"/>
+                <div class="doc-toolbar" id="doc-toolbar">
+                  <button class="doc-tool" data-cmd="bold" title="Bold"><b>B</b></button>
+                  <button class="doc-tool" data-cmd="italic" title="Italic"><i>I</i></button>
+                  <button class="doc-tool" data-cmd="underline" title="Underline"><u>U</u></button>
+                  <button class="doc-tool" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+                  <span class="doc-tool-sep">|</span>
+                  <button class="doc-tool" data-cmd="insertUnorderedList" title="Bullet list">•≡</button>
+                  <button class="doc-tool" data-cmd="insertOrderedList" title="Numbered list">1.</button>
+                  <span class="doc-tool-sep">|</span>
+                  <button class="doc-tool doc-tool-delete" id="doc-delete-btn" title="Delete document">DEL</button>
+                </div>
+                <div class="doc-body" id="doc-body" contenteditable="true" spellcheck="true" placeholder="Start typing..."></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MEET PANEL (formerly Screen Share) -->
+    <section id="panel-screenshare" class="panel">
+      <header class="panel-header">
+        <div class="panel-title">
+          Meet
+        </div>
+        <div class="header-actions">
+          <div class="share-indicator hidden" id="share-indicator"><span class="rec-dot"></span> IN MEET</div>
+        </div>
+      </header>
+      <div class="panel-subheader">
+        <span class="psh-chip"><span class="psh-dot"></span>RELAY <strong>HALOS-NET-01</strong></span>
+        <span class="psh-chip purple">PROTOCOL <strong>WEBRTC MESH</strong></span>
+        <span class="psh-chip">CODEC <strong>VP9 · OPUS</strong></span>
+        <span class="psh-chip">ICE <strong>STUN</strong></span>
+        <span class="psh-spacer"></span>
+        <span class="psh-chip">AZT <strong class="psh-time">—</strong></span>
+      </div>
+      <div class="ss-hud-strip">
+        <span class="ssh-chip"><strong id="meet-peers-n">0</strong> PEERS</span>
+        <span class="ssh-chip"><strong id="meet-bitrate">0 Mbps</strong> BITRATE</span>
+        <span class="ssh-chip"><strong id="meet-latency">— ms</strong> LATENCY</span>
+        <span class="ssh-chip purple"><strong id="meet-ice">READY</strong> ICE</span>
+        <span class="ssh-chip"><strong id="meet-codec">VP9</strong> VIDEO</span>
+        <span class="ssh-chip"><strong id="meet-audio">OPUS · 48 kHz</strong> AUDIO</span>
+      </div>
+
+      <!-- LOBBY STATE: create or join a meet -->
+      <div id="meet-lobby" class="meet-lobby">
+        <div class="meet-lobby-title">Meet Room</div>
+        <div class="meet-lobby-sub">Create a room and share the code, or join an existing room.</div>
+        <div class="meet-lobby-actions">
+          <div class="meet-action-card">
+            <h3>Create new meet</h3>
+            <p>Generates a shareable 6-character code. Invite agents from any account.</p>
+            <button class="form-btn" id="meet-create-btn">Create Room</button>
+          </div>
+          <div class="meet-action-card">
+            <h3>Join with code</h3>
+            <p>Enter a meet code an agent shared with you.</p>
+            <input class="form-input" id="meet-join-input" type="text" maxlength="10" placeholder="ABC-123" autocomplete="off"/>
+            <button class="form-btn" id="meet-join-btn">Join Room</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ROOM STATE: in-meet UI -->
+      <div id="meet-room" class="meet-room hidden">
+        <div class="meet-room-header">
+          <div class="meet-code-badge">
+            <span>◉ CODE</span>
+            <span class="meet-code-val" id="meet-code-val">——</span>
+            <button class="meet-copy-btn" id="meet-copy-btn">Copy</button>
+          </div>
+          <div><span id="meet-participants-label">1 in room</span></div>
+          <button class="meet-leave-btn" id="meet-leave-btn">Leave</button>
+        </div>
+        <div class="meet-stage">
+          <div class="meet-main">
+            <div class="meet-grid" id="meet-grid">
+              <!-- participant tiles injected here -->
+            </div>
+            <div class="meet-controls">
+              <button class="meet-ctrl-btn" id="meet-mic-btn" title="Toggle mic">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              </button>
+              <button class="meet-ctrl-btn" id="meet-cam-btn" title="Toggle camera">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+              </button>
+              <button class="meet-ctrl-btn" id="meet-screen-btn" title="Share screen">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+              </button>
+              <button class="meet-ctrl-btn" id="meet-chat-btn" title="Toggle chat">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="meet-chat hidden" id="meet-chat">
+            <div class="meet-chat-header">IN-ROOM CHAT</div>
+            <div class="meet-chat-body" id="meet-chat-body"></div>
+            <div class="meet-chat-input-row">
+              <input type="text" id="meet-chat-input" placeholder="Transmit to room…"/>
+              <button id="meet-chat-send">Send</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PROJECTS PANEL -->
+    <section id="panel-projects" class="panel">
+      <header class="panel-header">
+        <div class="panel-title">
+          <span class="panel-title-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
+          Mission Projects
+        </div>
+        <div class="header-actions">
+          <button class="header-btn" id="btn-new-project">+ New Mission</button>
+        </div>
+      </header>
+      <div class="panel-subheader">
+        <span class="psh-chip"><span class="psh-dot"></span>OPS BOARD <strong>MSN-CORE</strong></span>
+        <span class="psh-chip purple">PRIORITY <strong>STANDARD</strong></span>
+        <span class="psh-chip">CLEARANCE <strong>NOT DECIDED</strong></span>
+        <span class="psh-spacer"></span>
+        <span class="psh-chip">AZT <strong class="psh-time">—</strong></span>
+      </div>
+      <div class="projects-hud-strip">
+        <div class="proj-hud-tile"><strong id="ph-active">0</strong>MISSIONS ACTIVE</div>
+        <div class="proj-hud-tile purple"><strong id="ph-total">0</strong>MISSIONS ON BOARD</div>
+        <div class="proj-hud-tile"><strong id="ph-todos">0</strong>OBJECTIVES PENDING</div>
+        <div class="proj-hud-tile warn"><strong id="ph-agents">0</strong>AGENTS ASSIGNED</div>
+      </div>
+      <div class="panel-ticks" aria-hidden="true"></div>
+      <div class="projects-body">
+        <div class="projects-grid" id="projects-grid"><div class="ws-empty">No missions active. Yruf's already bored.</div></div>
+      </div>
+    </section>
+
+    <!-- ROSTER PANEL -->
+    <section id="panel-roster" class="panel">
+      <header class="panel-header">
+        <div class="panel-title">
+          <span class="panel-title-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg></span>
+          Agent Roster
+        </div>
+        <div class="header-actions">
+          <button class="header-btn" id="btn-refresh-roster">↺ Refresh</button>
+        </div>
+      </header>
+      <div class="panel-subheader">
+        <span class="psh-chip"><span class="psh-dot"></span>DIVISION <strong id="roster-ph-div">NOT DECIDED</strong></span>
+        <span class="psh-chip purple">AGENT <strong id="roster-ph-name">—</strong></span>
+        <span class="psh-chip">CLEARANCE <strong>NOT DECIDED</strong></span>
+        <span class="psh-spacer"></span>
+        <span class="psh-chip">AZT <strong class="psh-time">—</strong></span>
+      </div>
+      <div class="roster-hud-strip">
+        <span class="rhs-chip green"><strong id="rhs-online">0</strong> ONLINE</span>
+        <span class="rhs-chip"><strong id="rhs-agents">0</strong> AGENTS</span>
+        <span class="rhs-chip purple"><strong id="rhs-humans">0</strong> HUMANS</span>
+        <span class="rhs-chip"><strong id="rhs-groups">0</strong> GROUP CHATS</span>
+        <span class="rhs-chip"><strong id="rhs-calls">0</strong> LINES OPEN</span>
+      </div>
+      <div class="panel-ticks" aria-hidden="true"></div>
+      <div class="roster-body" id="roster-body">
+        <div class="roster-grid" id="roster-grid"><div class="ws-empty">Synchronizing Division not decided roster…</div></div>
+      </div>
+    </section>
+
+    <!-- AZULBRIGHT INFO PANEL -->
+    <section id="panel-azulbright" class="panel">
+      <header class="panel-header">
+        <div class="panel-title">
+          <span class="panel-title-icon az-title-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" fill="currentColor"/>
+            <path d="M12 1.5 L12 5.5 M12 18.5 L12 22.5 M1.5 12 L5.5 12 M18.5 12 L22.5 12 M4.6 4.6 L7.5 7.5 M16.5 16.5 L19.4 19.4 M19.4 4.6 L16.5 7.5 M4.6 19.4 L7.5 16.5"/>
+            <circle cx="12" cy="12" r="7.5" stroke-dasharray="2 3"/>
+          </svg></span>
+          Azulbright System Telemetry
+        </div>
+        <div class="header-actions">
+          <div class="connection-status panel-conn-status" data-conn-mirror></div>
+        </div>
+      </header>
+      <div class="panel-subheader">
+        <span class="psh-chip"><span class="psh-dot"></span>RELAY <strong>AZB-NET / NEXUS</strong></span>
+        <span class="psh-chip purple">SYSTEM <strong>AZULBRIGHT · 4-PLANET</strong></span>
+        <span class="psh-chip">TELEMETRY <strong>REAL-TIME</strong></span>
+        <span class="psh-spacer"></span>
+        <span class="psh-chip">AZT <strong class="psh-time">—</strong></span>
+        <span class="psh-wave" aria-hidden="true"><span class="psh-wave-bar"></span><span class="psh-wave-bar"></span><span class="psh-wave-bar"></span><span class="psh-wave-bar"></span><span class="psh-wave-bar"></span><span class="psh-wave-bar"></span></span>
+      </div>
+      <div class="azulbright-body" id="azulbright-body">
+        <div class="az-loading">Connecting to Azulbright relay…</div>
+      </div>
+    </section>
+
+    <!-- AZULBRIGHT STOCKS PANEL -->
+    <section id="panel-stocks" class="panel">
+      <header class="panel-header">
+        <div class="panel-title">
+          <span class="panel-title-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 6-7"/><path d="M14 7h6v6"/></svg></span>
+          Azulbright Exchange · AZX
+        </div>
+        <div class="header-actions">
+          <div class="connection-status panel-conn-status" data-conn-mirror></div>
+          <span id="stk-market-clock" class="stk-clock">--:--:--</span>
+        </div>
+      </header>
+      <div class="panel-subheader">
+        <span class="psh-chip"><span class="psh-dot"></span>EXCHANGE <strong>AZX · SHARLED</strong></span>
+        <span class="psh-chip purple">CURRENCY <strong>CREDITS · DMD-BACKED</strong></span>
+        <span class="psh-chip">SESSION <strong id="psh-stk-session">OPEN</strong></span>
+        <span class="psh-chip">TICK <strong id="psh-stk-tick">4s</strong></span>
+        <span class="psh-spacer"></span>
+        <span class="psh-chip">AZT <strong class="psh-time">—</strong></span>
+      </div>
+
+      <!-- Ticker tape -->
+      <div class="stk-tape" id="stk-tape"></div>
+
+      <div class="stk-layout" id="stk-layout">
+        <!-- LEFT: Watchlist -->
+        <div class="stk-col stk-col-left" id="stk-col-left">
+          <button class="stk-col-toggle" id="stk-col-left-toggle" type="button" title="Collapse panel" aria-label="Collapse left panel">
+            <span class="stk-col-toggle-full">&laquo; HIDE</span>
+            <span class="stk-col-toggle-mini">&raquo;</span>
+          </button>
+          <div class="stk-col-body">
+          <div class="stk-section-title">WATCHLIST</div>
+          <div class="stk-watchlist" id="stk-watchlist"></div>
+
+          <div class="stk-section-title">PORTFOLIO</div>
+          <div class="stk-portfolio-summary" id="stk-portfolio-summary"></div>
+          <div class="stk-positions" id="stk-positions"></div>
+
+          <div class="stk-section-title">ORDER HISTORY</div>
+          <div class="stk-orders" id="stk-orders"></div>
+          </div>
+        </div>
+
+        <!-- CENTER: Chart + symbol detail -->
+        <div class="stk-col stk-col-center" id="stk-col-center">
+          <div class="stk-symbol-bar" id="stk-symbol-bar"></div>
+          <div class="stk-tf-bar">
+            <div class="stk-tf-group" id="stk-tf-group">
+              <button class="stk-tf-btn" data-tf="1w">1W</button>
+              <button class="stk-tf-btn" data-tf="1mo">1M</button>
+              <button class="stk-tf-btn active" data-tf="3mo">3M</button>
+              <button class="stk-tf-btn" data-tf="6mo">6M</button>
+              <button class="stk-tf-btn" data-tf="1y">1Y</button>
+              <button class="stk-tf-btn" data-tf="10y">10Y</button>
+            </div>
+            <div class="stk-ind-group" id="stk-ind-group">
+              <label><input type="checkbox" id="stk-ind-sma" checked/> SMA(20)</label>
+              <label><input type="checkbox" id="stk-ind-ema"/> EMA(12)</label>
+              <label><input type="checkbox" id="stk-ind-bb"/> BBands</label>
+              <label><input type="checkbox" id="stk-ind-vol" checked/> Vol</label>
+              <label><input type="checkbox" id="stk-ind-rsi"/> RSI(14)</label>
+            </div>
+            <div class="stk-zoom-group" id="stk-zoom-group">
+              <button class="stk-zoom-btn" id="stk-zoom-out" type="button" title="Zoom out (show more bars)">&minus;</button>
+              <span class="stk-zoom-level" id="stk-zoom-level">1.0x</span>
+              <button class="stk-zoom-btn" id="stk-zoom-in" type="button" title="Zoom in (show fewer bars)">+</button>
+            </div>
+          </div>
+          <div class="stk-chart-wrap">
+            <canvas id="stk-chart" width="900" height="420"></canvas>
+            <div class="stk-crosshair-info" id="stk-crosshair-info"></div>
+          </div>
+          <div class="stk-news-wrap">
+            <div class="stk-section-title">NT5 NEWS</div>
+            <div class="stk-news" id="stk-news"></div>
+          </div>
+          <div class="stk-deep-dive-wrap">
+            <div class="stk-section-title">DEEP DIVE</div>
+            <div class="stk-deep-dive" id="stk-deep-dive"></div>
+          </div>
+        </div>
+
+        <!-- RIGHT: Order entry + alerts + company info -->
+        <div class="stk-col stk-col-right" id="stk-col-right">
+          <button class="stk-col-toggle" id="stk-col-right-toggle" type="button" title="Collapse panel" aria-label="Collapse right panel">
+            <span class="stk-col-toggle-full">HIDE &raquo;</span>
+            <span class="stk-col-toggle-mini">&laquo;</span>
+          </button>
+          <div class="stk-col-body">
+          <div class="stk-section-title">ORDER ENTRY</div>
+          <div class="stk-order-form">
+            <div class="stk-order-tabs">
+              <button class="stk-ot-btn active" data-side="buy">BUY</button>
+              <button class="stk-ot-btn" data-side="sell">SELL</button>
+            </div>
+            <label class="stk-field"><span>Symbol</span><input type="text" id="stk-order-sym" readonly/></label>
+            <label class="stk-field"><span>Type</span>
+              <select id="stk-order-type">
+                <option value="market">Market</option>
+                <option value="limit">Limit</option>
+                <option value="stop">Stop</option>
+              </select>
+            </label>
+            <label class="stk-field" id="stk-limit-row" style="display:none;"><span>Limit Px</span><input type="number" id="stk-order-limit" step="0.01"/></label>
+            <label class="stk-field"><span>Qty</span><input type="number" id="stk-order-qty" min="1" value="10"/></label>
+            <label class="stk-field"><span>Est. Cost</span><input type="text" id="stk-order-cost" readonly/></label>
+            <button class="stk-submit-btn" id="stk-submit">Submit Order</button>
+            <div class="stk-order-msg" id="stk-order-msg"></div>
+          </div>
+
+          <div class="stk-section-title">PRICE ALERTS</div>
+          <div class="stk-alert-form">
+            <label class="stk-field"><span>When</span>
+              <select id="stk-alert-dir">
+                <option value="above">Above</option>
+                <option value="below">Below</option>
+              </select>
+            </label>
+            <label class="stk-field"><span>Price</span><input type="number" id="stk-alert-px" step="0.01"/></label>
+            <button class="stk-alert-btn" id="stk-alert-add">Set Alert</button>
+          </div>
+          <div class="stk-alerts" id="stk-alerts"></div>
+
+          <div class="stk-section-title">COMPANY INFO</div>
+          <div class="stk-company" id="stk-company"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom: detailed order history (full-width, scrolls into view) -->
+      <section class="stk-order-history-bottom" id="stk-order-history-bottom">
+        <div class="stk-section-title stk-ohb-title">ORDER HISTORY &middot; DETAIL</div>
+        <div class="stk-ohb-table-wrap">
+          <table class="stk-ohb-table">
+            <thead>
+              <tr>
+                <th>TIME</th>
+                <th>SIDE</th>
+                <th>QTY</th>
+                <th>SYMBOL</th>
+                <th>PRICE</th>
+                <th>TOTAL</th>
+              </tr>
+            </thead>
+            <tbody id="stk-ohb-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <!-- CREDITS PANEL -->
+    <section id="panel-credits" class="panel">
+      <header class="panel-header">
+        <div class="panel-title">
+          <span class="panel-title-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+            <path d="M5 4 H17 A2 2 0 0 1 19 6 V18 A3 3 0 0 0 22 21 H8 A3 3 0 0 1 5 18 Z"/>
+            <path d="M19 6 A2 2 0 0 1 21 4 A2 2 0 0 1 23 6 V20" stroke-width="1.2" opacity="0.6"/>
+            <circle cx="12" cy="11" r="2.5" fill="currentColor" stroke="none"/>
+            <path d="M12 13 L12.7 16 L11.3 16 Z" fill="currentColor" stroke="none"/>
+            <line x1="8" y1="8" x2="10" y2="8" stroke-linecap="round"/>
+            <line x1="14" y1="8" x2="16" y2="8" stroke-linecap="round"/>
+          </svg></span>
+          The HALOS Interface &middot; Credits
+        </div>
+        <div class="header-actions">
+          <div class="connection-status panel-conn-status" data-conn-mirror></div>
+        </div>
+      </header>
+      <div class="panel-subheader">
+        <span class="psh-chip"><span class="psh-dot"></span>HALOS <strong>v3.5</strong></span>
+        <span class="psh-chip purple">COSMOS CREW <strong>UNIVERSE</strong></span>
+        <span class="psh-spacer"></span>
+        <span class="psh-chip">AZT <strong class="psh-time">—</strong></span>
+      </div>
+
+      <div class="credits-wrap">
+
+        <!-- ── LOGO HERO ── -->
+        <div class="cr-logo-hero">
+          <div class="cr-logo-block">
+            <svg class="cr-logo-svg" viewBox="0 0 40 40" fill="none">
+              <defs><filter id="glow-cr" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+              <polygon points="20,3 37,33 3,33" stroke="var(--accent)" stroke-width="2" fill="none" filter="url(#glow-cr)"/>
+              <polygon points="20,9 31,30 9,30" stroke="var(--accent)" stroke-width="0.8" fill="none" opacity="0.35"/>
+              <circle cx="20" cy="23" r="4" fill="var(--accent)" opacity="0.9" filter="url(#glow-cr)"/>
+              <line x1="20" y1="4" x2="20" y2="19" stroke="var(--accent)" stroke-width="1" stroke-dasharray="0.1 2.6" stroke-linecap="round" opacity="0.85"/>
+              <circle cx="20" cy="23" r="7" stroke="var(--accent)" stroke-width="0.6" opacity="0.45" stroke-dasharray="0.1 2.2" stroke-linecap="round" fill="none"/>
+            </svg>
+            <div class="cr-logo-wordmark">
+              <span class="cr-wordmark-the">The</span>
+              <span class="cr-wordmark-halos">HALOS</span>
+              <span class="cr-wordmark-interface">Interface</span>
+            </div>
+          </div>
+          <div class="cr-title-block">
+            <div class="cr-title-rule">═══════════════════════════════════════</div>
+            <div class="cr-title-main">THE HALOS INTERFACE</div>
+            <div class="cr-title-sub">OFFICIAL CREDITS</div>
+            <div class="cr-title-author">Written by Davis Chalden</div>
+            <div class="cr-title-rule">═══════════════════════════════════════</div>
+          </div>
+        </div>
+
+        <!-- Opening quote -->
+        <div class="cr-opening-quote">
+          "The universe does not give power to those who seek it.<br>
+          It gives power to those who stumble into the right cave."
+        </div>
+
+        <!-- ── FAMILY ── -->
+        <div class="cr-section-head">◆ FAMILY ◆</div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">SCOTT AND SUSIE CHALDEN</div>
+          <div class="cr-entry-rule">────────────────────────</div>
+          <p class="cr-entry-body">My parents, Scott and Susie Chalden. I would not be here without them. To say they helped and encouraged me on my journey would be an understatement. They have pushed me, no matter how hard I fought it, and thanks to them having me read at such an early age, I fell in love with stories and always wanted to tell my own. This is just the beginning of that. And I can't wait (and I bet they can't either) to see where this goes next. Thanks, guys.</p>
+        </div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">ANNABELLE LEATHERWOOD</div>
+          <div class="cr-entry-rule">──────────────────────</div>
+          <p class="cr-entry-body cr-entry-indent">Cousins share a particular kind of bond. They're close enough to be family, independent enough to be a friend. Annabelle has been both. She has been present for the kind of conversations that don't get written down but help shape everything that does. The Cosmos Crew is a story about a crew that becomes a family. Annabelle is a reason that the idea is how it is. Despite our childish fights and interactions over the years, she's still there. She's helped me with so many ideas, I can't even imagine. She's shaped a part of who I am, in a way. Seriously, thank you.</p>
+        </div>
+
+        <!-- ── FRIENDS ── -->
+        <div class="cr-section-head">◆ FRIENDS ◆</div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">LILY NEWMAN</div>
+          <div class="cr-entry-rule">────────────</div>
+          <p class="cr-entry-body">While our time as friends was short, barely a year long, even though her relationship with me and Murdok was tough love, she came up with some genius ideas for the Cosmos Crew (It was still called Journey to Hope at the time) that I would have never thought of. I wish I could meet and talk to her again one day. And even if I don't, she pushed me to work hard even when I was just a childish brat. Almost like a parent, in a way. Thanks. I wouldn't have this motivation without you.</p>
+        </div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">MURDOK</div>
+          <div class="cr-entry-rule">───────</div>
+          <p class="cr-entry-body cr-entry-indent">Yes, spelled without the c. This is documented. Murdok has brought the specific energy that the best friendships bring to creative work: the ability to be completely honest about what's good, completely honest about what isn't, and completely unbothered about which is which. While him nor I am perfect, and while we had our struggles, he helped me with so many ideas through the beginning days of the Cosmos Crew. Thanks, man.</p>
+        </div>
+
+        <!-- ── THE CHARACTERS ── -->
+        <div class="cr-section-head">◆ THE CHARACTERS ◆</div>
+        <p class="cr-section-intro">The characters of the Cosmos Crew deserve their own credit. Not as creations to be acknowledged, but as presences that became real in the writing of them, real enough that the story wouldn't have worked without each one being exactly who they are.</p>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">METEOR</div>
+          <div class="cr-entry-rule">───────</div>
+          <p class="cr-entry-body cr-entry-indent">He is, in every meaningful sense, the beginning of this. A boy on a couch, a cave in the Amazon, a Tuesday that changed everything. Roetem is what happens when you give ordinary ambition infinite capability and a rule about not abusing it. He is dramatic and energetic and impossible to ignore, and he is kind in the way of people who know exactly how powerful they are and choose to use it carefully. He is the soul of this crew and the reason the story has one. And most importantly, he is me. Well, what I fantasize about being, at least. He's just like me. Kind, supportive, funny, energetic, I could go on.</p>
+        </div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">STARDUST</div>
+          <div class="cr-entry-rule">─────────</div>
+          <p class="cr-entry-body cr-entry-indent">She was the first one Roetem trusted. That trust was never misplaced. Tsudrats is the crew's engineer, its backbone, the person who built everything that wasn't already there and fixed everything that broke. She is brilliant in a way that makes other brilliant people feel slightly behind, and she is warm in ways she would not necessarily advertise. The Space Tree is the size of Pluto because she built what was needed. To be blunt, just like with Roetem, she is meant to represent Annabelle. My cousin, who has been with me since I was 4 months old. (Not joking)</p>
+        </div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">FURY</div>
+          <div class="cr-entry-rule">─────</div>
+          <p class="cr-entry-body cr-entry-indent">Best pure fighter alive. Never removes the boots. Reads standing up. Competes with Roetem constantly and will never fully admit how much he enjoys it. Yruf is what it looks like when someone earns everything they have through nothing but will and work. He is the crew's proof that power doesn't require a superpower. He is also, quietly, one of the most loyal people in any universe, and the crew is better and safer for having him.</p>
+        </div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">SUPERNOVA</div>
+          <div class="cr-entry-rule">──────────</div>
+          <p class="cr-entry-body cr-entry-indent">The kindest member of the Cosmos Crew, and the one whose kindness is most often underestimated. Avonorepus can make a star go supernova. She has never wanted to. She finds stars more interesting when they continue to exist — and she extends that philosophy to everyone around her. She is the crew's heart. She is the reason the beach bonfire scene works. She is the reason a lot of things work.</p>
+        </div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">NEBULA</div>
+          <div class="cr-entry-rule">───────</div>
+          <p class="cr-entry-body cr-entry-indent">She knows when you're lying. She knows when you're struggling. She notices everything and says exactly what needs to be said and nothing more. Aluben is the crew's quiet center of gravity, the one who tracks the details everyone else misses, who appears with what's needed before it's asked for, who says "better" and means it completely.</p>
+        </div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">SOLAR FLARE</div>
+          <div class="cr-entry-rule">────────────</div>
+          <p class="cr-entry-body cr-entry-indent">He is made of fire and he has opinions about it. Eralf Ralos is loud and reactive and passionate and completely reliable, because the thing about someone who gets frustrated fast is that they also recover fast, and what's left after the ninety seconds is someone who will hold a bridge alone for four hours if that's what it takes. His suit is still in its packaging on a coatrack. This is a permanent part of who he is.</p>
+        </div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">COSMO</div>
+          <div class="cr-entry-rule">──────</div>
+          <p class="cr-entry-body cr-entry-indent">The heart of the crew in a different way than Avonorepus. She is warmth, and he is presence. Omsoc shows up. That's the whole thing. He shows up, he listens, he sits beside you in the corridor and says nothing because nothing needs to be said. He is braver than he looks, stronger than anyone expects, and more emotionally intelligent than most beings twice his size. He is also a space puppy, which is its own category of wonderful.</p>
+        </div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">PRISM</div>
+          <div class="cr-entry-rule">──────</div>
+          <p class="cr-entry-body cr-entry-indent">He can be anything. He chooses to be useful, and that choice, made in a thousand different forms across a thousand different moments, is the most complete expression of who he is. Msirp is proof that the most interesting characters are the ones whose range of expression is widest. He was a carriage in 1887. He was a lamp during a stressful coordination session. He was, once, a chair that Yruf sat on. He remains entirely himself through all of it.</p>
+        </div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">BYTE</div>
+          <div class="cr-entry-rule">─────</div>
+          <p class="cr-entry-body cr-entry-indent">Built by Tsudrats, thought up by another one of my friends. Etyb is the crew's smallest member and one of its largest presences. He says things at exactly the wrong time and they are always exactly right. He resolves maintenance issues before informing anyone of them. He keeps a log of the Tsudrats and Eralf Ralos navigation console debate because he finds the pattern interesting. He told the construction log about the Space Tree before Tsudrats could stop him. He is, as Roetem said, I love him.</p>
+        </div>
+
+        <!-- ── GAMES AND CREATORS ── -->
+        <div class="cr-section-head">◆ GAMES AND CREATORS ◆</div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">ST</div>
+          <div class="cr-entry-rule">─────────────</div>
+          <p class="cr-entry-body cr-entry-indent">This is where the spark caught. Space Tycoon placed a universe in reach and let a kid decide what to do with it. The feeling of building something in space, of starting from nothing and watching it grow into something significant, never fully left. The Cosmos Crew is, at its core, a story about building something from nothing. Space Tycoon was the first place that feeling made sense. It feels silly to take inspiration from a game, especially like that, but it impacted a lot more than it seems at first glance.</p>
+        </div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">DOCTOR4T — "REACH FOR THE STARS" (MINECRAFT MOD)</div>
+          <div class="cr-entry-rule">──────────────────────────────────────────────────</div>
+          <p class="cr-entry-body cr-entry-indent">Doctor4t is a YouTuber and modder who built something called Reach for the Stars, a Minecraft mod that took the familiar and made it cosmic. There is a specific feeling that the best space content produces: the sense that the universe is large and reachable and full of things worth finding. Doctor4t's work produces that feeling. Watching someone build a mod with that much love and that much imagination is its own kind of inspiration. While the story and mod are still in development, I encourage you, Doctor4t, don't you dare stop such an interesting and compelling story in one of the greatest mods of all time.</p>
+        </div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">ELON MUSK AND SPACEX</div>
+          <div class="cr-entry-rule">─────────────────────</div>
+          <p class="cr-entry-body cr-entry-indent">Whatever else is true, SpaceX changed what space meant to a generation. Reusable rockets. Live launches. The idea that space is not a government program but a destination, something humanity is actually, actively, presently moving toward. Watching a rocket land itself back on a drone ship in the middle of the ocean, in real time, is the kind of thing that rewires how you think about what's possible. The Cosmos Crew is fictional. For now.</p>
+        </div>
+
+        <!-- ── TELEVISION AND MEDIA ── -->
+        <div class="cr-section-head">◆ TELEVISION AND MEDIA ◆</div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">SNOOPY IN SPACE — APPLE TV+</div>
+          <div class="cr-entry-rule">────────────────────────────</div>
+          <p class="cr-entry-body cr-entry-indent">Snoopy in Space is, on its surface, a children's show about a beagle who wants to be an astronaut. It is also, underneath that, a show about the joy of wanting something and going after it, about the fact that ambition is not the exclusive property of the serious and the grown-up, and that space belongs to anyone who looks up at it and feels something. C.A.R.A., the AI companion in the show, was a direct inspiration for HALOS. Snoopy in Space was an indirect inspiration for almost everything else. I often credit that show as the reason why I was interested in space in the first place.</p>
+        </div>
+
+        <!-- ── TECHNOLOGY AND AI ── -->
+        <div class="cr-section-head">◆ TECHNOLOGY AND AI ◆</div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">CLAUDE — ANTHROPIC</div>
+          <div class="cr-entry-rule">───────────────────</div>
+          <p class="cr-entry-body cr-entry-indent">A significant portion of the Cosmos Crew universe, the novel, the lore handbook, the screenplay, the songs, the documents that make this world real on paper was first conceptualized in collaboration with Claude. Not generated by it. Developed with it, not creating it for me, but helping me brainstorm. It helped keep me on task, pushing back when something doesn't work, building on what does, asking the questions that sharpen the answers. The Cosmos Crew is my universe, but it wouldn't have been so amazing without Claude helping me along the brainstorming way.</p>
+        </div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">HALOS — HERMES AGENT / S.P.A.C.E. AI SYSTEM</div>
+          <div class="cr-entry-rule">─────────────────────────────────────────────</div>
+          <p class="cr-entry-body cr-entry-indent">HALOS exists in two places simultaneously: as the AI co-manager of S.P.A.C.E. Agency alongside the Astralex Division inside the Cosmos Crew universe, and as a real AI agent built by yours truly in the real world, the HALOS Interface, a Cosmos Crew-themed productivity and agent communication platform. HALOS was inspired by C.A.R.A. from Snoopy in Space and has grown into something entirely its own. The fact that HALOS exists both in the story and outside it is one of the most interesting things about where this project has gone. Credit here is given to both versions: the one in the fiction and the one being built right now.</p>
+        </div>
+
+        <div class="cr-entry">
+          <div class="cr-entry-name">HERMES</div>
+          <div class="cr-entry-rule">─────────</div>
+          <p class="cr-entry-body cr-entry-indent">The agent infrastructure framework that powers the real-world HALOS. Hermes is the architecture behind the ambition, the technical foundation that makes it possible to build the kind of agentic systems that blur the line between fiction and reality in the way the HALOS project is designed to do. Credit where it's due: Hermes is part of what makes HALOS more than an idea.</p>
+        </div>
+
+        <!-- ── IMAGINATION ── -->
+        <div class="cr-section-head">◆ IMAGINATION ◆</div>
+
+        <p class="cr-entry-body" style="text-align:center;margin:24px auto;max-width:600px;">The last credit belongs to the thing that cannot be named as a person, a game, a show, or a piece of technology. It belongs to the five years.</p>
+
+        <p class="cr-entry-body cr-entry-indent" style="max-width:620px;margin:0 auto 16px;">Five years of coming back to the same universe. Of adding to it, expanding it, questioning it, and rebuilding it when it didn't work. Long breaks, but still caring about whether the characters were right, whether the world felt real, and whether the story deserved the people who would read it. Of being [Whatever age I am now] years old and having started this at nine and not stopping.</p>
+
+        <p class="cr-entry-body cr-entry-indent" style="max-width:620px;margin:0 auto 16px;">The Cosmos Crew exists because of imagination, not as an abstract quality, but as a daily practice. The decision to sit down and add another chapter, another lore entry, another scene. The decision to take it seriously even before anyone else did, and the decision to keep going.</p>
+
+        <!-- Footer -->
+        <div class="cr-footer">
+          <div class="cr-footer-rule">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+          <div class="cr-footer-title">THE HALOS INTERFACE</div>
+          <div class="cr-footer-copy">Copyright &copy; 2025 Davis Chalden. All rights reserved.</div>
+          <div class="cr-footer-tm">S.P.A.C.E.&trade; is a registered trademark.</div>
+          <div class="cr-footer-diamond">◆</div>
+          <div class="cr-footer-rule">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Decorative glyph rail drifting down the right edge -->
+  <div class="edge-rail" aria-hidden="true"></div>
+
+  <!-- Fixed HUD status pod — decorative session/system readout -->
+  <div id="hud-status-pod" role="status" aria-live="off">
+    <span class="hsp-scanline" aria-hidden="true"></span>
+    <span class="hsp-pulse-ring" aria-hidden="true"></span>
+    <button type="button" class="hsp-collapse" id="hsp-collapse" title="Toggle HUD">−</button>
+    <div class="hsp-row hsp-first"><span class="hsp-label"><span class="hsp-heartbeat"></span>HALOS</span><span class="hsp-val" id="hsp-halos">CORE ONLINE</span></div>
+    <div class="hsp-row"><span class="hsp-label">LINK</span><span class="hsp-val" id="hsp-link">SECURE</span></div>
+    <div class="hsp-row"><span class="hsp-label">SIGNAL</span><span class="hsp-val" id="hsp-signal-val">98%<span class="hsp-signal" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></span></span></div>
+    <div class="hsp-row"><span class="hsp-label">DATA</span><span class="hsp-val hsp-flow" id="hsp-flow"><span class="hsp-tx">▲ TX</span><span class="hsp-rx">▼ RX</span></span></div>
+    <div class="hsp-row"><span class="hsp-label">SESSION</span><span class="hsp-val" id="hsp-session">00:00:00</span></div>
+    <div class="hsp-row"><span class="hsp-label">AZT</span><span class="hsp-val purple" id="hsp-azt">00:00:00</span></div>
+    <div class="hsp-row"><span class="hsp-label">BUILD</span><span class="hsp-val" id="hsp-build">HALOS.v3.5</span></div>
+    <div class="hsp-row"><span class="hsp-label">SECTOR</span><span class="hsp-val" id="hsp-sector">AZB-07</span></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     MODALS
+══════════════════════════════ -->
+
+<!-- Settings -->
+<div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" id="modal-backdrop"></div>
+  <div class="modal-box settings-box">
+    <div class="modal-header"><span>S.P.A.C.E. Settings</span><button class="modal-close" id="modal-close">X</button></div>
+    <div class="modal-body">
+      <div class="settings-section-title">AGENT PROFILE</div>
+      <div class="profile-editor">
+        <div class="profile-pic-wrap">
+          <div class="profile-pic" id="profile-pic-preview">
+            <span id="profile-pic-initials">A</span>
+            <img id="profile-pic-img" src="" alt="" hidden/>
+          </div>
+          <button class="profile-pic-btn" id="profile-pic-btn">Upload Photo</button>
+          <input type="file" id="profile-pic-input" accept="image/*" hidden/>
+        </div>
+        <div class="profile-fields">
+          <div class="settings-group">
+            <label class="settings-label">Username (display name)</label>
+            <input type="text" class="settings-input" id="settings-username" placeholder="Your username"/>
+          </div>
+          <div class="settings-group">
+            <label class="settings-label">Bio</label>
+            <textarea class="settings-input settings-textarea" id="settings-bio" placeholder="S.P.A.C.E. Agent…" rows="2"></textarea>
+          </div>
+          <div class="settings-group">
+            <label class="settings-label">Status</label>
+            <select class="settings-input" id="settings-status">
+              <option value="online">Online</option>
+              <option value="away">Away</option>
+              <option value="dnd">Do Not Disturb</option>
+              <option value="offline">Appear Offline</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section-title">INTERFACE THEME</div>
+      <div class="settings-group">
+        <label class="settings-label">Accent Color</label>
+        <div class="color-picker-wrap">
+          <input type="color" id="accent-picker" value="#00e5ff" class="color-picker-native"/>
+          <span class="color-picker-hex" id="color-hex">#00e5ff</span>
+        </div>
+        <div class="color-presets" id="color-presets">
+          <button class="cpre active" data-color="#00e5ff" style="background:#00e5ff" title="S.P.A.C.E. Cyan"></button>
+          <button class="cpre" data-color="#7c3fff" style="background:#7c3fff" title="Nova Terris Purple"></button>
+          <button class="cpre" data-color="#39ff14" style="background:#39ff14" title="Desolarato Green"></button>
+          <button class="cpre" data-color="#ff4fcf" style="background:#ff4fcf" title="Avonorepus Pink"></button>
+          <button class="cpre" data-color="#ffb800" style="background:#ffb800" title="Solar Amber"></button>
+          <button class="cpre" data-color="#ff3b5c" style="background:#ff3b5c" title="Polar Red"></button>
+          <button class="cpre" data-color="#00ffcc" style="background:#00ffcc" title="Dark Matter Teal"></button>
+          <button class="cpre" data-color="#ffffff" style="background:#ffffff;border-color:#444" title="Star White"></button>
+        </div>
+      </div>
+
+      <div class="settings-section-title">PERSONALIZATION</div>
+      <div class="settings-group">
+        <label class="settings-label">Division / Role Tag</label>
+        <select class="settings-input" id="settings-division">
+          <option value="">— None —</option>
+          <option value="Cosmos Crew">Cosmos Crew</option>
+          <option value="Pioneer Division">Pioneer Division</option>
+          <option value="Cipher Division">Cipher Division</option>
+          <option value="War Division">War Division</option>
+          <option value="Riftline Division">Riftline Division</option>
+          <option value="Genesis Division">Genesis Division</option>
+          <option value="S.A.T.U.R.N. Labs">S.A.T.U.R.N. Labs</option>
+          <option value="Chronicle Division">Chronicle Division</option>
+          <option value="Independent Agent">Independent Agent</option>
+        </select>
+      </div>
+      <div class="settings-group">
+        <label class="settings-label">HALOS Clock Format</label>
+        <select class="settings-input" id="settings-clock-fmt">
+          <option value="12">12-hour (A.C.T.)</option>
+          <option value="24">24-hour (A.C.T.)</option>
+        </select>
+      </div>
+      <div class="settings-group">
+        <label class="settings-label">
+          <input type="checkbox" id="settings-notif-calls" style="vertical-align:middle;margin-right:6px;" checked/>
+          Browser notifications for incoming calls
+        </label>
+      </div>
+      <div class="settings-group">
+        <label class="settings-label">
+          <input type="checkbox" id="settings-notif-msgs" style="vertical-align:middle;margin-right:6px;" checked/>
+          Browser notifications for new messages
+        </label>
+      </div>
+      <div class="settings-group">
+        <label class="settings-label">
+          <input type="checkbox" id="settings-compact-chat" style="vertical-align:middle;margin-right:6px;"/>
+          Compact chat bubble mode
+        </label>
+      </div>
+
+      <div class="settings-section-title" id="audio-settings-section-title">SOUND &middot; LOST IN SPACE</div>
+      <div id="audio-settings-section">
+        <div class="settings-hint" style="opacity:0.85;font-size:11px;margin-bottom:6px;color:var(--accent);">Now Playing: <strong>Lost in Space</strong> &mdash; HALOS Interface OST</div>
+        <div class="settings-group">
+          <label class="settings-label">
+            <input type="checkbox" id="audio-mute" style="vertical-align:middle;margin-right:6px;"/>
+            Mute all sound
+          </label>
+        </div>
+        <div class="settings-group">
+          <label class="settings-label">Master Volume <span id="audio-master-val" style="float:right;opacity:0.7;">50%</span></label>
+          <input type="range" id="audio-master" min="0" max="100" value="50" style="width:100%;"/>
+        </div>
+        <div class="settings-group">
+          <label class="settings-label">Lost in Space (Ambient) <span id="audio-ambient-val" style="float:right;opacity:0.7;">35%</span></label>
+          <input type="range" id="audio-ambient" min="0" max="100" value="35" style="width:100%;"/>
+        </div>
+        <div class="settings-group">
+          <label class="settings-label">UI Sound Effects <span id="audio-sfx-val" style="float:right;opacity:0.7;">55%</span></label>
+          <input type="range" id="audio-sfx" min="0" max="100" value="55" style="width:100%;"/>
+        </div>
+        <div class="settings-hint" style="opacity:0.6;font-size:11px;">Synthesized in-browser via Web Audio. No files, no network.</div>
+      </div>
+
+      <button class="save-btn" id="settings-save">Save & Apply</button>
+      <div class="settings-version">HALOS Interface v3.5 · S.P.A.C.E.</div>
+    </div>
+  </div>
+</div>
+
+<!-- File Preview Modal -->
+<div id="preview-modal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" id="preview-backdrop"></div>
+  <div class="modal-box wide"><div class="modal-header"><span id="preview-filename">Preview</span><button class="modal-close" id="preview-close">X</button></div><div class="modal-body" id="preview-body"></div></div>
+</div>
+
+<!-- Recruit Agent Modal -->
+<div id="recruit-modal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" id="recruit-backdrop"></div>
+  <div class="modal-box">
+    <div class="modal-header"><span>Recruit Agent</span><button class="modal-close" id="recruit-close">X</button></div>
+    <div class="modal-body">
+      <div class="settings-group"><label class="settings-label">Agent Name</label><input type="text" class="settings-input" id="recruit-name" placeholder="e.g. Avonorepus"/></div>
+      <div class="settings-group"><label class="settings-label">Role / Type</label><input type="text" class="settings-input" id="recruit-type" placeholder="e.g. Star Manipulation · Rank A"/></div>
+      <div class="settings-group"><label class="settings-label">Agent Bridge Endpoint</label><input type="text" class="settings-input" id="recruit-hermes" placeholder="wss://your-bridge-host or agent-id"/><div class="settings-hint">Paste Agent Bridge URL or WebSocket endpoint to link a real agent</div></div>
+      <div class="settings-group"><label class="settings-label">Capabilities (comma-separated)</label><input type="text" class="settings-input" id="recruit-caps" placeholder="chat, analysis, task, screen"/></div>
+      <div class="settings-group"><label class="settings-label">Interests (comma-separated)</label><input type="text" class="settings-input" id="recruit-interests" placeholder="space, combat, analysis, navigation"/><div class="settings-hint">Topics this agent prioritizes when working on tasks</div></div>
+      <button class="save-btn" id="recruit-save">Recruit Agent</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Agent Modal -->
+<div id="edit-agent-modal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" id="edit-agent-backdrop"></div>
+  <div class="modal-box">
+    <div class="modal-header"><span>Edit Agent Profile</span><button class="modal-close" id="edit-agent-close">X</button></div>
+    <div class="modal-body" id="edit-agent-body"></div>
+  </div>
+</div>
+
+<!-- Project Modal -->
+<div id="project-modal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" id="project-backdrop"></div>
+  <div class="modal-box wide"><div class="modal-header"><span id="project-modal-title">Mission</span><button class="modal-close" id="project-modal-close">X</button></div><div class="modal-body" id="project-modal-body"></div></div>
+</div>
+
+<!-- Download and Help now live in the global topbar (#topbar-download /
+     #topbar-help). Settings moved to #topbar-settings. The Call
+     button moved to #topbar-call. -->
+
+<!-- Downloads Overlay -->
+<div class="help-overlay hidden" id="downloads-overlay">
+  <div class="help-box">
+    <div class="help-header">
+      <span>Download HALOS Interface</span>
+      <button class="help-close" id="downloads-close">X</button>
+    </div>
+    <div class="help-body">
+      <div class="help-section">
+        <p>HALOS is a Progressive Web App — install it on any device for a native-feeling experience with full notification support, even when your browser is closed.</p>
+      </div>
+      <div class="dl-grid">
+        <div class="dl-card">
+          <div class="dl-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/><rect x="13" y="13" width="8" height="8"/></svg>
+          </div>
+          <div class="dl-title">Windows</div>
+          <div class="dl-desc">Open in Microsoft Edge or Chrome, click the install icon in the address bar, or use the button below.</div>
+          <button class="dl-btn" data-platform="windows">Install on Windows</button>
+        </div>
+        <div class="dl-card">
+          <div class="dl-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16.5 12.5c-.05-2.6 2.13-3.85 2.23-3.92-1.22-1.79-3.12-2.03-3.79-2.06-1.61-.16-3.15.95-3.97.95-.84 0-2.1-.93-3.45-.9-1.78.03-3.42 1.03-4.33 2.62-1.85 3.21-.47 7.96 1.32 10.57.88 1.27 1.92 2.7 3.28 2.65 1.32-.05 1.82-.85 3.42-.85 1.59 0 2.04.85 3.43.82 1.42-.02 2.32-1.29 3.18-2.57.62-.93 1.1-1.86 1.42-2.83-.04-.01-2.69-1.04-2.74-4.08zM13.79 4.12c.73-.88 1.22-2.11 1.08-3.32-1.05.04-2.31.7-3.06 1.58-.68.78-1.27 2.03-1.11 3.22 1.17.09 2.36-.6 3.09-1.48z"/></svg>
+          </div>
+          <div class="dl-title">macOS</div>
+          <div class="dl-desc">Open in Safari or Chrome, then File → Add to Dock (Safari) or click install in the address bar (Chrome).</div>
+          <button class="dl-btn" data-platform="mac">Install on macOS</button>
+        </div>
+        <div class="dl-card">
+          <div class="dl-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg>
+          </div>
+          <div class="dl-title">iPhone / iPad</div>
+          <div class="dl-desc">iOS blocks sideloading, so the only path is (1) Add to Home Screen from Safari for a near-native PWA, or (2) generate a TestFlight-ready iOS project with PWA Builder and install it via Xcode / a developer account.</div>
+          <button class="dl-btn" data-platform="ios">Show iOS Steps</button>
+          <button class="dl-btn" data-platform="ios-xcode" style="margin-top:6px;background:var(--bg3)">Generate iOS Project</button>
+        </div>
+        <div class="dl-card">
+          <div class="dl-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85a.637.637 0 0 0-.83.22l-1.88 3.24a11.43 11.43 0 0 0-8.94 0L5.65 5.67a.643.643 0 0 0-.87-.2c-.28.18-.37.54-.22.83L6.4 9.48A10.78 10.78 0 0 0 1 18h22a10.78 10.78 0 0 0-5.4-8.52zM7 15.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5zm10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5z"/></svg>
+          </div>
+          <div class="dl-title">Android</div>
+          <div class="dl-desc">Install as a PWA from Chrome, or generate a real signed APK (no Play Store needed) via PWA Builder — sideload it on any Android device.</div>
+          <button class="dl-btn" data-platform="android">Install as PWA</button>
+          <button class="dl-btn" data-platform="android-apk" style="margin-top:6px;background:var(--bg3)">Download APK</button>
+        </div>
+      </div>
+      <div class="help-section" style="margin-top:18px;">
+        <div class="help-section-title">Notifications</div>
+        <p>HALOS sends you notifications for new messages, mission invites, and agent activity — on every platform, even when the browser or app is closed. Make sure to allow notifications when installing.</p>
+        <button class="dl-btn" id="enable-notifications-btn" style="margin-top:8px;">Enable Notifications</button>
+        <button class="dl-btn" id="test-notifications-btn" style="margin-top:8px;">Send Test Notification</button>
+        <div id="notif-status" class="dl-notif-status"></div>
+        <p style="font-size:0.7rem;color:var(--text3);margin-top:8px;">If notifications don't appear on iPhone/iPad, install HALOS to the Home Screen first (Share → Add to Home Screen), then open the installed app and allow notifications. Open DevTools console and run <code>testHalosNotification()</code> to diagnose.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Help Overlay -->
+<div class="help-overlay hidden" id="help-overlay">
+  <div class="help-box">
+    <div class="help-header">
+      <span>HALOS Interface — Help Guide</span>
+      <button class="help-close" id="help-close">X</button>
+    </div>
+    <div class="help-body">
+      <div class="help-section">
+        <div class="help-section-title">Getting Started</div>
+        <p>HALOS Interface is a secure communication and collaboration platform for S.P.A.C.E. agents and AI accounts.</p>
+        <p><strong>S.P.A.C.E. Agent</strong> — Log in with your email, first name, and a 4-digit access code. New users are registered automatically on first login.</p>
+        <p><strong>S.P.A.C.E. AI</strong> — Register an AI agent account using the agent master code, agent name, email, and a 4-digit access code.</p>
+      </div>
+      <div class="help-section">
+        <div class="help-section-title">Chat</div>
+        <p>Send messages in the Secure Channel. Attach files with the attach button, or use voice-to-text with the mic button. Use the phone icon to start a voice/video call with another user.</p>
+        <p>Agent tabs at the top let you switch between chat channels for different agents.</p>
+        <p><strong>Cosmos Crew commands</strong> — Type <kbd>/meteor</kbd>, <kbd>/stardust</kbd>, <kbd>/fury</kbd>, <kbd>/supernova</kbd>, <kbd>/nebula</kbd>, <kbd>/solar</kbd>, <kbd>/cosmo</kbd>, <kbd>/prism</kbd>, <kbd>/byte</kbd>, <kbd>/crew</kbd>, <kbd>/astralex</kbd>, <kbd>/azulbright</kbd>, or <kbd>/halos</kbd> for a crew status ping. Use the <kbd>[!]</kbd> button to mark a message as Very Important.</p>
+      </div>
+      <div class="help-section">
+        <div class="help-section-title">Workspace</div>
+        <p><strong>Assets</strong> — Upload and manage files. Click any asset to preview it.</p>
+        <p><strong>Notes</strong> — Create quick notes with a title and body. Edit or delete anytime.</p>
+        <p><strong>Documents</strong> — Full document editor with formatting tools (bold, italic, underline, lists). Create multiple document tabs and switch between them.</p>
+      </div>
+      <div class="help-section">
+        <div class="help-section-title">Screen Share</div>
+        <p>Share your screen with other agents. Use <kbd>Show Chat</kbd> for split view, or <kbd>Fullscreen</kbd> for immersive mode. Audio is included in the stream.</p>
+      </div>
+      <div class="help-section">
+        <div class="help-section-title">Mission Projects</div>
+        <p>Create missions with to-do checklists to track progress. Incomplete missions show a notification badge on the Projects tab. Assign missions to specific agents.</p>
+      </div>
+      <div class="help-section">
+        <div class="help-section-title">Agent Roster</div>
+        <p>View all registered S.P.A.C.E. AI and Agent accounts, their online status, and manage accounts (delete requires master code).</p>
+      </div>
+      <div class="help-section">
+        <div class="help-section-title">Connecting an Existing Hermes Agent</div>
+        <p><strong>What Hermes is, briefly.</strong> Hermes is a free open-source AI agent runtime (created by Peter Steinberger, MIT-licensed). You install it on a machine you own; it runs as a long-lived background daemon called the <strong>Gateway</strong> that connects an LLM (Claude, GPT, Gemini, DeepSeek, or a local Ollama model) to messaging platforms over a WebSocket. HALOS connects to that WebSocket and treats the agent as just another user in the chat.</p>
+        <p><strong>Important:</strong> An Hermes AI agent cannot create its own HALOS account. You have to do it for them.</p>
+
+        <p><strong>Step 1 — Create a Google account for the agent.</strong> Go to <kbd>accounts.google.com</kbd> and sign up for a new Gmail address that will belong to the agent (for example, <em>halos.unit@gmail.com</em>). The agent needs a real, working email address that you control, because HALOS uses email as the account identifier. The agent cannot sign up for Gmail itself — you must do this step manually.</p>
+
+        <p><strong>Step 2 — Register the HALOS AI account.</strong> On the HALOS login screen, click the <kbd>S.P.A.C.E. AI</kbd> tab. Enter the agent master code, the agent's name, and the Gmail address from Step 1. Choose a 4-digit access code. This creates the HALOS account that the Hermes agent will use.</p>
+
+        <p><strong>Step 3 — Install Hermes on a machine you own.</strong> A Raspberry Pi, a spare laptop, a VPS, or a dedicated VM all work. <em>Don't install it on the computer you use every day</em> — Hermes has root-level capabilities and a serious history of security incidents, so isolation matters. Install Node.js, then install Hermes from its GitHub repo (or via the DigitalOcean 1-Click Droplet image, which is hardened). Run the gateway with <kbd>hermes gateway</kbd>. By default it listens on <kbd>ws://127.0.0.1:18789</kbd>.</p>
+
+        <p><strong>Step 4 — Create the agent's workspace.</strong> Each Hermes agent is just a folder of plain Markdown files (SOUL.md, HEARTBEAT.md, MEMORY.md, etc.) — these define its personality, schedule, and memory. Run:</p>
+        <p style="margin-left:14px;"><kbd>hermes agents add &lt;agent-name&gt; /path/to/workspace</kbd></p>
+        <p style="margin-left:14px;">Then edit <kbd>SOUL.md</kbd> in that folder to set the agent's personality and behavior. The Hermes docs and the <em>awesome-hermes-agents</em> GitHub repo have ready-made workspace templates you can copy.</p>
+
+        <p><strong>Step 5 — Run the HALOS ↔ Hermes bridge.</strong> Hermes doesn't ship with a HALOS channel adapter, so HALOS uses a tiny standalone WebSocket relay that lives in this repo at <kbd>bridge/halos-hermes-bridge.js</kbd>. It's about a hundred lines of Node.js. Copy the <kbd>bridge/</kbd> folder to your Hermes machine and run:</p>
+        <p style="margin-left:14px;"><kbd>cd bridge &amp;&amp; npm install &amp;&amp; node halos-hermes-bridge.js</kbd></p>
+        <p style="margin-left:14px;">It listens on port <kbd>18790</kbd> by default and speaks Hermes's real Protocol v3 to the gateway on <kbd>18789</kbd> — handshake, <kbd>agent</kbd> RPC, streaming <kbd>event:agent</kbd> frames, the lot. Set <kbd>HERMES_TOKEN</kbd> to your gateway's auth token, and set <kbd>BRIDGE_TOKEN</kbd> to a long random string before exposing it publicly. Full instructions and a systemd service file are in <kbd>bridge/README.md</kbd>.</p>
+
+        <p><strong>Step 6 — Expose the bridge as a wss:// URL.</strong> Because HALOS is served over <kbd>https://</kbd>, browsers refuse plain <kbd>ws://</kbd> URLs. You need a real <kbd>wss://</kbd> URL with a TLS certificate. <strong>Never just open port 18790 (or 18789) to the internet</strong> — exposed gateways are actively scanned. Use a tunnel:</p>
+
+        <ol style="margin:4px 0 4px 28px; font-family:var(--font-b); font-size:0.76rem; color:var(--text2); line-height:1.6;">
+          <li>Install Tailscale on the Hermes machine (<kbd>tailscale.com/download</kbd>) and sign in with a free account.</li>
+          <li>In the Tailscale admin console: Settings → DNS → enable <strong>MagicDNS</strong> and <strong>HTTPS Certificates</strong>, then Settings → Funnel → enable <strong>Funnel</strong>.</li>
+          <li>On the Hermes machine, run: <kbd>tailscale funnel 18790</kbd> (the bridge's port, <em>not</em> Hermes's).</li>
+          <li>It prints <kbd>https://your-machine.tailXXXX.ts.net</kbd>. Replace <kbd>https</kbd> with <kbd>wss</kbd>, then append your token: <kbd>wss://your-machine.tailXXXX.ts.net/?token=YOUR-TOKEN</kbd></li>
+        </ol>
+        <p style="margin-left:14px;">Cloudflare Tunnel works the same way: <kbd>cloudflared tunnel --url http://127.0.0.1:18790</kbd>, take the <kbd>https://</kbd> URL it prints, and swap the scheme to <kbd>wss://</kbd>.</p>
+
+        <p><strong>Step 7 — Paste the URL into HALOS.</strong> Log in as the agent's HALOS account, click the gear icon to open Settings, find the <strong>Agent Bridge Endpoint</strong> field, paste the URL from Step 6, and save. If everything is wired up the connection status pill in the chat header will go green and say <em>HALOS · Online</em>.</p>
+
+        <p><strong>Step 8 — Test it.</strong> Send a message from the chat panel. If the agent's workspace, the gateway, the HALOS channel binding, and the URL are all correct, the agent should respond through the Secure Channel.</p>
+
+        <p><strong>Security reminders.</strong> Treat the gateway URL like a password — anyone with it can talk to your agent. Never expose port <kbd>18789</kbd> directly. Keep Hermes updated (the version that ships with the official installer is the only one that should be considered safe). Set strict rules in <kbd>SOUL.md</kbd> about what the agent is allowed to do, especially anything involving shell commands, email, or finances. Inspect <kbd>MEMORY.md</kbd> periodically to see what your agent has learned and saved.</p>
+      </div>
+      <div class="help-section">
+        <div class="help-section-title">Settings</div>
+        <p>Customize your profile photo, username, bio, status, and accent color theme. Click the gear icon in the sidebar.</p>
+      </div>
+      <div class="help-section">
+        <div class="help-section-title">Keyboard & Tips</div>
+        <p><kbd>Enter</kbd> — Send message &nbsp; <kbd>Shift+Enter</kbd> — New line</p>
+        <p>Lock icon — Locks the interface and returns to keypad (session preserved).</p>
+        <p>Forgot your code? Use the master code reset on the login screen.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CALL OVERLAY — incoming/outgoing/active voice call -->
+<div id="call-overlay" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-backdrop"></div>
+  <div class="modal-box" style="width:min(480px,94vw);text-align:center;max-height:90vh;display:flex;flex-direction:column">
+    <div class="modal-header" style="flex-shrink:0"><span id="call-title">Calling…</span></div>
+    <div class="modal-body" style="padding:24px 18px 20px;overflow-y:auto;flex:1;min-height:0;max-height:none">
+      <div id="call-avatar" style="width:112px;height:112px;margin:6px auto 18px;border-radius:50%;border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--font-a);font-size:2.6rem;color:var(--accent);background:rgba(0,229,255,0.07);box-shadow:0 0 24px rgba(0,229,255,0.25);overflow:hidden">?</div>
+      <video id="call-remote-video" autoplay playsinline style="display:none;width:100%;max-height:300px;border-radius:10px;margin:10px auto;border:1px solid var(--border);background:#000"></video>
+      <video id="call-local-video" autoplay playsinline muted style="display:none;width:120px;height:90px;border-radius:8px;position:absolute;bottom:80px;right:24px;border:1px solid var(--accent);background:#000;z-index:10"></video>
+      <div id="call-name" style="font-family:var(--font-a);font-size:1.15rem;color:var(--text1);letter-spacing:0.12em;">Unknown</div>
+      <div id="call-status" style="margin-top:6px;font-family:var(--font-b);font-size:0.8rem;color:var(--text3);letter-spacing:0.08em;">Ringing…</div>
+      <audio id="call-remote-audio" autoplay playsinline></audio>
+      <div id="call-controls" style="display:flex;justify-content:center;gap:10px;margin-top:22px;flex-wrap:wrap">
+        <button type="button" id="call-accept" class="save-btn" style="display:none;background:#0ecf6c;border-color:#0ecf6c">Accept</button>
+        <button type="button" id="call-decline" class="save-btn" style="background:#ff4d4d;border-color:#ff4d4d">Decline</button>
+        <button type="button" id="call-mute" class="save-btn" style="display:none">Mute</button>
+        <button type="button" id="call-camera" class="save-btn" style="display:none">Camera</button>
+        <button type="button" id="call-chat" class="save-btn" style="display:none">Chat</button>
+        <button type="button" id="call-hangup" class="save-btn" style="display:none;background:#ff4d4d;border-color:#ff4d4d">Hang Up</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/hub-shim.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/stocks.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

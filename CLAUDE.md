@@ -12,8 +12,14 @@ News** kept as a bonus surface. Everything else was retired.
 Monorepo (npm workspaces):
 
 - `apps/desktop` — **THE product** (Electron + Vite + React + TS). A focused
-  two-tab shell behind the accounts gate: **MoreMe** (primary) and **News**
-  (NT5, bonus). No browser, no terminal, no AI crew, no control panel.
+  three-tab shell behind the accounts gate: **MoreMe** (primary), **News**
+  (NT5, bonus), and **HALOS** (the S.P.A.C.E. collaboration console the owner
+  uses with a collaborator — removed once by mistake, restored, KEEP IT).
+  No browser, no terminal, no AI crew, no control panel.
+  **Default theme is Papatui** (espresso/sand/teal) — T, currentThemeName
+  fallback, boot backgroundColor, and the app icon (MoreMe mark: sun + peaks
+  + barbell on the Papatui tile in build/icon.svg + src/assets/logo.png)
+  all agree on it. No NCH-derived art anywhere.
 - `apps/web` — public download page (Vercel). Static.
 - `apps/control-panel` — legacy Next.js dashboard, preserved but unused by the
   desktop app.
@@ -31,7 +37,8 @@ releasable.
 - An "Ops Cockpit" add-on (the old Control Panel's 20+ service adapters,
   repackaged for the third-party Odysseus app) is **parked / on the board**,
   not being built now.
-- The app is **MoreMe, solely**, plus **NT5 News** as a bonus.
+- The app is **MoreMe** plus **NT5 News** as a bonus and **HALOS** as the
+  third surface.
 
 ## MoreMe — the product (apps/desktop/src/moreme)
 
@@ -89,8 +96,15 @@ anchor articles via the bundled local model, the Origin Realms pulse
 
 **Multi-shape articles** (`ArticleKind`): every wire item is one of
 `brief` / `article` / `broadcast` / `blog` / `social` / `ticker`. The
-generator rolls a kind per item with weighted distribution and uses
-shape-specific prompts (length, tone, structure). The newsroom UI renders
+generator rolls a kind per item with weighted distribution (long-form
+leads) and uses shape-specific prompts (length, tone, structure). The
+SYSTEM prompt must NEVER carry a global length rule — a blanket "2-3
+sentences" line once flattened every shape into a brief; length is owned
+by KIND_PROMPTS only. With an empty topic desk the in-universe generator
+writes PURE Nova Terris lore items (it cannot know real Earth events and
+must not fabricate them). `nt5.topics.cleaned.v1` one-time-scrubs the
+old auto-seeded topics out of upgraded installs (label+query exact match
+only, user edits survive). The newsroom UI renders
 each kind differently — broadcasts get a red urgent treatment, articles
 get full paragraph layout, social posts get @-handle cards, tickers are
 crawl-only.
