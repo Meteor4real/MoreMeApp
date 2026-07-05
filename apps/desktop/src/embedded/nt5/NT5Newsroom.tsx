@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { subscribeWire, runWireOnce, runRealWorldOnce, getWireArticles, type WireArticle, type ArticleKind } from "../../services/nt5Wire";
+import { enabledTopics } from "../../services/nt5Topics";
 import { NT5Segments, BreakingBumper } from "./NT5Segments";
 import { pickAnchorVoice, cancelSpeak } from "./nt5tts";
 
@@ -190,11 +191,17 @@ export function NT5Newsroom() {
                 {busy === "real" || busy === "wire" ? "Spinning up the wire…" : "The wire is quiet"}
               </div>
               <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
-                {busy ? "Pulling real-world headlines and filing them in the anchors' voices. Hang tight — this takes a few seconds." : "No stories on the wire yet. Pull real headlines now, or file fresh anchor stories with the bundled model."}
+                {busy
+                  ? "Pulling real-world headlines and filing them in the anchors' voices. Hang tight — this takes a few seconds."
+                  : enabledTopics().length === 0
+                  ? "Real news starts with YOUR desk — nothing is pre-loaded. Open the Topics tab and add what you want covered (any search terms, a subreddit, a feed URL). Anchors start filing for it immediately."
+                  : "No stories on the wire yet. Pull real headlines from your topics now, or file in-universe anchor stories with the bundled model."}
               </p>
               {!busy && (
                 <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 14 }}>
-                  <button className="btn" onClick={() => void fireReal()} style={{ ...btnStyle(false), color: C.cyan, borderColor: `${C.cyan}66` }}>Pull real headlines</button>
+                  {enabledTopics().length > 0 && (
+                    <button className="btn" onClick={() => void fireReal()} style={{ ...btnStyle(false), color: C.cyan, borderColor: `${C.cyan}66` }}>Pull real headlines</button>
+                  )}
                   <button className="btn" onClick={() => void fireWire()} style={btnStyle(false)}>File anchor stories</button>
                 </div>
               )}

@@ -43,6 +43,27 @@ function seedTopics(): Topic[] {
   return [];
 }
 
+// label+query pairs of every topic the OLD seeds ever auto-installed. Used
+// once (below) to scrub un-edited seed topics out of existing installs —
+// the seed lists were removed from the code, but localStorage kept them,
+// so upgraded installs still showed "hardcoded" interests the user never
+// chose. A topic the user edited (changed label or query) no longer
+// matches and is kept.
+const LEGACY_SEEDS = new Set([
+  "minecraft|minecraft", "origin realms|origin realms minecraft server",
+  "gaming|video game news", "r/minecraft|minecraft",
+  "celebrities|celebrity news", "music|music news new release",
+  "movies & tv|movie or streaming series news",
+  "space & nasa|nasa or spacex or space mission",
+  "ai & tech|artificial intelligence technology",
+  "science|science discovery research", "world|world breaking news",
+  "us news|united states national news", "business|business markets economy",
+  "sports|sports news highlights", "nba|nba basketball", "nfl|nfl football",
+  "fitness & training|fitness training athletics",
+  "health|health medicine research news",
+]);
+const CLEANED_KEY = "nt5.topics.cleaned.v1";
+
 let cache: Topic[] | null = null;
 
 export function loadTopics(): Topic[] {
@@ -51,11 +72,24 @@ export function loadTopics(): Topic[] {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const arr = JSON.parse(raw) as Topic[];
-      if (Array.isArray(arr)) { cache = arr; return cache; }
+      if (Array.isArray(arr)) {
+        cache = arr;
+        // One-time scrub: drop topics that exactly match an old auto-seed
+        // (label + query, case-insensitive) — the user never chose those.
+        let cleaned = false;
+        try { cleaned = localStorage.getItem(CLEANED_KEY) === "1"; } catch { /* ignore */ }
+        if (!cleaned) {
+          const kept = arr.filter((t) => !LEGACY_SEEDS.has(`${t.label.trim().toLowerCase()}|${t.query.trim().toLowerCase()}`));
+          if (kept.length !== arr.length) writeTopics(kept);
+          try { localStorage.setItem(CLEANED_KEY, "1"); } catch { /* ignore */ }
+        }
+        return cache;
+      }
     }
   } catch { /* ignore */ }
   cache = seedTopics();
   writeTopics(cache);
+  try { localStorage.setItem(CLEANED_KEY, "1"); } catch { /* ignore */ }
   return cache;
 }
 

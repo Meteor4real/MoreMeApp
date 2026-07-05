@@ -79,9 +79,9 @@ export const PALETTES: Record<ThemeName, Palette> = {
   sports: SPORTS_PALETTE,
   // "custom" never reads from PALETTES — the resolver fetches the user's
   // palette from state — but the type contract needs a value here. We
-  // mirror DP as a fallback for safety (if the resolver is somehow
-  // unregistered, this keeps the UI usable instead of crashing).
-  custom: DP_PALETTE,
+  // mirror Papatui (the app default) as a fallback for safety (if the
+  // resolver is somehow unregistered, this keeps the UI usable).
+  custom: PAPATUI_PALETTE,
 };
 
 export const THEME_META: Record<ThemeName, { label: string; note: string; swatch: string[] }> = {
@@ -92,7 +92,8 @@ export const THEME_META: Record<ThemeName, { label: string; note: string; swatch
 };
 
 // The live token object every component imports.
-export const T: Palette = { ...PALETTES.dp };
+// Papatui is the default look — the owner's pick for the app's identity.
+export const T: Palette = { ...PALETTES.papatui };
 
 // Active hero image (decorative backdrop). Resolved at read time: custom
 // themes use their own explicit heroImage; built-in themes rotate through
@@ -120,7 +121,7 @@ export function currentThemeName(): ThemeName {
     const n = localStorage.getItem(KEY);
     if (n === "dp" || n === "papatui" || n === "sports" || n === "custom") return n;
   } catch { /* ignore */ }
-  return "dp";
+  return "papatui";
 }
 
 // Push the palette onto the desktop chrome's CSS vars so the topbar / login
@@ -142,7 +143,7 @@ function applyRootVars(p: Palette) {
 export function setTheme(name: ThemeName) {
   // "custom" pulls from the store via the resolver; falls back to dp if
   // the user has the toggle on but hasn't actually defined one yet.
-  const next = name === "custom" ? (customResolver() ?? PALETTES.dp) : PALETTES[name];
+  const next = name === "custom" ? (customResolver() ?? PALETTES.papatui) : PALETTES[name];
   Object.assign(T, next);
   try { localStorage.setItem(KEY, name); } catch { /* ignore */ }
   applyRootVars(T);
@@ -159,7 +160,7 @@ export function subscribeTheme(fn: () => void): () => void {
 // Call once on boot so the persisted choice is live before first paint.
 export function initTheme() {
   const name = currentThemeName();
-  const pal = name === "custom" ? (customResolver() ?? PALETTES.dp) : PALETTES[name];
+  const pal = name === "custom" ? (customResolver() ?? PALETTES.papatui) : PALETTES[name];
   Object.assign(T, pal);
   applyRootVars(T);
 }

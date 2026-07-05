@@ -1,0 +1,28 @@
+{
+  "name": "HALOS Interface",
+  "short_name": "HALOS",
+  "description": "Secure multi-agent communication and workspace platform",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#050a0f",
+  "theme_color": "#050a0f",
+  "orientation": "any",
+  "categories": ["productivity", "communication", "social"],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    { "name": "Chat", "url": "/#chat", "description": "Jump to the chat panel" },
+    { "name": "Workspace", "url": "/#workspace", "description": "Open the workspace" },
+    { "name": "Stocks", "url": "/#stocks", "description": "Open the AZX trading floor" }
+  ]
+}

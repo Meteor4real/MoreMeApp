@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Generates platform icons from build/icon.svg. When the real recolored
-// NetworkChuck source image is provided, drop it in as build/icon-source.png
-// and this script prefers it over the SVG.
+// Generates platform icons from build/icon.svg — the MoreMe mark (sun +
+// peaks + barbell on the Papatui tile). To override with a raster image,
+// drop one in as build/icon-source.png and this script prefers it.
 import { readFile, writeFile, mkdir, access } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -48,20 +48,19 @@ export type WireArticle = {
   topics: string[];
 };
 
-// Weighted distribution for the in-universe generator. Briefs lead because
-// they're the bread-and-butter of a news wire; articles + broadcasts surface
-// often enough to feel like a real network; blogs/socials/tickers sprinkle
-// flavor without dominating.
+// Weighted distribution for the in-universe generator. Long-form leads —
+// the owner's #1 complaint was a wire full of one-sentence items, so
+// articles + columns carry the wire and short shapes are the accent, not
+// the default.
 const KIND_WEIGHTS: Array<[ArticleKind, number]> = [
-  ["brief", 40], ["article", 20], ["broadcast", 15], ["blog", 10], ["social", 10], ["ticker", 5],
+  ["article", 30], ["brief", 25], ["blog", 15], ["broadcast", 12], ["social", 12], ["ticker", 6],
 ];
 
-// Real-world re-voicing leans heavier on briefs + articles because the
-// source material is a real headline + snippet — broadcasts and tickers
-// can still spin up but blogs/socials get less weight to avoid making the
-// model invent opinion on real Earth events.
+// Real-world re-voicing: articles lead when the source page yields real
+// text to work from (fileRealItem demotes to brief when it doesn't), so
+// weighting article high is safe — thin sources fall back gracefully.
 const REAL_KIND_WEIGHTS: Array<[ArticleKind, number]> = [
-  ["brief", 55], ["article", 20], ["broadcast", 15], ["ticker", 5], ["social", 3], ["blog", 2],
+  ["article", 40], ["brief", 35], ["broadcast", 12], ["ticker", 5], ["social", 4], ["blog", 4],
 ];
 
 function pickKind(weights: Array<[ArticleKind, number]>): ArticleKind {
@@ -148,7 +147,12 @@ const STORY_FORMATS = [
 const SYSTEM =
   "You are the wire desk for NT5 (Nova Terris 5), the 5th channel of S.P.A.C.E. " +
   "News. Slick, professional sci-fi cable news — play it straight, real-feeling. " +
-  "Pieces are 2-3 tight sentences each. Every piece MUST be in the assigned " +
+  // NOTE: no global length rule here — each shape (brief/article/broadcast/
+  // blog/social/ticker) carries its OWN length + structure directive in
+  // KIND_PROMPTS. A blanket "2-3 sentences" line here used to override the
+  // per-shape instructions and flattened every story into a brief.
+  "The SHAPE directive below sets this piece's length and structure — follow it exactly. " +
+  "Every piece MUST be in the assigned " +
   "anchor's voice — match their cadence, tells, and signatures.\n\n" +
   loreContextBlock() + "\n\n" +
   "RULES:\n" +
@@ -216,9 +220,14 @@ function parseOne(text: string, fallbackAnchor: string): { category: string; anc
 // interest that hasn't been configured.
 async function generateOne(kind: ArticleKind, recentTitles: string[]): Promise<{ category: string; anchor_id: string; title: string; body: string } | null> {
   const userTopics = enabledTopics();
+  // With no Earth topics configured, this generator has no real-world facts
+  // to draw on — a local model told to "cover general news" would just
+  // invent plausible-sounding Earth events, which is fake news in the most
+  // literal sense. So with an empty desk it writes PURE in-universe Nova
+  // Terris items only; real Earth coverage comes from the topic desk.
   const topicEarthBlock = userTopics.length
     ? `Earth topics to weight (real, current-world), drawn from the user's own configured desk: ${userTopics.map((t) => t.label).join(", ")}.`
-    : "The user hasn't set any topics on their desk yet. Write general current-events coverage across the ordinary news beats (world, business, science, culture, sports, tech) — don't assume any specific personal interest.";
+    : "No Earth topics are configured on the user's desk. Write a PURELY in-universe Nova Terris item (category cc_lore, field, or space within the fiction) — do NOT reference or fabricate any real-world Earth event, company, person, or subject.";
   // Only surface the Origin Realms live server pulse if the user actually
   // has an Origin Realms topic on their desk — otherwise this is exactly
   // the same "assumed you're into it" problem as the old hardcoded list.
