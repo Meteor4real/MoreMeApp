@@ -34,6 +34,10 @@ export type WireArticle = {
   title: string;
   body: string;
   kind: ArticleKind;
+  // og:image / twitter:image pulled from the real source page, when the
+  // page yields one. Lore items and imageless sources get a designed
+  // typographic plate in the UI instead — no stock-photo fakery.
+  image_url?: string;
   category: string;        // "breaking" | "field" | "earth_trending" | "gaming" | "space" | "cc_lore" | "culture" | "tech"
   anchor_id: string;       // "voss" | "zara" | "dex" | "lena" | "orin"
   author_display: string;
@@ -118,6 +122,13 @@ function writeAll(arts: WireArticle[]) {
 
 export function getWireArticles(): WireArticle[] {
   return readAll();
+}
+
+// Wipe the wire (operator action — lives in the Topics control room).
+// The next scheduler tick or manual pull refills it.
+export function clearWireArticles(): void {
+  try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+  subs.forEach((fn) => fn([]));
 }
 
 export function subscribeWire(fn: (arts: WireArticle[]) => void): () => void {
@@ -411,6 +422,19 @@ export async function runTopicOnce(topic: Topic): Promise<{ ok: boolean; added: 
   return { ok: true, added };
 }
 
+// og:image / twitter:image extraction — the real story's real picture.
+// Returns "" when the page has none (or is a redirect/consent shell).
+function extractOgImage(html: string): string {
+  try {
+    const m =
+      /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i.exec(html) ||
+      /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url)?["']/i.exec(html) ||
+      /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i.exec(html);
+    const url = m?.[1]?.trim() ?? "";
+    return /^https?:\/\//i.test(url) ? url : "";
+  } catch { return ""; }
+}
+
 // Best-effort main-text extraction from an article page. Strips scripts,
 // styles, and tags; joins paragraph contents. Returns "" when the page
 // yields nothing usable (paywall, JS-only shell, redirect page).
@@ -446,21 +470,24 @@ async function fileRealItem(topic: Topic, hit: TopicHit): Promise<WireArticle | 
   let kind = pickKind(REAL_KIND_WEIGHTS);
   let body = (hit.description || "").slice(0, 360);
 
-  // For long shapes, pull the source page text. If it yields too little to
-  // honestly sustain a long read, demote the item to a brief instead of
-  // letting the model pad.
+  // Pull the source page for EVERY real item: og:image for the front page
+  // (real stories get their real pictures), and — for long shapes — the
+  // main text so the piece has honest material. If a long shape's page
+  // yields too little text, demote to brief instead of letting the model pad.
   let sourceText = "";
-  if (kind === "article" || kind === "blog") {
-    try {
-      const page = await window.hub.net({
-        method: "GET",
-        url: hit.link,
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; NT5Wire/1.0; +https://moreme.app)" },
-      });
-      if (page.ok && typeof page.data === "string") sourceText = extractArticleText(page.data);
-    } catch { /* headline+snippet only */ }
-    if (sourceText.length < 400) { kind = "brief"; sourceText = ""; }
-  }
+  let imageUrl = "";
+  try {
+    const page = await window.hub.net({
+      method: "GET",
+      url: hit.link,
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; NT5Wire/1.0; +https://moreme.app)" },
+    });
+    if (page.ok && typeof page.data === "string") {
+      imageUrl = extractOgImage(page.data);
+      if (kind === "article" || kind === "blog") sourceText = extractArticleText(page.data);
+    }
+  } catch { /* headline+snippet only */ }
+  if ((kind === "article" || kind === "blog") && sourceText.length < 400) { kind = "brief"; sourceText = ""; }
 
   try {
     const s = await window.hub.llm.status();
@@ -498,6 +525,7 @@ async function fileRealItem(topic: Topic, hit: TopicHit): Promise<WireArticle | 
     title: hit.title,
     body,
     kind,
+    image_url: imageUrl || undefined,
     category: topic.category,
     anchor_id: anchor in ANCHORS ? anchor : "voss",
     author_display: ANCHORS[anchor] || ANCHORS.voss,

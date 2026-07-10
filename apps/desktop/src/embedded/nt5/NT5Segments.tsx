@@ -4,17 +4,21 @@ import {
   fetchWeather, fetchMarkets, fetchSpace, fetchSports,
   type Weather, type Quote, type SpaceData, type Game,
 } from "../../services/nt5Segments";
+import { NT } from "./nt5theme";
 
-// NT5 live broadcast segments — real data behind a TV-news skin. Weather,
-// markets, space desk, and the sports ticker. Each segment is a "lower-third"
-// styled card; data refreshes on its own cadence and degrades honestly.
+// NT5 live data segments — real data, tokenized to the NT5 design system.
+// `compact` stacks the cards vertically for the front page's side column;
+// full mode lays them out as a grid (used by Broadcast / standalone).
 
+// Legacy-named constant remapped onto the shared token sheet so every card
+// body recolors with the system.
 const C = {
-  panel: "#0a0820", line: "rgba(217,70,239,0.30)", cyan: "#22d3ee",
-  magenta: "#d946ef", ink: "#f3dcff", muted: "#9b8fb0", green: "#22c55e", red: "#ef4444", amber: "#f59e0b",
+  panel: NT.bg2, line: NT.border, cyan: NT.cyan,
+  magenta: NT.purple, ink: NT.ink, muted: NT.ink2,
+  green: NT.success, red: NT.live, amber: NT.warn,
 };
 
-export function NT5Segments() {
+export function NT5Segments({ compact = false }: { compact?: boolean }) {
   const [weather, setWeather] = useState<Weather | null | "loading">("loading");
   const [markets, setMarkets] = useState<Quote[] | "loading">("loading");
   const [space, setSpace] = useState<SpaceData | null | "loading">("loading");
@@ -34,9 +38,18 @@ export function NT5Segments() {
     return () => { alive = false; clearInterval(t); };
   }, []);
 
+  if (compact) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <WeatherCard w={weather} />
+        <MarketsCard q={markets} />
+        <SpaceCard s={space} />
+        <SportsTicker games={sports} />
+      </div>
+    );
+  }
   return (
     <div style={{ marginTop: 18 }}>
-      <SegHead>Live Segments · real-time desk</SegHead>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
         <WeatherCard w={weather} />
         <MarketsCard q={markets} />
@@ -47,23 +60,13 @@ export function NT5Segments() {
   );
 }
 
-function SegHead({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "4px 0 12px" }}>
-      <span style={{ fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 12, letterSpacing: 3, textTransform: "uppercase", color: C.amber, textShadow: `0 0 10px ${C.amber}` }}>{children}</span>
-      <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${C.amber}, transparent)` }} />
-    </div>
-  );
-}
-
-// Each segment uses a left "lower-third" colored bar + a category kicker.
+// Each segment: hairline card, category-tinted kicker, no glow.
 function SegShell({ kicker, color, children }: { kicker: string; color: string; children: React.ReactNode }) {
   return (
-    <div style={{ position: "relative", padding: "14px 14px 14px 16px", background: `linear-gradient(135deg, ${C.panel}, #06061a)`, border: `1px solid ${color}44`, borderRadius: 10, overflow: "hidden", minHeight: 132 }}>
-      <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4, background: color, boxShadow: `0 0 12px ${color}` }} />
-      <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: color, boxShadow: `0 0 8px ${color}`, animation: "nt5pulse 1.6s ease-in-out infinite" }} />
-        <span style={{ fontFamily: "ui-monospace,monospace", fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color }}>{kicker}</span>
+    <div style={{ position: "relative", padding: "12px 12px 12px 15px", background: NT.bg2, border: `1px solid ${NT.border}`, borderRadius: NT.radius, overflow: "hidden" }}>
+      <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: `${color}88` }} />
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+        <span style={{ fontFamily: NT.fontD, fontWeight: 600, fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase", color }}>{kicker}</span>
       </div>
       {children}
     </div>
@@ -141,8 +144,8 @@ function SportsTicker({ games }: { games: Game[] | "loading" }) {
   if (games.length === 0) return null;
   const run = [...games, ...games];
   return (
-    <div style={{ marginTop: 12, borderTop: `1px solid ${C.line}`, borderBottom: `1px solid ${C.line}`, background: "#06061a", overflow: "hidden", display: "flex", alignItems: "stretch" }}>
-      <div style={{ display: "flex", alignItems: "center", padding: "0 12px", background: C.amber, color: "#0a0820", fontFamily: "'Orbitron',sans-serif", fontWeight: 800, fontSize: 11, letterSpacing: 2 }}>SPORTS</div>
+    <div style={{ marginTop: 12, border: `1px solid ${NT.border}`, borderRadius: NT.radius, background: NT.bg2, overflow: "hidden", display: "flex", alignItems: "stretch" }}>
+      <div style={{ display: "flex", alignItems: "center", padding: "0 12px", background: C.amber, color: NT.bg, fontFamily: NT.fontD, fontWeight: 800, fontSize: 10, letterSpacing: "0.16em" }}>SPORTS</div>
       <div style={{ flex: 1, overflow: "hidden", whiteSpace: "nowrap" }}>
         <div style={{ display: "inline-block", animation: "nt5crawl 60s linear infinite", paddingLeft: "100%", padding: "7px 0" }}>
           {run.map((g, i) => {
