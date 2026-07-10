@@ -1,11 +1,12 @@
 // NT5 ambient ticker — the "always-on" layer. A thin strip pinned above the
 // tab content, scrolling the latest wire headlines across MoreMe + News so
 // NT5 isn't out of sight when you're working. Click any headline to jump
-// into the Broadcast tab.
+// into the News tab. Styled on the NT5 token system: quiet dark strip,
+// red LIVE tag, muted mono text.
 
 import { useEffect, useState } from "react";
 import { subscribeWire, type WireArticle } from "../services/nt5Wire";
-import { ANCHORS, type AnchorId } from "../services/nt5Lore";
+import { NT, NT_CAT } from "../embedded/nt5/nt5theme";
 
 export function NT5AmbientTicker({ onOpen }: { onOpen: () => void }) {
   const [arts, setArts] = useState<WireArticle[]>([]);
@@ -17,13 +18,13 @@ export function NT5AmbientTicker({ onOpen }: { onOpen: () => void }) {
   return (
     <div
       onClick={onOpen}
-      title="Open NT5 Broadcast"
+      title="Open NT5"
       style={{
         height: 26,
         flex: "none",
         cursor: "pointer",
-        background: "linear-gradient(90deg, #06061a 0%, #0a0820 50%, #06061a 100%)",
-        borderBottom: "1px solid rgba(168,85,247,0.35)",
+        background: NT.bg2,
+        borderBottom: `1px solid ${NT.border}`,
         display: "flex",
         alignItems: "center",
         overflow: "hidden",
@@ -32,32 +33,35 @@ export function NT5AmbientTicker({ onOpen }: { onOpen: () => void }) {
     >
       <div className="mono" style={{
         fontSize: 9, letterSpacing: 2, textTransform: "uppercase",
-        color: "#22d3ee", padding: "0 10px", flex: "none",
-        background: "linear-gradient(90deg, rgba(34,211,238,0.18), transparent)",
-        height: "100%", display: "flex", alignItems: "center",
-        textShadow: "0 0 6px rgba(34,211,238,0.6)",
-      }}>NT5 · LIVE</div>
+        color: NT.live, padding: "0 10px", flex: "none",
+        borderRight: `1px solid ${NT.border}`,
+        height: "100%", display: "flex", alignItems: "center", gap: 5,
+      }}>
+        <span style={{ width: 5, height: 5, borderRadius: "50%", background: NT.live, animation: "nt5ambient-pulse 2s ease-in-out infinite" }} />
+        NT5 · LIVE
+      </div>
       <div style={{ flex: 1, overflow: "hidden", whiteSpace: "nowrap", position: "relative" }}>
         <div className="mono" style={{
           display: "inline-block",
           animation: "nt5ambient 90s linear infinite",
-          fontSize: 11, color: "#cbd5e1", letterSpacing: 1,
+          fontSize: 11, color: NT.ink2, letterSpacing: 1,
         }}>
           {train.map((a, i) => {
-            const anchor = ANCHORS[(a.anchor_id as AnchorId)] ?? ANCHORS.voss;
-            const tag = `[${a.category.toUpperCase().replace(/_/g, " ")}]`;
+            const cat = NT_CAT[a.category] ?? { label: a.category, color: NT.purple };
             return (
               <span key={a.id + "-" + i} style={{ marginRight: 28 }}>
-                <span style={{ color: anchor.color, marginRight: 8 }}>{tag}</span>
-                {a.title}
-                <span style={{ opacity: 0.5, marginLeft: 8 }}>— {anchor.name}</span>
-                <span style={{ opacity: 0.35, margin: "0 18px" }}>◆</span>
+                <span style={{ color: cat.color, marginRight: 8 }}>◆</span>
+                <span style={{ color: NT.ink }}>{a.title}</span>
+                <span style={{ opacity: 0.5, marginLeft: 8 }}>— {a.author_display}</span>
               </span>
             );
           })}
         </div>
       </div>
-      <style>{`@keyframes nt5ambient { from { transform: translateX(0%); } to { transform: translateX(-50%); } }`}</style>
+      <style>{`
+        @keyframes nt5ambient { from { transform: translateX(0%); } to { transform: translateX(-50%); } }
+        @keyframes nt5ambient-pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.4 } }
+      `}</style>
     </div>
   );
 }

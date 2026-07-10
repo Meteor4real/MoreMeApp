@@ -8,16 +8,18 @@ import {
   blankTopic, clearTopics, loadTopics, removeTopic, subscribeTopics,
   upsertTopic, RECENCIES, SOURCES, type Recency, type Topic, type TopicSource,
 } from "../../services/nt5Topics";
-import { runRealWorldOnce, runTopicOnce } from "../../services/nt5Wire";
+import { runRealWorldOnce, runTopicOnce, runWireOnce, clearWireArticles } from "../../services/nt5Wire";
 import { ALL_ANCHORS, ANCHORS as ANCHOR_BIBLE, CATEGORIES, type AnchorId, type WireCategory } from "../../services/nt5Lore";
 import {
   getDeskStatuses, kickAnchor, setAnchorCadence, subscribeDesk,
   type AnchorStatus,
 } from "../../services/nt5Desk";
+import { NT } from "./nt5theme";
 
+// Legacy-named constant remapped onto the shared NT5 token sheet.
 const C = {
-  bg: "#05050d", panel: "#0a0820", line: "rgba(217,70,239,0.35)",
-  magenta: "#d946ef", cyan: "#22d3ee", red: "#ef4444", ink: "#f3dcff", muted: "#9b8fb0",
+  bg: NT.bg, panel: NT.bg2, line: NT.border,
+  magenta: NT.purple, cyan: NT.cyan, red: NT.live, ink: NT.ink, muted: NT.ink2,
 };
 
 const CAT_LABEL: Record<string, string> = {
@@ -57,24 +59,33 @@ export function NT5TopicsManager() {
     <div style={{ flex: 1, overflow: "auto", background: C.bg, padding: 18, minHeight: 0 }}>
       <div style={{ maxWidth: 960, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
-          <div style={{ fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 20, color: C.magenta, letterSpacing: 2, textShadow: `0 0 16px ${C.magenta}55` }}>
+          <div style={{ fontFamily: NT.fontD, fontWeight: 800, fontSize: 17, color: NT.ink, letterSpacing: "0.12em" }}>
             YOUR NEWS DESK
           </div>
           <div style={{ flex: 1 }} />
-          {topics.length > 0 && (
-            <button className="btn" disabled={busyAll} onClick={() => void pullAll()} style={{ color: C.cyan, borderColor: `${C.cyan}66` }}>
-              {busyAll ? "pulling…" : "↻ Force a full sweep"}
-            </button>
-          )}
-          {topics.length > 0 && (
-            <button className="btn" onClick={() => { if (confirm("Clear every topic on your desk? This can't be undone.")) clearTopics(); }} style={{ color: C.red, borderColor: `${C.red}55` }}>Clear all</button>
-          )}
         </div>
-        <p style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginTop: 0 }}>
+        <p style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginTop: 0, fontFamily: NT.fontB }}>
           NT5 doesn't know what you're into — <b style={{ color: C.ink }}>you set the desk</b>. Add a topic below
           (any search terms, a subreddit, or a feed URL) and its anchor files real, current headlines for it on
           their own cadence, 24/7. Nothing is pre-loaded.
         </p>
+
+        {/* Wire operations — the control room. Every operator action lives
+            here so the Front Page stays a reading surface. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "10px 12px", background: NT.bg2, border: `1px solid ${NT.border}`, borderRadius: NT.radius, marginBottom: 14 }}>
+          <span style={{ fontFamily: NT.fontD, fontWeight: 600, fontSize: 9.5, letterSpacing: "0.2em", textTransform: "uppercase", color: NT.ink2, marginRight: 4 }}>Wire ops</span>
+          <button className="nt5-btn" disabled={busyAll || topics.length === 0} onClick={() => void pullAll()} title={topics.length === 0 ? "Add a topic first" : "Pull fresh real headlines for every enabled topic"}>
+            {busyAll ? "pulling…" : "Pull real headlines"}
+          </button>
+          <button className="nt5-btn" onClick={() => void runWireOnce(3).catch(() => undefined)} title="File in-universe anchor stories with the bundled model">
+            File anchor stories
+          </button>
+          <span style={{ flex: 1 }} />
+          {topics.length > 0 && (
+            <button className="nt5-btn hot" onClick={() => { if (confirm("Clear every topic on your desk? This can't be undone.")) clearTopics(); }}>Clear topics</button>
+          )}
+          <button className="nt5-btn hot" onClick={() => { if (confirm("Wipe every story on the wire? The next pull refills it.")) clearWireArticles(); }}>Reset wire</button>
+        </div>
         {topics.length === 0 && (
           <div style={{ padding: 16, background: C.panel, border: `1px dashed ${C.line}`, borderRadius: 8, marginBottom: 4, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
             Your desk is empty. Add a topic below — anything: a team, a game, a hobby, world news, a specific
@@ -85,7 +96,7 @@ export function NT5TopicsManager() {
 
         <AnchorDeskPanel />
         <div style={{ height: 1, background: C.line, margin: "18px 0 14px" }} />
-        <div style={{ fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 12, color: C.cyan, letterSpacing: 3, textTransform: "uppercase", marginBottom: 10, textShadow: `0 0 10px ${C.cyan}` }}>
+        <div style={{ fontFamily: NT.fontD, fontWeight: 600, fontSize: 10, color: NT.ink2, letterSpacing: "0.22em", textTransform: "uppercase", marginBottom: 10 }}>
           Topic list
         </div>
 
@@ -167,9 +178,9 @@ function AddTopic() {
 }
 
 const inp: React.CSSProperties = {
-  width: "100%", background: "rgba(0,0,0,0.5)", border: "1px solid rgba(217,70,239,0.3)",
-  borderRadius: 6, color: "#f3dcff", padding: "6px 8px", fontSize: 12, outline: "none",
-  fontFamily: "ui-monospace, monospace",
+  width: "100%", background: NT.bg, border: `1px solid ${NT.border}`,
+  borderRadius: 6, color: NT.ink, padding: "6px 8px", fontSize: 12, outline: "none",
+  fontFamily: NT.fontM,
 };
 
 // ── The Desk: live per-anchor activity ─────────────────────────────────────
@@ -190,10 +201,10 @@ function AnchorDeskPanel() {
   return (
     <div style={{ background: "rgba(217,70,239,0.06)", border: `1px solid ${C.magenta}33`, borderRadius: 10, padding: 14 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10 }}>
-        <div style={{ fontFamily: "'Orbitron','Space Grotesk',sans-serif", fontWeight: 800, fontSize: 12, color: C.magenta, letterSpacing: 3, textTransform: "uppercase", textShadow: `0 0 10px ${C.magenta}` }}>
+        <div style={{ fontFamily: NT.fontD, fontWeight: 600, fontSize: 10, color: NT.ink2, letterSpacing: "0.22em", textTransform: "uppercase" }}>
           THE DESK · live
         </div>
-        <div style={{ fontSize: 10, color: C.muted, letterSpacing: 1.5, textTransform: "uppercase" }}>
+        <div style={{ fontSize: 10, color: C.muted, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: NT.fontM }}>
           autonomous · 24/7
         </div>
       </div>

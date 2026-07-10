@@ -10,6 +10,7 @@ import type { WireArticle } from "../../services/nt5Wire";
 import { subscribeWire, runWireOnce } from "../../services/nt5Wire";
 import { ANCHORS, NT5_TAGLINE, SPACE_TAGLINE, type AnchorId } from "../../services/nt5Lore";
 import { pickAnchorVoice } from "./nt5tts";
+import { NT } from "./nt5theme";
 
 type Anchor = (typeof ANCHORS)[AnchorId];
 
@@ -67,12 +68,12 @@ export function NT5Broadcast() {
 
   if (!article) {
     return (
-      <div style={{ flex: 1, display: "grid", placeItems: "center", background: "#05050d", color: "#cbd5e1", padding: 40, textAlign: "center" }}>
+      <div style={{ flex: 1, display: "grid", placeItems: "center", background: NT.bg, color: NT.ink, padding: 40, textAlign: "center" }}>
         <div>
-          <div className="mono" style={{ fontSize: 11, letterSpacing: 4, color: "#22d3ee", marginBottom: 12 }}>NT5 · STANDBY</div>
-          <div style={{ fontSize: 22, fontFamily: "'Orbitron','Space Grotesk',sans-serif", marginBottom: 8 }}>The wire is empty.</div>
-          <div style={{ fontSize: 13, color: "var(--mute)", marginBottom: 18 }}>The desk is filing now. Refresh to nudge it.</div>
-          <button className="btn" onClick={refresh}>Fire the desk</button>
+          <div style={{ fontFamily: NT.fontM, fontSize: 11, letterSpacing: 4, color: NT.live, marginBottom: 12 }}>NT5 · STANDBY</div>
+          <div style={{ fontSize: 22, fontFamily: NT.fontD, marginBottom: 8 }}>The wire is empty.</div>
+          <div style={{ fontSize: 13, color: NT.ink2, marginBottom: 18, fontFamily: NT.fontB }}>Stories land from your Topics desk — or file in-universe anchor stories now.</div>
+          <button className="nt5-btn" onClick={refresh}>File anchor stories</button>
         </div>
       </div>
     );
@@ -83,8 +84,8 @@ export function NT5Broadcast() {
 
   return (
     <div style={{
-      flex: 1, position: "relative", color: "#fff",
-      background: `radial-gradient(circle at 30% 25%, ${anchor.color}26, transparent 60%), radial-gradient(circle at 80% 80%, #7c3aed22, transparent 65%), #05050d`,
+      flex: 1, position: "relative", color: NT.ink,
+      background: `radial-gradient(circle at 30% 25%, ${anchor.color}1f, transparent 60%), ${NT.bg}`,
       display: "grid", gridTemplateRows: "1fr 200px 56px",
       overflow: "hidden", minHeight: 0,
     }}>
@@ -128,19 +129,19 @@ export function NT5Broadcast() {
 
       {/* Control bar */}
       <div style={{ background: "rgba(0,0,0,0.55)", borderTop: `1px solid ${anchor.color}55`, display: "flex", alignItems: "center", gap: 10, padding: "0 24px" }}>
-        <button className="btn" onClick={prev} title="Previous story">‹</button>
-        <button className="btn" onClick={togglePlay} style={{ color: anchor.color, borderColor: `${anchor.color}aa` }}>
+        <button className="nt5-btn" onClick={prev} title="Previous story">‹</button>
+        <button className="nt5-btn" onClick={togglePlay} style={{ color: anchor.color, borderColor: `${anchor.color}66` }}>
           {playing ? "■ Pause" : "▶ Play"}
         </button>
-        <button className="btn" onClick={next} title="Next story">›</button>
-        <button className="btn" onClick={() => setMuted((m) => !m)} title={muted ? "Unmute" : "Mute"}>{muted ? "Unmute" : "Mute"}</button>
+        <button className="nt5-btn" onClick={next} title="Next story">›</button>
+        <button className="nt5-btn" onClick={() => setMuted((m) => !m)} title={muted ? "Unmute" : "Mute"}>{muted ? "Unmute" : "Mute"}</button>
         <span className="mono" style={{ fontSize: 10, color: anchor.color, letterSpacing: 2, textTransform: "uppercase", display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 10 }}>
           <span style={{ width: 8, height: 8, borderRadius: "50%", background: anchor.color, boxShadow: `0 0 12px ${anchor.color}`, animation: "nt5pulse 2s ease-in-out infinite" }} />
           On Air · Story {Math.min(idx + 1, arts.length)}/{arts.length}
         </span>
         <div style={{ flex: 1 }} />
         <span className="mono" style={{ fontSize: 10, color: "var(--mute)" }}>{SPACE_TAGLINE}</span>
-        <button className="btn" onClick={refresh}>↻ File more</button>
+        <button className="nt5-btn" onClick={refresh}>File more</button>
       </div>
 
       <style>{`
