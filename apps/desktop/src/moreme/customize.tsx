@@ -114,10 +114,11 @@ function AiSwitchCard() {
             <button className="mm-btn" style={{ padding: "4px 10px" }} disabled={busy} onClick={() => void regen()} title="Invalidate the old token and mint a new one">Regenerate</button>
           </div>
           <div style={{ fontSize: 11, color: T.inkSoft, lineHeight: 1.6 }}>
-            Your agent calls <code style={{ fontFamily: "ui-monospace, monospace" }}>POST /agent</code> with{" "}
+            Point your agent at <code style={{ fontFamily: "ui-monospace, monospace" }}>GET /manual</code> first — the app serves its own
+            connect-time briefing (the wire contract, shapes, anchors, house rules) so the agent always has current info on top of its skill file.
+            Then it calls <code style={{ fontFamily: "ui-monospace, monospace" }}>POST /agent</code> with{" "}
             <code style={{ fontFamily: "ui-monospace, monospace" }}>{"Authorization: Bearer <token>"}</code> and a body like{" "}
             <code style={{ fontFamily: "ui-monospace, monospace" }}>{"{ \"path\": \"wire.file\", \"args\": [{ \"title\": \"…\", \"body\": \"…\", \"kind\": \"article\" }] }"}</code>.
-            Callable roots: state · tabs · widgets · ranks · achievements · theme · quotes · wire.
             Localhost only — reach it remotely through your own SSH tunnel or tailnet.
           </div>
           <div style={{ fontSize: 11, color: T.inkTiny }}>
