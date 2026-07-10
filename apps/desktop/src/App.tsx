@@ -13,6 +13,7 @@ import { startOriginPolling } from "./services/originRealms";
 import { startSync, stopSync } from "./moreme/sync";
 import { initTrackingSiren } from "./moreme/tracking";
 import { installAgentApi } from "./moreme/agentApi";
+import { getAiMode, initAiMode } from "./services/aiMode";
 import { NT5AmbientTicker } from "./shell/NT5AmbientTicker";
 
 // Three surfaces behind the accounts gate: MoreMe (the product), NT5 News
@@ -29,10 +30,17 @@ export function App() {
     applyAccent(loadAccent());
     applyUiPrefs(loadPrefs());
     initTheme();
-    startDesk();
-    startWireScheduler();
-    startOriginPolling();
-    void window.hub?.llm?.ensure?.().catch(() => undefined);
+    // Resolve the AI master switch BEFORE anything model-driven starts:
+    // in external mode the built-in generators stay quiet and the bundled
+    // model isn't even downloaded — an outside agent runs the anchors.
+    void initAiMode().then(() => {
+      startDesk();
+      startWireScheduler();
+      startOriginPolling();
+      if (getAiMode() === "builtin") {
+        void window.hub?.llm?.ensure?.().catch(() => undefined);
+      }
+    });
     startSync();
     initTrackingSiren();
     installAgentApi();

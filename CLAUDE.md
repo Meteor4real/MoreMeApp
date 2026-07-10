@@ -79,9 +79,13 @@ Data model (`moreme/types.ts`, `moreme/store.ts`):
   is a standing expectation, logged passively → feeds Quiet-streak
   achievements; it is NOT a checkable block).
 
-UI (`moreme/ui.tsx`): tabs Today / Calendar (month grid + day detail) /
-Projects / Goals / Achievements / Levels, plus a full event editor modal.
-Mint dark theme tokens in `moreme/styles.ts`.
+UI (`moreme/ui.tsx`): HALOS-style grouped SIDEBAR nav (not a tab row) —
+DAY (Today, Calendar), SCHOOL (Get Ahead), BUILD (Projects|Plans merged,
+Empire), SELF (Goals, Screens, Progress = Achievements|Levels|Insights
+merged via SegmentHub), YOURS (dynamic tabs), footer (level bar, streak,
+Weekly Review, Customize, sync pip). Old tab ids stay valid as segments so
+hiddenTabs/tabLabels/widgets keep working. Theme tokens in
+`moreme/styles.ts` (Papatui default).
 
 REMOVED for good: modes (semester/vacation/exam/travel), strict time-blocked
 schedules, focus blocks, strikes, session breaks, tiers, prestige.
@@ -114,6 +118,27 @@ mode pick voice / rate / pitch per anchor from a profile table that
 prefers OS neural voices (Microsoft Aria, Jenny, Guy, etc.) and falls
 back gracefully. Voss reads as authoritative male, Lena as energetic
 female, Orin measured male, Dex younger / snappier, Zara warm female.
+
+## AI master switch + Hermes bridge
+
+Customize → AI. "builtin" (default): the bundled local model runs NT5
+generation. "external": ALL built-in generation is disabled (wire
+scheduler skips, runWireOnce refuses, fileRealItem files honest snippets
+without re-voicing, the model isn't even downloaded) and a localhost
+bridge lets an external agent (Hermes) take the role.
+
+- `electron/bridge.ts`: HTTP server, 127.0.0.1:38217 ONLY while mode is
+  external. Bearer token (crypto-random, persisted in userData/
+  ai-bridge.json, regenerable in the UI). POST /agent {path, args} →
+  forwarded to the renderer dispatcher. GET /health unauthenticated.
+- Renderer dispatcher (`agentApi.ts`): whitelisted roots only — state,
+  tabs, widgets, ranks, achievements, theme, quotes, wire. No subscribe
+  over the bridge.
+- `moremeAgent.wire`: articles / topics / pullReal / file / clear.
+  `fileExternalArticle` (nt5Wire.ts) validates + dedupes external
+  articles of any ArticleKind.
+- `services/aiMode.ts`: renderer cache; getAiMode() is the sync check
+  every generation path uses. NEVER add a generation path that skips it.
 
 ## HARD RULES (owner's words)
 

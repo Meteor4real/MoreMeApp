@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
 import { setupTracking } from "./tracking";
+import { setupBridge } from "./bridge";
 
 // In a CJS build __dirname exists; guard for ESM just in case.
 const dir =
@@ -123,6 +124,7 @@ app.whenReady().then(() => {
   configureSecurity();
   registerIpc();
   setupTracking();
+  setupBridge();
   ensureTray();
   applyBgPrefs(readBgPrefs());
   createWindow();
