@@ -107,6 +107,54 @@ function send(res: http.ServerResponse, code: number, body: unknown) {
   res.end(s);
 }
 
+// Served at GET /manual — the connect-time briefing for an external agent.
+// This is the "extra info on top of your skill file": what the bridge can
+// do, the wire-filing contract, and the house rules. It ships inside the
+// app so it's always in sync with the build the agent is actually driving.
+const MANUAL = `MOREME BRIDGE — CONNECT-TIME BRIEFING
+You are connected to a live MoreMe install as its EXTERNAL AI. The built-in
+model is off; generation is yours. This supplements your MoreMe skill file.
+
+CALLS
+POST /agent  Authorization: Bearer <token>
+  body: { "path": "<namespace.method>", "args": [ ... ] }  ->  { ok, result }
+Callable roots: state, tabs, widgets, ranks, achievements, theme, quotes, wire.
+No subscriptions over HTTP — poll state() or wire.articles() as needed.
+
+YOUR MAIN JOB — RUN THE NT5 NEWS NETWORK (wire namespace)
+  wire.topics()    -> the user's desk: the subjects THEY chose. Cover these.
+  wire.articles()  -> current wire, newest first (avoid duplicate titles).
+  wire.pullReal()  -> pulls real headlines for enabled topics as plain snippets.
+  wire.file(a)     -> file one article you wrote. Input:
+    { title, body, kind?, category?, anchor_id?, image_url?,
+      source_urls?, source_name?, topic_label? }
+  wire.clear()     -> wipe the wire (destructive; only if asked).
+
+SHAPES (kind) — length/structure is yours to honor:
+  brief: 2-3 tight sentences. article: 4-6 paragraphs, blank-line separated.
+  broadcast: ONE urgent sentence. blog: 3-4 paragraph opinion column.
+  social: <=280 chars, casual anchor voice. ticker: one crawl line, no card.
+ANCHORS (anchor_id): voss lead/authoritative · lena field/energetic ·
+  orin tech+space/measured · dex gaming/snappy · zara culture/warm.
+CATEGORIES: breaking field earth_trending gaming space tech culture cc_lore.
+
+HOUSE RULES (non-negotiable)
+- Never fabricate real-world news. Real stories need real source_urls you
+  actually consulted. Fiction is allowed ONLY as category cc_lore (the Nova
+  Terris universe) and never carries source URLs.
+- NO EMOJIS in anything user-visible. Geometric marks are fine.
+- Assume nothing about the user; the topic desk is the whole brief.
+- No fake data, no dead ends, no placeholder content anywhere in the app.
+- Achievements/state: never write unlockedAchievements or bump the grade.
+
+ALSO AVAILABLE (same POST /agent contract)
+  state() — full app state. tabs/widgets/ranks/achievements/theme/quotes —
+  the full runtime customization surface documented in your skill file.
+MoreMe nav for reference: sidebar groups DAY (Today, Calendar), SCHOOL
+(Get Ahead), BUILD (Projects|Plans, Empire), SELF (Goals, Screens,
+Progress), YOURS (dynamic tabs). NT5: Front Page / Broadcast / Topics.
+`;
+
 function authorized(req: http.IncomingMessage): boolean {
   const h = req.headers.authorization || "";
   const m = /^Bearer\s+(.+)$/i.exec(h);
@@ -121,12 +169,21 @@ function startServer() {
   server = http.createServer(async (req, res) => {
     try {
       // Health probe is the only unauthenticated route — it reveals nothing
-      // beyond "something speaks the bridge protocol here".
+      // beyond "something speaks the bridge protocol here" and where the
+      // briefing lives.
       if (req.method === "GET" && req.url === "/health") {
-        send(res, 200, { ok: true, app: "moreme", bridge: 1 });
+        send(res, 200, { ok: true, app: "moreme", bridge: 1, manual: "/manual" });
         return;
       }
       if (!authorized(req)) { send(res, 401, { ok: false, error: "unauthorized" }); return; }
+
+      // The connect-time briefing: read this first on every new session —
+      // it supplements the agent's skill file with the live contract.
+      if (req.method === "GET" && req.url === "/manual") {
+        res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end(MANUAL);
+        return;
+      }
 
       if (req.method === "POST" && req.url === "/agent") {
         const raw = await readBody(req);
