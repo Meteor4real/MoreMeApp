@@ -40,14 +40,27 @@ import { makePrintHandler } from "./print";
 // Built-in tab ids. The render code accepts ANY string so dynamic tab ids
 // (created at runtime) can be the active tab too — the only routing needs
 // are the well-known ids plus a default-cases fall-through.
-type BuiltInTab = "today" | "ahead" | "calendar" | "screens" | "empire" | "projects" | "plans" | "goals" | "achievements" | "insights" | "levels" | "customize";
+// "projects" hosts Projects | Plans as segments; "progress" hosts
+// Achievements | Levels | Insights. The old ids stay valid for hiddenTabs /
+// tabLabels / widgets so nothing customized is lost.
+type BuiltInTab = "today" | "ahead" | "calendar" | "screens" | "empire" | "projects" | "plans" | "goals" | "achievements" | "insights" | "levels" | "progress" | "customize";
 type Tab = BuiltInTab | string;
 type CalMode = "month" | "week" | "day";
-const TAB_LABELS: Record<BuiltInTab, string> = {
-  today: "today", ahead: "get ahead", calendar: "calendar", screens: "screens", empire: "empire",
-  projects: "projects", plans: "plans", goals: "goals", achievements: "achievements",
-  insights: "insights", levels: "levels", customize: "customize",
+const TAB_LABELS: Record<string, string> = {
+  today: "Today", ahead: "Get Ahead", calendar: "Calendar", screens: "Screens", empire: "Empire",
+  projects: "Projects", plans: "Plans", goals: "Goals", achievements: "Achievements",
+  insights: "Insights", levels: "Levels", progress: "Progress", customize: "Customize",
 };
+
+// Sidebar organization — HALOS-style labeled groups instead of a flat
+// twelve-tab row. ~8 destinations; merged surfaces keep their old ids alive
+// as segments inside.
+const NAV_GROUPS: { label: string; items: { id: BuiltInTab; glyph: string }[] }[] = [
+  { label: "Day",    items: [{ id: "today", glyph: "◆" }, { id: "calendar", glyph: "▦" }] },
+  { label: "School", items: [{ id: "ahead", glyph: "»" }] },
+  { label: "Build",  items: [{ id: "projects", glyph: "◈" }, { id: "empire", glyph: "$" }] },
+  { label: "Self",   items: [{ id: "goals", glyph: "✦" }, { id: "screens", glyph: "▣" }, { id: "progress", glyph: "▲" }] },
+];
 
 function useStore(): State {
   const [s, setS] = useState<State>(loadState);
@@ -68,53 +81,42 @@ export function MoreMeUI() {
   const [, bumpTheme] = useState(0);
   useEffect(() => subscribeTheme(() => bumpTheme((n) => n + 1)), []);
 
-  const ALL_TABS: BuiltInTab[] = ["today", "ahead", "calendar", "screens", "empire", "projects", "plans", "goals", "achievements", "insights", "levels", "customize"];
-  // Customize is always available — otherwise you could hide it and lose the
-  // way back. Everything else respects the user's `hiddenTabs` choice.
-  const tabs = ALL_TABS.filter((t) => t === "customize" || !isTabHidden(t, s));
   const dyn = s.customization.dynamicTabs;
-  // The active tab id is a string — built-in Tab type union OR a dynamic tab id.
   const tabIdStr = String(tab);
   const dynamicCurrent = dyn.find((d) => d.id === tabIdStr);
 
-  // Render widgets dropped onto this tab id (built-in OR dynamic).
+  // Widgets dropped onto this destination id. Merged hubs (projects /
+  // progress) render their segments' widgets themselves.
   const widgetsHere = s.customization.widgets[tabIdStr] ?? [];
+  const mergedHub = tab === "projects" || tab === "progress";
 
   return (
-    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", position: "relative" }}>
-      <Header s={s} onReview={() => setReview(true)} />
-      <CaptureBar />
-      <div style={{ display: "flex", gap: 6, padding: "10px 18px", flexWrap: "wrap", borderBottom: `1px solid ${T.line}` }}>
-        {tabs.map((t) => (
-          <button key={t} className={"mm-tab" + (tab === t ? " active" : "")} onClick={() => setTab(t)}>{tabLabel(t, TAB_LABELS[t], s)}</button>
-        ))}
-        {dyn.map((d) => (
-          <button key={d.id} className={"mm-tab" + (tabIdStr === d.id ? " active" : "")} onClick={() => setTab(d.id as Tab)}>
-            {d.icon ? `${d.icon} ` : ""}{d.label}
-          </button>
-        ))}
+    <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "196px 1fr", position: "relative" }}>
+      <SideNav s={s} tab={tab} onTab={setTab} onReview={() => setReview(true)} />
+
+      <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
+        <CaptureBar />
+        <div className="scrolly" style={{ flex: 1, minHeight: 0, padding: 18 }}>
+          {widgetsHere.length > 0 && tab !== "customize" && !dynamicCurrent && !mergedHub && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 760, margin: "0 auto 16px" }}>
+              {widgetsHere.map((w) => <WidgetView key={w.id} s={s} tabId={tabIdStr} w={w} />)}
+            </div>
+          )}
+          {tab === "today" && <TodayView s={s} onEdit={openEditor} />}
+          {tab === "ahead" && <GetAheadView s={s} onEdit={openEditor} />}
+          {tab === "calendar" && <CalendarView s={s} onEdit={openEditor} />}
+          {tab === "screens" && <ScreensView s={s} />}
+          {tab === "empire" && <EmpireView s={s} />}
+          {tab === "projects" && <SegmentHub s={s} segments={[{ id: "projects", label: tabLabel("projects", "Projects", s) }, { id: "plans", label: tabLabel("plans", "Plans", s) }]}
+            render={(seg) => seg === "plans" ? <PlansView s={s} /> : <ProjectsView s={s} />} />}
+          {tab === "goals" && <GoalsView s={s} />}
+          {tab === "progress" && <SegmentHub s={s} segments={[{ id: "achievements", label: tabLabel("achievements", "Achievements", s) }, { id: "levels", label: tabLabel("levels", "Levels", s) }, { id: "insights", label: tabLabel("insights", "Insights", s) }]}
+            render={(seg) => seg === "levels" ? <LevelsView s={s} /> : seg === "insights" ? <InsightsView s={s} /> : <AchievementsView s={s} />} />}
+          {tab === "customize" && <CustomizeView s={s} />}
+          {dynamicCurrent && <DynamicTabView s={s} tabId={dynamicCurrent.id} />}
+        </div>
       </div>
-      <div className="scrolly" style={{ flex: 1, minHeight: 0, padding: 18 }}>
-        {/* Widgets dropped onto any built-in tab render here first. */}
-        {widgetsHere.length > 0 && tab !== "customize" && !dynamicCurrent && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 760, margin: "0 auto 16px" }}>
-            {widgetsHere.map((w) => <WidgetView key={w.id} s={s} tabId={tabIdStr} w={w} />)}
-          </div>
-        )}
-        {tab === "today" && <TodayView s={s} onEdit={openEditor} />}
-        {tab === "ahead" && <GetAheadView s={s} onEdit={openEditor} />}
-        {tab === "calendar" && <CalendarView s={s} onEdit={openEditor} />}
-        {tab === "screens" && <ScreensView s={s} />}
-        {tab === "empire" && <EmpireView s={s} />}
-        {tab === "projects" && <ProjectsView s={s} />}
-        {tab === "plans" && <PlansView s={s} />}
-        {tab === "goals" && <GoalsView s={s} />}
-        {tab === "achievements" && <AchievementsView s={s} />}
-        {tab === "insights" && <InsightsView s={s} />}
-        {tab === "levels" && <LevelsView s={s} />}
-        {tab === "customize" && <CustomizeView s={s} />}
-        {dynamicCurrent && <DynamicTabView s={s} tabId={dynamicCurrent.id} />}
-      </div>
+
       {editing && (
         <EventEditor
           s={s}
@@ -127,6 +129,143 @@ export function MoreMeUI() {
       <ReminderToasts s={s} onOpen={openEditor} />
       <RewardToasts s={s} />
     </div>
+  );
+}
+
+// ── merged destination: segmented sub-views sharing one sidebar slot ──────
+// Old tab ids live on as segments, so hiddenTabs / tabLabels / widgets keyed
+// to them keep working. Widgets render per active segment.
+function SegmentHub({ s, segments, render }: {
+  s: State;
+  segments: { id: string; label: string }[];
+  render: (segId: string) => React.ReactNode;
+}) {
+  const visible = segments.filter((x) => !isTabHidden(x.id, s));
+  const list = visible.length ? visible : segments.slice(0, 1);
+  const [seg, setSeg] = useState(list[0].id);
+  const active = list.some((x) => x.id === seg) ? seg : list[0].id;
+  const widgets = s.customization.widgets[active] ?? [];
+  return (
+    <div>
+      {list.length > 1 && (
+        <div className="mm-seg" style={{ marginBottom: 16, display: "inline-flex" }}>
+          {list.map((x) => (
+            <button key={x.id} className={active === x.id ? "on" : ""} onClick={() => setSeg(x.id)}>{x.label}</button>
+          ))}
+        </div>
+      )}
+      {widgets.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 760, margin: "0 auto 16px" }}>
+          {widgets.map((w) => <WidgetView key={w.id} s={s} tabId={active} w={w} />)}
+        </div>
+      )}
+      {render(active)}
+    </div>
+  );
+}
+
+// ── sidebar: identity, grouped nav, progress, controls ────────────────────
+function SideNav({ s, tab, onTab, onReview }: { s: State; tab: Tab; onTab: (t: Tab) => void; onReview: () => void }) {
+  const lv = levelInfo(s);
+  const { current } = streakInfo(s);
+  const tx = xpForDate(today(), s);
+  const pct = lv.isMax ? 100 : Math.round((lv.into / lv.span) * 100);
+  const status = gradeStatus(s);
+  const chipColor =
+    status.kind === "summer"  ? "#FFD23E" :
+    status.kind === "alumnus" ? "#A855F7" : T.mint;
+  const chipText =
+    status.kind === "summer"  ? "Summer" :
+    status.kind === "alumnus" ? "Alumnus" : "In school";
+  const dyn = s.customization.dynamicTabs;
+
+  const item = (id: string, glyph: string, label: string) => {
+    const active = tab === id;
+    return (
+      <button
+        key={id}
+        onClick={() => onTab(id as Tab)}
+        style={{
+          display: "flex", alignItems: "center", gap: 9, width: "100%",
+          padding: "7px 10px", borderRadius: 8, border: "none", cursor: "pointer",
+          background: active ? T.mint + "1a" : "transparent",
+          borderLeft: `2px solid ${active ? T.mint : "transparent"}`,
+          color: active ? T.ink : T.inkSoft,
+          font: "inherit", fontSize: 13, fontWeight: active ? 600 : 400, textAlign: "left",
+          transition: "background .15s, color .15s",
+        }}
+      >
+        <span style={{ width: 14, textAlign: "center", color: active ? T.mint : T.inkTiny, fontSize: 12 }}>{glyph}</span>
+        {label}
+      </button>
+    );
+  };
+
+  return (
+    <aside style={{ display: "flex", flexDirection: "column", minHeight: 0, background: T.elev, borderRight: `1px solid ${T.line}` }}>
+      {/* identity */}
+      <div style={{ padding: "14px 14px 12px", borderBottom: `1px solid ${T.line}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <MoreMeMark size={30} />
+          <div className="mm-h1" style={{ fontSize: 20, lineHeight: 1 }}>MoreMe</div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+          <span className="mm-pill" style={{ background: chipColor + "22", color: chipColor, border: `1px solid ${chipColor}55` }}>{chipText}</span>
+          <span style={{ fontSize: 10, color: T.inkTiny }}>{gradeLabel(s).split(" · ")[0]}</span>
+        </div>
+      </div>
+
+      {/* nav */}
+      <div className="scrolly" style={{ flex: 1, minHeight: 0, padding: "10px 8px", display: "flex", flexDirection: "column", gap: 2 }}>
+        {NAV_GROUPS.map((g) => {
+          const items = g.items.filter((x) => !isTabHidden(x.id, s));
+          if (!items.length) return null;
+          return (
+            <div key={g.label} style={{ marginBottom: 8 }}>
+              <div className="condensed" style={{ fontSize: 10, color: T.inkTiny, letterSpacing: ".18em", padding: "2px 10px 4px" }}>{g.label}</div>
+              {items.map((x) => item(x.id, x.glyph, tabLabel(x.id, TAB_LABELS[x.id], s)))}
+            </div>
+          );
+        })}
+        {dyn.length > 0 && (
+          <div style={{ marginBottom: 8 }}>
+            <div className="condensed" style={{ fontSize: 10, color: T.inkTiny, letterSpacing: ".18em", padding: "2px 10px 4px" }}>Yours</div>
+            {dyn.map((d) => item(d.id, d.icon || "◇", d.label))}
+          </div>
+        )}
+      </div>
+
+      {/* footer: progress + controls */}
+      <div style={{ padding: "10px 12px 12px", borderTop: `1px solid ${T.line}`, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 11, marginBottom: 4 }}>
+            <b style={{ color: T.mint }}>Lv {lv.level} · {rankFor(lv.level, s)}</b>
+            <span style={{ color: T.inkTiny }}>{pct}%</span>
+          </div>
+          <div className="mm-progress" style={{ height: 8 }}><div className="mm-progress-fill" style={{ width: pct + "%" }} /></div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: T.inkTiny, marginTop: 4 }}>
+            <span>Streak {current}d</span>
+            <span>{tx.earned}/{tx.possible} XP today</span>
+          </div>
+        </div>
+        <button className="mm-btn" style={{ width: "100%", padding: "6px 10px", fontSize: 11 }} onClick={onReview}>Weekly Review</button>
+        {item("customize", "❖", tabLabel("customize", "Customize", s))}
+        <SyncPip />
+      </div>
+    </aside>
+  );
+}
+
+// The MoreMe mark — sun + peaks + barbell, same geometry as the app icon.
+function MoreMeMark({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 68" aria-label="MoreMe">
+      <circle cx="32" cy="10" r="4" fill={T.cool} />
+      <path d="M6 52 L20 24 L32 42 L44 24 L58 52" fill="none" stroke={T.ink} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M22 58 L42 58" fill="none" stroke={T.mint} strokeWidth="3" strokeLinecap="round" />
+      <circle cx="20" cy="58" r="3" fill={T.mint} />
+      <circle cx="44" cy="58" r="3" fill={T.mint} />
+    </svg>
   );
 }
 
@@ -284,45 +423,6 @@ function RewardToasts({ s }: { s: State }) {
   );
 }
 
-// ── header: level bar + streak + today XP ─────────────────────────────────
-function Header({ s, onReview }: { s: State; onReview: () => void }) {
-  const lv = levelInfo(s);
-  const { current } = streakInfo(s);
-  const tx = xpForDate(today(), s);
-  const pct = lv.isMax ? 100 : Math.round((lv.into / lv.span) * 100);
-  const status = gradeStatus(s);
-  const chipColor =
-    status.kind === "summer"  ? "#FFD23E" :
-    status.kind === "alumnus" ? "#A855F7" : T.mint;
-  const chipText =
-    status.kind === "summer"  ? "Summer" :
-    status.kind === "alumnus" ? "Alumnus" : "In school";
-  return (
-    <div style={{ padding: "16px 18px 12px", borderBottom: `1px solid ${T.line}`, display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
-      <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div className="mm-h1" style={{ fontSize: 26, lineHeight: 1 }}>MoreMe</div>
-          <span className="mm-pill" style={{ background: chipColor + "22", color: chipColor, border: `1px solid ${chipColor}55` }}>{chipText}</span>
-        </div>
-        <div style={{ fontSize: 11, color: T.inkTiny, letterSpacing: ".08em", textTransform: "uppercase", marginTop: 3 }}>
-          Mount Vernon · {s.school.path} · {gradeLabel(s)} · {schoolYearLabel(s)}
-        </div>
-      </div>
-      <div style={{ flex: 1, minWidth: 240 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
-          <b style={{ color: T.mint }}>Level {lv.level} · {rankFor(lv.level, s)}{lv.isMax ? " · MAX" : ""}</b>
-          <span style={{ color: T.inkTiny }}>{lv.total.toLocaleString()} XP{lv.isMax ? "" : ` · ${Math.max(0, lv.nextAt - lv.total).toLocaleString()} to L${lv.level + 1} (${rankFor(lv.level + 1, s)})`}</span>
-        </div>
-        <div className="mm-progress"><div className="mm-progress-fill" style={{ width: pct + "%" }} /><div className="mm-progress-text">{pct}%</div></div>
-      </div>
-      <Stat label="Streak" value={`${current}d`} />
-      <Stat label="Today" value={`${tx.earned}/${tx.possible} XP`} />
-      <SyncPip />
-      <button className="mm-btn" onClick={onReview} title="Run your weekly review">Weekly Review</button>
-    </div>
-  );
-}
-
 function SyncPip() {
   const [s, setS] = useState<{ status: SyncStatus; error: string; at: number | null }>({ status: "off", error: "", at: null });
   useEffect(() => subscribeSync(setS), []);
@@ -345,15 +445,6 @@ function SyncPip() {
     </button>
   );
 }
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ textAlign: "center", minWidth: 64 }}>
-      <div style={{ fontSize: 18, fontWeight: 700, color: T.mint }}>{value}</div>
-      <div style={{ fontSize: 10, color: T.inkTiny, letterSpacing: ".1em", textTransform: "uppercase" }}>{label}</div>
-    </div>
-  );
-}
-
 // ── shared: one event row with a complete checkbox ────────────────────────
 function EventRow({ e, date, s, onEdit }: { e: CalEvent; date: string; s: State; onEdit: (e: CalEvent) => void }) {
   const meta = CATEGORY_META[e.category];
@@ -533,7 +624,7 @@ function DistractionAdder() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mm-card" style={{ padding: 16 }}>
-      <div style={{ fontSize: 11, letterSpacing: ".1em", textTransform: "uppercase", color: T.inkTiny, marginBottom: 10 }}>{title}</div>
+      <div className="condensed" style={{ fontSize: 12, letterSpacing: ".14em", color: T.inkTiny, marginBottom: 10 }}>{title}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{children}</div>
     </div>
   );

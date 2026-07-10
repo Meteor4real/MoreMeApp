@@ -2,8 +2,12 @@
 // add your own achievements (claim them manually for XP), and define a
 // custom theme palette. Everything persists with the rest of state.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { T, setTheme, refreshTheme, currentThemeName, PALETTES, THEME_META, type ThemeName, type Palette } from "./styles";
+import {
+  getBridgeInfo, initAiMode, regenBridgeToken, setAiMode,
+  type AiBridgeInfo, type AiMode,
+} from "../services/aiMode";
 import { MAX_LEVEL, RANK_NAMES, WIDGET_KINDS } from "./types";
 import type { CustomAchievement, State, Widget } from "./types";
 import {
@@ -44,10 +48,84 @@ export function CustomizeView({ s }: { s: State }) {
       <CustomAchievementsCard s={s} />
       <QuotesCard s={s} />
       <CustomThemeCard s={s} />
+      <AiSwitchCard />
       <div style={{ fontSize: 11, color: T.inkTiny, fontStyle: "italic", padding: "6px 0 20px" }}>
         Every override is saved instantly. Reset any field to put the default back.
       </div>
     </div>
+  );
+}
+
+// ── AI master switch ───────────────────────────────────────────────────
+// Built-in: the bundled local model runs NT5 generation. External: every
+// built-in generator goes quiet and a localhost bridge (127.0.0.1, bearer
+// token) lets an outside agent — Hermes — take the role through
+// window.moremeAgent / POST /agent.
+function AiSwitchCard() {
+  const [info, setInfo] = useState<AiBridgeInfo | null>(getBridgeInfo());
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    void initAiMode().then(() => setInfo(getBridgeInfo()));
+  }, []);
+
+  async function flip(mode: AiMode) {
+    setBusy(true);
+    const r = await setAiMode(mode);
+    if (r) setInfo(r);
+    setBusy(false);
+  }
+  async function regen() {
+    setBusy(true);
+    const r = await regenBridgeToken();
+    if (r) setInfo(r);
+    setBusy(false);
+  }
+  function copyToken() {
+    if (!info) return;
+    void navigator.clipboard.writeText(info.token).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    });
+  }
+
+  const external = info?.mode === "external";
+  return (
+    <Section
+      title="AI"
+      sub="Who runs the anchors. Built-in uses the bundled on-device model. External turns the built-in AI off completely and opens a local bridge so your own agent (Hermes) takes the role — writing NT5 stories, driving tabs and widgets, all of it."
+    >
+      <div className="mm-seg" style={{ alignSelf: "flex-start" }}>
+        <button className={!external ? "on" : ""} disabled={busy} onClick={() => void flip("builtin")}>Built-in AI</button>
+        <button className={external ? "on" : ""} disabled={busy} onClick={() => void flip("external")}>External agent</button>
+      </div>
+
+      {external && info && (
+        <div style={{ padding: 12, background: T.sunk, border: `1px solid ${T.mint}55`, borderRadius: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: info.listening ? T.mint : T.warn, flex: "none" }} />
+            <b>{info.listening ? "Bridge listening" : "Bridge starting…"}</b>
+            <span style={{ color: T.inkSoft, fontFamily: "ui-monospace, monospace" }}>http://127.0.0.1:{info.port}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 11, color: T.inkTiny, letterSpacing: ".06em", textTransform: "uppercase", flex: "none" }}>Token</span>
+            <code style={{ flex: 1, minWidth: 0, fontSize: 11, fontFamily: "ui-monospace, monospace", color: T.inkSoft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", background: T.bg, padding: "5px 8px", borderRadius: 6, border: `1px solid ${T.line}` }}>{info.token}</code>
+            <button className="mm-btn" style={{ padding: "4px 10px" }} onClick={copyToken}>{copied ? "Copied" : "Copy"}</button>
+            <button className="mm-btn" style={{ padding: "4px 10px" }} disabled={busy} onClick={() => void regen()} title="Invalidate the old token and mint a new one">Regenerate</button>
+          </div>
+          <div style={{ fontSize: 11, color: T.inkSoft, lineHeight: 1.6 }}>
+            Your agent calls <code style={{ fontFamily: "ui-monospace, monospace" }}>POST /agent</code> with{" "}
+            <code style={{ fontFamily: "ui-monospace, monospace" }}>{"Authorization: Bearer <token>"}</code> and a body like{" "}
+            <code style={{ fontFamily: "ui-monospace, monospace" }}>{"{ \"path\": \"wire.file\", \"args\": [{ \"title\": \"…\", \"body\": \"…\", \"kind\": \"article\" }] }"}</code>.
+            Callable roots: state · tabs · widgets · ranks · achievements · theme · quotes · wire.
+            Localhost only — reach it remotely through your own SSH tunnel or tailnet.
+          </div>
+          <div style={{ fontSize: 11, color: T.inkTiny }}>
+            While external: no built-in generation runs, the local model isn't downloaded, and real headlines file as honest snippets until your agent rewrites them.
+          </div>
+        </div>
+      )}
+    </Section>
   );
 }
 

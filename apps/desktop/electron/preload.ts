@@ -94,6 +94,27 @@ const api = {
   agentRun: (cmd: string, prompt: string): Promise<{ ok: boolean; text?: string; error?: string }> =>
     ipcRenderer.invoke("agent:run", cmd, prompt),
 
+  // AI master switch + external-agent bridge. "builtin" = the bundled local
+  // model runs NT5. "external" = built-in generation is disabled and a
+  // localhost bridge lets an outside agent (Hermes) drive the app instead.
+  ai: {
+    get: (): Promise<{ mode: "builtin" | "external"; port: number; token: string; listening: boolean }> =>
+      ipcRenderer.invoke("ai:get"),
+    set: (mode: "builtin" | "external"): Promise<{ mode: "builtin" | "external"; port: number; token: string; listening: boolean }> =>
+      ipcRenderer.invoke("ai:set", mode),
+    regenToken: (): Promise<{ mode: "builtin" | "external"; port: number; token: string; listening: boolean }> =>
+      ipcRenderer.invoke("ai:regenToken"),
+  },
+  bridge: {
+    onInvoke: (cb: (msg: { id: string; path: string; args: unknown[] }) => void): (() => void) => {
+      const fn = (_e: unknown, msg: { id: string; path: string; args: unknown[] }) => cb(msg);
+      ipcRenderer.on("bridge:invoke", fn as (e: unknown, m: unknown) => void);
+      return () => ipcRenderer.removeListener("bridge:invoke", fn as (e: unknown, m: unknown) => void);
+    },
+    result: (msg: { id: string; ok: boolean; result?: unknown; error?: string }) =>
+      ipcRenderer.send("bridge:result", msg),
+  },
+
   bg: {
     get: (): Promise<{ minimizeToTray: boolean; runOnStartup: boolean }> => ipcRenderer.invoke("bg:get"),
     set: (p: Partial<{ minimizeToTray: boolean; runOnStartup: boolean }>): Promise<{ minimizeToTray: boolean; runOnStartup: boolean }> => ipcRenderer.invoke("bg:set", p),

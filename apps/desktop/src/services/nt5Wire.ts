@@ -8,6 +8,7 @@
 // needs a background service / tray — not in this slice.
 
 import { loadPrefs, subscribePrefs } from "../uiPrefs";
+import { getAiMode } from "./aiMode";
 import { getOriginPulse } from "./originRealms";
 import { ANCHORS as LORE_ANCHORS, loreContextBlock, STORYLINES } from "./nt5Lore";
 import {
@@ -270,6 +271,12 @@ async function generateOne(kind: ArticleKind, recentTitles: string[]): Promise<{
 }
 
 export async function runWireOnce(count = 3): Promise<{ ok: boolean; added: WireArticle[]; error?: string }> {
+  // AI master switch: with an external agent in the chair, the bundled
+  // model files NOTHING — the external agent writes anchor content through
+  // fileExternalArticle (via window.moremeAgent.wire or the bridge).
+  if (getAiMode() === "external") {
+    return { ok: false, added: [], error: "Built-in AI is off — an external agent runs the anchors (AI switch in Customize)." };
+  }
   const existing = readAll();
   const existingTitles = new Set(existing.map((a) => a.title.toLowerCase()));
   const added: WireArticle[] = [];
@@ -338,10 +345,73 @@ async function tryRun() {
   // (services/nt5Desk). This timer just adds one in-universe Nova Terris
   // flavor item when the local model is ready, so the wire has some setting
   // colour on top of the real news the desk files.
+  if (getAiMode() === "external") return; // external agent owns generation
   try {
     const s = await window.hub.llm.status();
     if (s.ready) await runWireOnce(1).catch(() => undefined);
   } catch { /* ignore — wire stays quiet */ }
+}
+
+// ---------------------------------------------------------------------------
+// External filing — the write path for an outside agent (Hermes) when the
+// AI master switch is set to "external". Exposed on window.moremeAgent.wire
+// and, through the localhost bridge, to processes outside the app entirely.
+// Validates + defaults everything so a malformed call can't corrupt the wire.
+// ---------------------------------------------------------------------------
+
+export type ExternalArticleInput = {
+  title: string;
+  body: string;
+  kind?: ArticleKind;
+  category?: string;
+  anchor_id?: string;
+  image_url?: string;
+  source_urls?: string[];
+  source_name?: string;
+  topic_label?: string;
+};
+
+const KINDS: ArticleKind[] = ["brief", "article", "broadcast", "blog", "social", "ticker"];
+
+export function fileExternalArticle(input: ExternalArticleInput): { ok: boolean; id?: string; error?: string } {
+  const title = String(input?.title ?? "").trim();
+  const body = String(input?.body ?? "").trim();
+  if (!title || !body) return { ok: false, error: "title and body are required" };
+  const kind: ArticleKind = KINDS.includes(input.kind as ArticleKind) ? (input.kind as ArticleKind) : "brief";
+  const anchor = typeof input.anchor_id === "string" && input.anchor_id in ANCHORS ? input.anchor_id : "voss";
+  const existing = readAll();
+  if (existing.some((a) => a.title.toLowerCase() === title.toLowerCase())) {
+    return { ok: false, error: "duplicate title already on the wire" };
+  }
+  const now = new Date();
+  const id = `ext-${Date.now()}-${slugify(title).slice(0, 12)}`;
+  const article: WireArticle = {
+    id,
+    slug: slugify(title) || id,
+    title: title.slice(0, 200),
+    body: body.slice(0, 12_000),
+    kind,
+    image_url: typeof input.image_url === "string" && /^https?:\/\//i.test(input.image_url) ? input.image_url : undefined,
+    category: typeof input.category === "string" && input.category ? input.category : "latest",
+    anchor_id: anchor,
+    author_display: ANCHORS[anchor] || ANCHORS.voss,
+    published_at: now.toISOString(),
+    created_at: now.toISOString(),
+    voice_audio_url: null,
+    is_broadcast: false,
+    broadcast_segment: null,
+    source_urls: Array.isArray(input.source_urls) ? input.source_urls.filter((u) => typeof u === "string" && /^https?:\/\//i.test(u)).slice(0, 4) : [],
+    source_name: typeof input.source_name === "string" ? input.source_name.slice(0, 80) : undefined,
+    topic_label: typeof input.topic_label === "string" ? input.topic_label.slice(0, 80) : undefined,
+    topics: [],
+  };
+  const merged = [article, ...existing].slice(0, 120);
+  writeAll(merged);
+  subs.forEach((fn) => fn(merged));
+  document.querySelectorAll("iframe").forEach((f) => {
+    try { f.contentWindow?.postMessage({ type: "nt5-add-articles", articles: [article] }, "*"); } catch { /* ignore */ }
+  });
+  return { ok: true, id };
 }
 
 // ---------------------------------------------------------------------------
@@ -489,7 +559,14 @@ async function fileRealItem(topic: Topic, hit: TopicHit): Promise<WireArticle | 
   } catch { /* headline+snippet only */ }
   if ((kind === "article" || kind === "blog") && sourceText.length < 400) { kind = "brief"; sourceText = ""; }
 
-  try {
+  // External-agent mode: no built-in re-voicing. Real stories file AS-IS —
+  // the honest headline + snippet (or extracted source text for long
+  // shapes). The external agent can rewrite them through the wire API.
+  if (getAiMode() === "external") {
+    if (sourceText) body = sourceText;
+    else if (kind === "blog" || kind === "social") kind = "brief"; // opinion shapes need a writer
+
+  } else try {
     const s = await window.hub.llm.status();
     if (s.ready) {
       const a = LORE_ANCHORS[anchor] ?? LORE_ANCHORS.voss;

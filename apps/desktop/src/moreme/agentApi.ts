@@ -10,14 +10,19 @@
 //   moremeAgent.theme.set("sports");
 
 import {
-  addCustomAchievement, addDynamicTab, addWidget, blankWidget,
+  addCustomAchievement, addDynamicTab, addQuote, addWidget, blankWidget,
   claimCustomAchievement, clearCustomTheme, loadState, moveDynamicTab,
-  moveWidget, removeCustomAchievement, removeDynamicTab, removeWidget,
+  moveWidget, removeCustomAchievement, removeDynamicTab, removeQuote, removeWidget,
   resetAllRanks, setCustomTheme, setRank, setTabLabel, setUseCustomTheme,
   subscribeState, toggleTabHidden, unclaimCustomAchievement,
   updateCustomAchievement, updateDynamicTab, updateWidget,
 } from "./store";
 import { setTheme, refreshTheme, type ThemeName } from "./styles";
+import {
+  clearWireArticles, fileExternalArticle, getWireArticles, runRealWorldOnce,
+  type ExternalArticleInput, type WireArticle,
+} from "../services/nt5Wire";
+import { loadTopics } from "../services/nt5Topics";
 import type { CustomAchievement, CustomTheme, State, Widget } from "./types";
 
 function uid(p: string): string { return p + Math.random().toString(36).slice(2, 9); }
@@ -90,9 +95,30 @@ export const moremeAgent = {
     set(name: ThemeName) { setTheme(name); },
     /** Save a custom palette and switch to it. */
     setCustom(palette: CustomTheme) { setCustomTheme(palette); refreshTheme(); },
-    /** Clear the saved custom palette and revert to DP. */
+    /** Clear the saved custom palette and revert to the default. */
     clearCustom() { clearCustomTheme(); refreshTheme(); },
     useCustom(on: boolean) { setUseCustomTheme(on); refreshTheme(); },
+  },
+
+  quotes: {
+    add(text: string, by: string) { addQuote(text, by); },
+    remove(id: string) { removeQuote(id); },
+  },
+
+  // NT5 wire — how an external agent RUNS the news network when the AI
+  // master switch is "external": read the desk, pull real headlines, and
+  // file anchor-written articles of any shape.
+  wire: {
+    /** Current wire articles, newest first. */
+    articles(): WireArticle[] { return getWireArticles(); },
+    /** The user's topic desk (what they've asked to be covered). */
+    topics() { return loadTopics(); },
+    /** Pull fresh real headlines for every enabled topic (no model involved in external mode — files honest snippets). */
+    pullReal() { return runRealWorldOnce(3); },
+    /** File one article. kind: brief|article|broadcast|blog|social|ticker. */
+    file(a: ExternalArticleInput) { return fileExternalArticle(a); },
+    /** Wipe the wire. */
+    clear() { clearWireArticles(); },
   },
 };
 
@@ -100,7 +126,42 @@ declare global {
   interface Window { moremeAgent: typeof moremeAgent }
 }
 
-/** Install the agent API on `window` so external scripts can find it. */
+// ── bridge dispatcher ──────────────────────────────────────────────────
+// The localhost bridge (electron/bridge.ts) forwards {path, args} calls
+// here. Only these roots are callable from outside — anything else is
+// refused. `subscribe` is deliberately absent (no callbacks over HTTP).
+const BRIDGE_ROOTS = new Set(["state", "tabs", "widgets", "ranks", "achievements", "theme", "quotes", "wire"]);
+
+function dispatchBridgeCall(pathStr: string, args: unknown[]): unknown {
+  const parts = pathStr.split(".").filter(Boolean);
+  if (!parts.length || !BRIDGE_ROOTS.has(parts[0])) {
+    throw new Error(`path not allowed: ${pathStr}`);
+  }
+  let node: unknown = moremeAgent;
+  for (let i = 0; i < parts.length; i++) {
+    node = (node as Record<string, unknown>)[parts[i]];
+    if (node === undefined) throw new Error(`unknown path: ${pathStr}`);
+  }
+  if (typeof node !== "function") throw new Error(`not callable: ${pathStr}`);
+  // Rebind to the parent namespace so `this` inside the API keeps working.
+  let parent: unknown = moremeAgent;
+  for (let i = 0; i < parts.length - 1; i++) parent = (parent as Record<string, unknown>)[parts[i]];
+  return (node as (...a: unknown[]) => unknown).apply(parent, args);
+}
+
+/** Install the agent API on `window` so external scripts can find it, and
+ * wire up the bridge dispatcher so an external process can call it too. */
 export function installAgentApi() {
-  if (typeof window !== "undefined") window.moremeAgent = moremeAgent;
+  if (typeof window === "undefined") return;
+  window.moremeAgent = moremeAgent;
+  try {
+    window.hub.bridge?.onInvoke(async ({ id, path, args }) => {
+      try {
+        const result = await Promise.resolve(dispatchBridgeCall(path, args));
+        window.hub.bridge.result({ id, ok: true, result });
+      } catch (e) {
+        window.hub.bridge.result({ id, ok: false, error: e instanceof Error ? e.message : String(e) });
+      }
+    });
+  } catch { /* bridge not available (web build) */ }
 }
