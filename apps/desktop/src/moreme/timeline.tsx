@@ -9,6 +9,7 @@ import type { CalEvent, State } from "./types";
 import {
   blankEvent, conflictIds, eventsOnDate, fmtTime, iso, isDone, toMin, today, toggleDone,
 } from "./store";
+import { sfxSuccess } from "../services/sfx";
 
 const DAY_START = 6 * 60;     // 06:00
 const DAY_END   = 23 * 60;    // 23:00
@@ -100,7 +101,9 @@ function Column({ date, s, onEdit }: { date: string; s: State; onEdit: (e: CalEv
             >
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 <button
-                  onClick={(ev) => { ev.stopPropagation(); toggleDone(e.id, date); }}
+                  className="mm-donebtn"
+                  data-done={done}
+                  onClick={(ev) => { ev.stopPropagation(); if (!done) sfxSuccess(); toggleDone(e.id, date); }}
                   title={done ? "Mark not done" : "Complete (+XP)"}
                   style={{ width: 14, height: 14, flex: "none", borderRadius: 3, border: `1.5px solid ${meta.color}`, background: done ? meta.color : "transparent", color: T.bg, cursor: "pointer", fontSize: 10, lineHeight: 1, padding: 0 }}
                 >{done ? "✓" : ""}</button>

@@ -5,6 +5,7 @@ import {
   type Weather, type Quote, type SpaceData, type Game,
 } from "../../services/nt5Segments";
 import { NT } from "./nt5theme";
+import { sfxAlert } from "../../services/sfx";
 
 // NT5 live data segments — real data, tokenized to the NT5 design system.
 // `compact` stacks the cards vertically for the front page's side column;
@@ -179,6 +180,7 @@ export function BreakingBumper({ title, anchor, onClick }: { title: string; anch
   const tref = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     setShow(true);
+    sfxAlert(); // one soft two-tone when a breaking story lands — never loops
     if (tref.current) clearTimeout(tref.current);
     tref.current = setTimeout(() => setShow(false), 12000);
     return () => { if (tref.current) clearTimeout(tref.current); };

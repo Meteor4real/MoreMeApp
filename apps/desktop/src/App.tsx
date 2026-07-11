@@ -14,6 +14,8 @@ import { startSync, stopSync } from "./moreme/sync";
 import { initTrackingSiren } from "./moreme/tracking";
 import { installAgentApi } from "./moreme/agentApi";
 import { getAiMode, initAiMode } from "./services/aiMode";
+import { MoreMeMark } from "./moreme/ui";
+import { T } from "./moreme/styles";
 import { NT5AmbientTicker } from "./shell/NT5AmbientTicker";
 
 // Three surfaces behind the accounts gate: MoreMe (the product), NT5 News
@@ -56,6 +58,8 @@ export function App() {
   if (!authed) return <Login onDone={() => { setAuthed(true); startSync(); }} />;
 
   return (
+    <>
+    <BootSplash />
     <div className="shell" style={{ display: "flex", flexDirection: "column", height: "100vh", minHeight: 0 }}>
       <header className="hub-topbar">
         <div className="hub-brand mono">MoreMe</div>
@@ -103,6 +107,41 @@ export function App() {
           <HALOS />
         </div>
       </main>
+    </div>
+    </>
+  );
+}
+
+// ── boot moment ─────────────────────────────────────────────────────────
+// The HALOS lesson: entering the app should feel like arriving somewhere.
+// One brief mark-and-wordmark flash per launch — 1s total, fades itself
+// out, click-through to skip, never shown again until the next launch.
+let bootShown = false;
+function BootSplash() {
+  const [phase, setPhase] = useState<"show" | "fade" | "done">(bootShown ? "done" : "show");
+  useEffect(() => {
+    if (phase !== "show") return;
+    bootShown = true;
+    const a = window.setTimeout(() => setPhase("fade"), 700);
+    const b = window.setTimeout(() => setPhase("done"), 1100);
+    return () => { window.clearTimeout(a); window.clearTimeout(b); };
+  }, [phase]);
+  if (phase === "done") return null;
+  return (
+    <div
+      onClick={() => setPhase("done")}
+      style={{
+        position: "fixed", inset: 0, zIndex: 10000, display: "grid", placeItems: "center",
+        background: T.bg, opacity: phase === "fade" ? 0 : 1, transition: "opacity .4s ease",
+        pointerEvents: phase === "fade" ? "none" : "auto",
+      }}
+    >
+      <div style={{ textAlign: "center", animation: "mmBootIn .5s ease-out" }}>
+        <MoreMeMark size={64} />
+        <div className="mm-h1 serif" style={{ fontSize: 30, color: T.ink, marginTop: 10, fontFamily: "Georgia, serif" }}>MoreMe</div>
+        <div style={{ fontSize: 10, letterSpacing: "0.3em", textTransform: "uppercase", color: T.inkTiny, marginTop: 6 }}>more you than yesterday</div>
+      </div>
+      <style>{`@keyframes mmBootIn { from { transform: scale(0.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }`}</style>
     </div>
   );
 }

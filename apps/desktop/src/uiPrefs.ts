@@ -47,6 +47,9 @@ export type UiPrefs = {
   ownerTimezone: string;        // IANA name, defaults to system tz
   ownerBirthday: string;        // ISO date, optional
 
+  // ── Feedback (the HALOS feel layer) ─────────────────────────────────────
+  sfxEnabled: boolean;          // procedural UI sounds on actions + rewards
+
   // ── Appearance ─────────────────────────────────────────────────────────
   reduceMotion: boolean;        // disable shimmer / scanlines / particle anims
   fontSize: "small" | "normal" | "large";
@@ -122,6 +125,7 @@ export const DEFAULT_PREFS: UiPrefs = {
   ownerLocation: "",
   ownerTimezone: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { return ""; } })(),
   ownerBirthday: "",
+  sfxEnabled: true,
   reduceMotion: false,
   fontSize: "normal",
   accentIntensity: "normal",

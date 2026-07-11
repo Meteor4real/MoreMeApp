@@ -178,6 +178,13 @@ export function buildMMStyle(): string {
 @keyframes mmGlow { 0%, 100% { box-shadow: 0 0 24px ${T.mint}11 inset, 0 8px 24px rgba(0,0,0,.35); } 50% { box-shadow: 0 0 30px ${T.mint}22 inset, 0 0 30px ${T.mint}22, 0 8px 24px rgba(0,0,0,.35); } }
 @keyframes mmToastIn { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 .moreme-embed .mm-toast-in { animation: mmToastIn .25s ease-out; }
+/* The HALOS feel layer: controls physically respond to being pressed, and
+   a completed checkbox pops. Guarded by body.reduce-motion. */
+.moreme-embed .mm-btn:active:not(:disabled), .moreme-embed .mm-tab:active, .moreme-embed .mm-action:active { transform: translateY(1px); }
+@keyframes mmPop { 0% { transform: scale(1); } 45% { transform: scale(1.35); } 100% { transform: scale(1); } }
+.moreme-embed .mm-donebtn[data-done="true"] { animation: mmPop .22s ease; }
+body.reduce-motion .moreme-embed .mm-donebtn[data-done="true"] { animation: none; }
+body.reduce-motion .moreme-embed .mm-card-mint { animation: none; }
 .moreme-embed .mm-action { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid ${T.line}; border-radius: 10px; background: ${T.sunk}; transition: border-color .15s, background .15s; width: 100%; text-align: left; }
 .moreme-embed .mm-action:hover:not(:disabled) { border-color: ${T.mint}; }
 .moreme-embed .mm-action.done { opacity: .6; }
