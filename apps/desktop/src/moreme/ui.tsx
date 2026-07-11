@@ -22,6 +22,7 @@ import {
   upsertClass, upsertEvent, upsertPerson, upsertProject, xpForDate,
 } from "./store";
 import { DayView, WeekView, shiftWeek } from "./timeline";
+import { sfxChime, sfxClick, sfxError, sfxNav, sfxSuccess } from "../services/sfx";
 import { GetAheadView } from "./getahead";
 import { EmpireView } from "./empire";
 import { InsightsView } from "./insights";
@@ -184,7 +185,7 @@ function SideNav({ s, tab, onTab, onReview }: { s: State; tab: Tab; onTab: (t: T
     return (
       <button
         key={id}
-        onClick={() => onTab(id as Tab)}
+        onClick={() => { sfxNav(); onTab(id as Tab); }}
         style={{
           display: "flex", alignItems: "center", gap: 9, width: "100%",
           padding: "7px 10px", borderRadius: 8, border: "none", cursor: "pointer",
@@ -257,7 +258,7 @@ function SideNav({ s, tab, onTab, onReview }: { s: State; tab: Tab; onTab: (t: T
 }
 
 // The MoreMe mark — sun + peaks + barbell, same geometry as the app icon.
-function MoreMeMark({ size = 28 }: { size?: number }) {
+export function MoreMeMark({ size = 28 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 68" aria-label="MoreMe">
       <circle cx="32" cy="10" r="4" fill={T.cool} />
@@ -288,7 +289,7 @@ function DynamicTabView({ s, tabId }: { s: State; tabId: string }) {
 // ── GTD quick capture: dump anything from anywhere, triage later ──────────
 function CaptureBar() {
   const [v, setV] = useState("");
-  const fire = () => { if (v.trim()) { captureInbox(v); setV(""); } };
+  const fire = () => { if (v.trim()) { captureInbox(v); sfxClick(); setV(""); } };
   return (
     <div style={{ display: "flex", gap: 8, padding: "8px 18px", borderBottom: `1px solid ${T.line}`, background: T.sunk }}>
       <input
@@ -354,7 +355,7 @@ function ReminderToasts({ s, onOpen }: { s: State; onOpen: (e: CalEvent) => void
               {fmtTime(t.e.start)}{t.e.location ? ` · ${t.e.location}` : ""}
             </div>
             <div style={{ display: "flex", gap: 6 }}>
-              <button className="mm-btn mm-btn-primary" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => { toggleDone(t.e.id, t.date); setActive((c) => c.filter((x) => x.key !== t.key)); }}>Done +{t.e.xp} XP</button>
+              <button className="mm-btn mm-btn-primary" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => { toggleDone(t.e.id, t.date); sfxSuccess(); setActive((c) => c.filter((x) => x.key !== t.key)); }}>Done +{t.e.xp} XP</button>
               <button className="mm-btn" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => { onOpen(t.e); setActive((c) => c.filter((x) => x.key !== t.key)); }}>Open</button>
               <button className="mm-btn" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => setActive((c) => c.filter((x) => x.key !== t.key))}>Dismiss</button>
             </div>
@@ -393,6 +394,7 @@ function RewardToasts({ s }: { s: State }) {
     prevUnlocked.current = unlocked;
     prevLevel.current = level;
     if (fresh.length) {
+      sfxChime(); // the reward moment SOUNDS like one
       setToasts((cur) => [...cur, ...fresh]);
       // Self-dismiss after 6s — a moment, not a chore to close.
       for (const t of fresh) {
@@ -454,7 +456,9 @@ function EventRow({ e, date, s, onEdit }: { e: CalEvent; date: string; s: State;
   return (
     <div className={"mm-action" + (done ? " done" : "") + (conflict ? " mm-conflict" : "")} style={{ cursor: "default" }}>
       <button
-        onClick={() => toggleDone(e.id, date)}
+        className="mm-donebtn"
+        data-done={done}
+        onClick={() => { if (!done) sfxSuccess(); else sfxClick(); toggleDone(e.id, date); }}
         title={done ? "Mark not done" : "Complete (+XP)"}
         style={{ width: 22, height: 22, flex: "none", borderRadius: 6, border: `2px solid ${meta.color}`, background: done ? meta.color : "transparent", color: T.bg, cursor: "pointer", fontSize: 13, lineHeight: 1 }}
       >{done ? "✓" : ""}</button>
@@ -766,8 +770,9 @@ function EventEditor({ s, draft, onClose, onSaved }: { s: State; draft: CalEvent
   if (!e.allDay && e.start && e.end && e.end <= e.start) problems.push("End time must be after the start time.");
 
   function save() {
-    if (problems.length) return;
+    if (problems.length) { sfxError(); return; }
     upsertEvent({ ...e, title: e.title.trim() || CATEGORY_META[e.category].label });
+    sfxSuccess();
     onSaved?.();
     onClose();
   }

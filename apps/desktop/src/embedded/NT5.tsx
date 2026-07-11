@@ -4,6 +4,7 @@ import { NT5Newsroom } from "./nt5/NT5Newsroom";
 import { NT5Broadcast } from "./nt5/NT5Broadcast";
 import { NT5TopicsManager } from "./nt5/NT5TopicsManager";
 import { NT, NT5_SHELL_CSS, glowRed } from "./nt5/nt5theme";
+import { sfxNav } from "../services/sfx";
 import { NT5_TAGLINE } from "../services/nt5Lore";
 
 // NT5 / S.P.A.C.E. News — organized like HALOS: a slim sidebar with the
@@ -57,7 +58,7 @@ export function NT5() {
             return (
               <button
                 key={n.id}
-                onClick={() => setTab(n.id)}
+                onClick={() => { sfxNav(); setTab(n.id); }}
                 style={{
                   display: "flex", alignItems: "center", gap: 8,
                   padding: "9px 12px", borderRadius: 6, border: "none", cursor: "pointer",
@@ -80,7 +81,7 @@ export function NT5() {
         {/* footer — operator access, demoted on purpose */}
         <div style={{ padding: "10px 14px", borderTop: `1px solid ${NT.border}` }}>
           <button
-            onClick={() => setTab("backstage")}
+            onClick={() => { sfxNav(); setTab("backstage"); }}
             style={{
               background: "transparent", border: "none", cursor: "pointer", padding: 0,
               fontFamily: NT.fontM, fontSize: 9.5, letterSpacing: "0.14em", textTransform: "uppercase",

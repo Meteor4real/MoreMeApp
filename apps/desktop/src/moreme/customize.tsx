@@ -8,6 +8,8 @@ import {
   getBridgeInfo, initAiMode, regenBridgeToken, setAiMode,
   type AiBridgeInfo, type AiMode,
 } from "../services/aiMode";
+import { loadPrefs, savePrefs } from "../uiPrefs";
+import { sfxSuccess } from "../services/sfx";
 import { MAX_LEVEL, RANK_NAMES, WIDGET_KINDS } from "./types";
 import type { CustomAchievement, State, Widget } from "./types";
 import {
@@ -48,11 +50,26 @@ export function CustomizeView({ s }: { s: State }) {
       <CustomAchievementsCard s={s} />
       <QuotesCard s={s} />
       <CustomThemeCard s={s} />
+      <FeedbackCard />
       <AiSwitchCard />
       <div style={{ fontSize: 11, color: T.inkTiny, fontStyle: "italic", padding: "6px 0 20px" }}>
         Every override is saved instantly. Reset any field to put the default back.
       </div>
     </div>
+  );
+}
+
+// ── feedback: the feel layer ───────────────────────────────────────────
+function FeedbackCard() {
+  const [prefs, setPrefsState] = useState(loadPrefs());
+  const toggle = (on: boolean) => { setPrefsState(savePrefs({ sfxEnabled: on })); if (on) sfxSuccess(); };
+  return (
+    <Section title="Feedback" sub="Procedural interface sounds — a tick on press, a rising pair when something's done, a chime on unlocks. Synthesized on the fly, nothing ambient, nothing on a loop.">
+      <div className="mm-seg" style={{ alignSelf: "flex-start" }}>
+        <button className={prefs.sfxEnabled ? "on" : ""} onClick={() => toggle(true)}>Sounds on</button>
+        <button className={!prefs.sfxEnabled ? "on" : ""} onClick={() => toggle(false)}>Off</button>
+      </div>
+    </Section>
   );
 }
 
