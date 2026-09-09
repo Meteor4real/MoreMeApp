@@ -9,7 +9,7 @@ import type {
   ScreenSession, ScreenSettings, State, StatSource, UrgeLog, UrgeResolution,
   Venture, VentureStatus, Widget,
 } from "./types";
-import { DEFAULT_XP_BY_CATEGORY, FITNESS_KIND_LABEL, MAX_LEVEL, RANK_NAMES, cumulativeXp } from "./types";
+import { CATEGORY_META, DEFAULT_XP_BY_CATEGORY, FITNESS_KIND_LABEL, MAX_LEVEL, RANK_NAMES, cumulativeXp } from "./types";
 
 const KEY = "nchub.moreme.v12";
 
@@ -361,27 +361,50 @@ export function removeSchoolBlock(modId: string, weekday: number, blockId: strin
 // to a mod's blocks (see the mutators above) — a Mod's calendar presence is
 // a computed function of its data, not a separate manual "publish" step.
 const schoolModEventPrefix = (modId: string) => `schoolmod-${modId}-`;
+// A period's own label is usually "Period N · Subject" — strip the "Period
+// N ·" prefix to get the real subject name for auto-matching a Class, the
+// same idea as Canvas's bracketed-course-name matching. Only used as a
+// fallback when the block isn't already linked to a Class by hand.
+function subjectFromBlockLabel(label: string): string {
+  return label.replace(/^Period\s+\d+\s*·\s*/i, "").trim();
+}
 export function generateSchoolModEvents(modId: string) {
   updateState((s) => {
     const m = s.schoolMods.find((x) => x.id === modId);
     if (!m) return s;
     const prefix = schoolModEventPrefix(modId);
     const kept = s.events.filter((e) => !e.id.startsWith(prefix));
+    let classes = s.classes;
+    const classByName = new Map(classes.map((c) => [c.name.toLowerCase(), c]));
     const generated: CalEvent[] = [];
     for (const weekday of WEEKDAY_ORDER) {
       for (const b of m.days[weekday] ?? []) {
+        let linkedClassId = b.kind === "period" ? b.linkedClassId : undefined;
+        if (b.kind === "period" && !linkedClassId) {
+          const subject = subjectFromBlockLabel(b.label);
+          if (subject) {
+            const key = subject.toLowerCase();
+            let cls = classByName.get(key);
+            if (!cls) {
+              cls = { id: uid(), name: subject, teacher: b.teacher, room: b.room };
+              classes = [...classes, cls];
+              classByName.set(key, cls);
+            }
+            linkedClassId = cls.id;
+          }
+        }
         generated.push({
           id: `${prefix}${weekday}-${b.id}`,
           title: b.label, category: b.kind === "lunch" ? "personal" : "class",
           date: m.startDate, until: m.endDate, allDay: false, start: b.start, end: b.end,
-          location: b.room, linkedClassId: b.kind === "period" ? b.linkedClassId : undefined,
+          location: b.room, linkedClassId,
           checklist: [], priority: "normal", visibility: "visible",
           recurrence: { kind: "weekly", days: [weekday] }, reminders: [],
           xp: b.kind === "period" ? 5 : 0, status: "planned", createdAt: Date.now(),
         });
       }
     }
-    return { ...s, events: [...kept, ...generated] };
+    return { ...s, events: [...kept, ...generated], classes };
   });
 }
 export function removeSchoolModEvents(modId: string) {
@@ -592,8 +615,36 @@ export function eventsOnDate(date: string, s: State = loadState()): CalEvent[] {
 }
 
 const ck = (id: string, date: string) => `${id}::${date}`;
+// Canvas confirming a real submission counts as done everywhere isDone is
+// used — XP, streaks, Get Ahead %, the strikethrough on the calendar block
+// — same as ticking it off by hand. It's not self-reported; Canvas already
+// verified it actually went in, so there's nothing dishonest about crediting
+// it automatically. The checkbox becomes a no-op once this is true (Canvas's
+// record wins over an accidental un-check).
 export function isDone(e: CalEvent, date: string, s: State = loadState()): boolean {
+  if (e.canvasSubmittedAt) return true;
   return s.completions[ck(e.id, date)] != null;
+}
+
+// ── per-class color coding ──────────────────────────────────────────────
+// Every class gets a distinct, stable color automatically (by its position
+// in your class list) so school items read at a glance instead of every
+// one being the same generic "school work" blue — Class.color overrides it
+// if you'd rather pick your own.
+const CLASS_COLOR_PALETTE = [
+  "#33B5FF", "#FF8A3E", "#A855F7", "#4ADE80", "#FFD23E",
+  "#FF5577", "#22D3EE", "#F97316", "#EC4899", "#8B95A5",
+];
+export function classColor(classId: string | undefined, s: State = loadState()): string | undefined {
+  if (!classId) return undefined;
+  const idx = s.classes.findIndex((c) => c.id === classId);
+  if (idx < 0) return undefined;
+  return s.classes[idx].color || CLASS_COLOR_PALETTE[idx % CLASS_COLOR_PALETTE.length];
+}
+// The color to actually render an event with — its linked class's color
+// when it has one, otherwise the plain category color.
+export function eventColor(e: CalEvent, s: State = loadState()): string {
+  return classColor(e.linkedClassId, s) ?? CATEGORY_META[e.category].color;
 }
 
 export function toggleDone(eventId: string, date: string) {

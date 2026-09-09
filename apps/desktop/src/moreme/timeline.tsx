@@ -7,7 +7,7 @@ import { T } from "./styles";
 import { CATEGORY_META, DAY_TYPE_LABEL } from "./types";
 import type { CalEvent, DayType, State } from "./types";
 import {
-  ROUTINE_TEMPLATES, applyRoutineTemplate, addDays, blankEvent, conflictIds, dayTypeFor, eventsOnDate,
+  ROUTINE_TEMPLATES, applyRoutineTemplate, addDays, blankEvent, conflictIds, dayTypeFor, eventColor, eventsOnDate,
   fmtTime, iso, isDone, routineTemplateApplied, setDayType, toMin, today, toggleDone,
 } from "./store";
 
@@ -90,6 +90,7 @@ function Column({ date, s, onEdit }: { date: string; s: State; onEdit: (e: CalEv
           const p = pos(e);
           if (!p) return null;
           const meta = CATEGORY_META[e.category];
+          const color = eventColor(e, s);
           const done = isDone(e, date, s);
           const conflict = conflicts.has(e.id);
           // What's actually in it, right on the block — no reason a routine
@@ -108,7 +109,7 @@ function Column({ date, s, onEdit }: { date: string; s: State; onEdit: (e: CalEv
               title={tooltip}
               style={{
                 position: "absolute", left: 4, right: 4, top: p.top + 1, height: Math.max(p.height - 2, 18),
-                background: meta.color + "22", borderLeft: `3px solid ${meta.color}`,
+                background: color + "22", borderLeft: `3px solid ${color}`,
                 borderRadius: 5, padding: "3px 6px", cursor: "pointer", overflow: "hidden",
                 outline: conflict ? `1px solid ${T.warn}` : undefined,
                 opacity: done ? 0.5 : 1, textDecoration: done ? "line-through" : "none",
@@ -120,7 +121,7 @@ function Column({ date, s, onEdit }: { date: string; s: State; onEdit: (e: CalEv
                   data-done={done}
                   onClick={(ev) => { ev.stopPropagation(); toggleDone(e.id, date); }}
                   title={done ? "Mark not done" : "Complete (+XP)"}
-                  style={{ width: 14, height: 14, flex: "none", borderRadius: 3, border: `1.5px solid ${meta.color}`, background: done ? meta.color : "transparent", color: T.bg, cursor: "pointer", fontSize: 10, lineHeight: 1, padding: 0 }}
+                  style={{ width: 14, height: 14, flex: "none", borderRadius: 3, border: `1.5px solid ${color}`, background: done ? color : "transparent", color: T.bg, cursor: "pointer", fontSize: 10, lineHeight: 1, padding: 0 }}
                 >{done ? "✓" : ""}</button>
                 <b style={{ fontSize: 11, color: T.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {e.visibility === "hidden" ? "• " : ""}{e.title || meta.label}
@@ -142,6 +143,7 @@ function Column({ date, s, onEdit }: { date: string; s: State; onEdit: (e: CalEv
         {allDay.map((e, i) => {
           const p = allDaySlot(i);
           const meta = CATEGORY_META[e.category];
+          const color = eventColor(e, s);
           const done = isDone(e, date, s);
           return (
             <div
@@ -150,7 +152,7 @@ function Column({ date, s, onEdit }: { date: string; s: State; onEdit: (e: CalEv
               title={`${e.title || meta.label} — due today, no set time${e.location ? "\n" + e.location : ""}`}
               style={{
                 position: "absolute", left: 4, right: 4, top: p.top, height: p.height,
-                background: meta.color + "33", borderLeft: `3px solid ${meta.color}`,
+                background: color + "33", borderLeft: `3px solid ${color}`,
                 borderRadius: 5, padding: "2px 6px", cursor: "pointer", overflow: "hidden",
                 display: "flex", alignItems: "center", gap: 4,
                 opacity: done ? 0.5 : 1, textDecoration: done ? "line-through" : "none",
@@ -161,7 +163,7 @@ function Column({ date, s, onEdit }: { date: string; s: State; onEdit: (e: CalEv
                 data-done={done}
                 onClick={(ev) => { ev.stopPropagation(); toggleDone(e.id, date); }}
                 title={done ? "Mark not done" : "Complete (+XP)"}
-                style={{ width: 12, height: 12, flex: "none", borderRadius: 3, border: `1.5px solid ${meta.color}`, background: done ? meta.color : "transparent", color: T.bg, cursor: "pointer", fontSize: 9, lineHeight: 1, padding: 0 }}
+                style={{ width: 12, height: 12, flex: "none", borderRadius: 3, border: `1.5px solid ${color}`, background: done ? color : "transparent", color: T.bg, cursor: "pointer", fontSize: 9, lineHeight: 1, padding: 0 }}
               >{done ? "✓" : ""}</button>
               <b style={{ fontSize: 10, color: T.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {e.visibility === "hidden" ? "• " : ""}{e.title || meta.label}

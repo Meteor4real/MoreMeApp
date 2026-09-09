@@ -18,7 +18,7 @@ import {
   inboxToProject, insights, iso, isDone, levelInfo, loadState, logDistraction, monthLabel,
   removeClass, removeDistraction, removeEvent, removeInbox,
   removeProject, revealEvent, schoolYearLabel, setReward, setSchool,
-  loggingStreakInfo, streakInfo, subscribeState, today, toggleDone, uid, upcomingWithReminders,
+  classColor, eventColor, loggingStreakInfo, streakInfo, subscribeState, today, toggleDone, uid, upcomingWithReminders,
   upsertClass, upsertEvent, upsertProject, xpForDate,
 } from "./store";
 import { DayView, WeekView, shiftWeek } from "./timeline";
@@ -771,11 +771,11 @@ function CalendarView({ s, onEdit }: { s: State; onEdit: (e: CalEvent) => void }
                   <div
                     key={e.id}
                     className={"mm-chip" + (isDone(e, cell.date, s) ? " done" : "")}
-                    style={{ ["--c" as never]: CATEGORY_META[e.category].color, cursor: "pointer" }}
+                    style={{ ["--c" as never]: eventColor(e, s), cursor: "pointer" }}
                     title={[e.title || CATEGORY_META[e.category].label, e.checklist.map((c) => c.text).join(" · ")].filter(Boolean).join("\n")}
                     onClick={(ev) => { ev.stopPropagation(); onEdit(e); }}
                   >
-                    <span style={{ color: CATEGORY_META[e.category].color, flex: "none" }}>{CATEGORY_META[e.category].glyph}</span>
+                    <span style={{ color: eventColor(e, s), flex: "none" }}>{CATEGORY_META[e.category].glyph}</span>
                     {e.visibility === "hidden" ? "• " : ""}{e.title || CATEGORY_META[e.category].label}
                   </div>
                 ))}
@@ -1174,6 +1174,13 @@ function ClassesCard({ s }: { s: State }) {
         {s.classes.map((c: Class) => (
           <div key={c.id}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="color"
+                value={classColor(c.id, s) ?? "#33B5FF"}
+                onChange={(e) => upsertClass({ ...c, color: e.target.value })}
+                title="Color for this class on the calendar"
+                style={{ width: 24, height: 24, padding: 0, border: "none", borderRadius: 5, background: "transparent", cursor: "pointer", flex: "none" }}
+              />
               <input value={c.name} placeholder="Class name" onChange={(e) => upsertClass({ ...c, name: e.target.value })} style={{ flex: 1 }} />
               <button className="mm-btn" style={{ padding: "4px 8px", color: c.period ? T.mint : undefined }} title="Weekly schedule" onClick={() => setOpenId(openId === c.id ? null : c.id)}>
                 {c.period ? "◷ set" : "◷"}
